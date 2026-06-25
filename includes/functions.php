@@ -10,9 +10,9 @@ function baseUrl(string $path = ''): string {
         } else {
             $dir = rtrim(str_replace('\\', '/', dirname($script)), '/');
             if (in_array(basename($dir), ['admin', 'api'], true)) {
-                $dir = rtrim(dirname($dir), '/');
+                $dir = rtrim(str_replace('\\', '/', dirname($dir)), '/');
             }
-            $base = ($dir === '' || $dir === '.') ? '/' : $dir . '/';
+            $base = ($dir === '' || $dir === '.' || $dir === '\\') ? '/' : $dir . '/';
         }
     }
     $url = $base . ltrim($path, '/');
