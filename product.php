@@ -25,6 +25,7 @@ $related = fetchAllRows(
      ORDER BY p.featured DESC, p.id DESC LIMIT 4",
     [$product['category_id'], $product['id']]
 );
+$canAddToCart = $product['status'] !== 'out_of_stock' && (int)$product['stock'] > 0;
 ?>
 
 <section class="section container product-detail">
@@ -44,13 +45,17 @@ $related = fetchAllRows(
       <div><dt>Stock</dt><dd><?= (int)$product['stock'] ?> available</dd></div>
       <div><dt>Status</dt><dd><?= htmlspecialchars(str_replace('_', ' ', $product['status'])) ?></dd></div>
     </dl>
-    <form class="cart-add-row" method="post" action="<?= baseUrl('cart.php') ?>">
-      <?= authContextField() ?>
-      <input type="hidden" name="action" value="add">
-      <input type="hidden" name="product_id" value="<?= (int)$product['id'] ?>">
-      <input type="number" name="quantity" min="1" max="<?= (int)$product['stock'] ?>" value="1">
-      <button class="btn btn-primary" type="submit">Add to cart</button>
-    </form>
+    <?php if ($canAddToCart): ?>
+      <form class="cart-add-row" method="post" action="<?= baseUrl('cart.php') ?>">
+        <?= authContextField() ?>
+        <input type="hidden" name="action" value="add">
+        <input type="hidden" name="product_id" value="<?= (int)$product['id'] ?>">
+        <input type="number" name="quantity" min="1" max="<?= (int)$product['stock'] ?>" value="1">
+        <button class="btn btn-primary" type="submit">Add to cart</button>
+      </form>
+    <?php else: ?>
+      <div class="alert error">This product is currently out of stock.</div>
+    <?php endif; ?>
   </div>
 </section>
 

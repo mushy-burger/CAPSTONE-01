@@ -19,6 +19,7 @@ CREATE TABLE `users` (
   `google_id` VARCHAR(100) DEFAULT NULL,
   `auth_provider` ENUM('local','google') NOT NULL DEFAULT 'local',
   `role` ENUM('admin','staff','technician','customer') NOT NULL DEFAULT 'customer',
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `email` (`email`),
@@ -110,6 +111,15 @@ CREATE TABLE `cart_items` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- --------------------------------------------------------
+-- SITE SETTINGS
+-- --------------------------------------------------------
+CREATE TABLE `site_settings` (
+  `key` VARCHAR(100) NOT NULL,
+  `value` TEXT NOT NULL,
+  PRIMARY KEY (`key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- --------------------------------------------------------
 -- MOTORCYCLE TYPES / BRANDS / MODELS
 -- --------------------------------------------------------
 CREATE TABLE `motorcycle_types` (
@@ -165,7 +175,16 @@ CREATE TABLE `service_types` (
   `description` TEXT DEFAULT NULL,
   `labor_fee` DECIMAL(8,2) NOT NULL DEFAULT 0,
   `applies_to` VARCHAR(50) NOT NULL DEFAULT 'all',
+  `required_category` VARCHAR(120) DEFAULT NULL,
+  `required_category_id` INT UNSIGNED DEFAULT NULL,
   PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE `service_products` (
+  `service_id` INT UNSIGNED NOT NULL,
+  `product_id` INT UNSIGNED NOT NULL,
+  PRIMARY KEY (`service_id`,`product_id`),
+  KEY `product_id` (`product_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Rules: which products/materials are needed per service + CC range
@@ -182,33 +201,48 @@ CREATE TABLE `service_material_rules` (
   KEY `service_id` (`service_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE `service_bookings` (
+CREATE TABLE `bookings` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `user_id` INT UNSIGNED NOT NULL,
   `vehicle_id` INT UNSIGNED DEFAULT NULL,
-  `service_type_id` INT UNSIGNED NOT NULL,
   `scheduled_date` DATE NOT NULL,
   `scheduled_time` TIME DEFAULT NULL,
   `status` ENUM('pending','confirmed','in_progress','completed','cancelled') NOT NULL DEFAULT 'pending',
   `notes` TEXT DEFAULT NULL,
-  `parts_cost` DECIMAL(10,2) NOT NULL DEFAULT 0,
-  `labor_cost` DECIMAL(10,2) NOT NULL DEFAULT 0,
-  `total_cost` DECIMAL(10,2) NOT NULL DEFAULT 0,
+  `labor_total` DECIMAL(10,2) NOT NULL DEFAULT 0,
+  `products_total` DECIMAL(10,2) NOT NULL DEFAULT 0,
+  `total_amount` DECIMAL(10,2) NOT NULL DEFAULT 0,
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `user_id` (`user_id`),
-  KEY `service_type_id` (`service_type_id`)
+  KEY `vehicle_id` (`vehicle_id`),
+  KEY `status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE `service_booking_items` (
+CREATE TABLE `booking_services` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `booking_id` INT UNSIGNED NOT NULL,
-  `product_id` INT UNSIGNED DEFAULT NULL,
-  `material_label` VARCHAR(100) NOT NULL,
-  `quantity` DECIMAL(6,2) NOT NULL DEFAULT 1,
-  `unit_price` DECIMAL(10,2) NOT NULL DEFAULT 0,
+  `service_id` INT UNSIGNED NOT NULL,
+  `labor_fee` DECIMAL(10,2) NOT NULL DEFAULT 0,
+  `service_name` VARCHAR(100) DEFAULT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `booking_id` (`booking_id`)
+  KEY `booking_id` (`booking_id`),
+  KEY `service_id` (`service_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE `booking_products` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `booking_id` INT UNSIGNED NOT NULL,
+  `service_id` INT UNSIGNED DEFAULT NULL,
+  `product_id` INT UNSIGNED NOT NULL,
+  `product_price` DECIMAL(10,2) NOT NULL DEFAULT 0,
+  `product_name` VARCHAR(150) DEFAULT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `booking_id` (`booking_id`),
+  KEY `service_id` (`service_id`),
+  KEY `product_id` (`product_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- --------------------------------------------------------
@@ -350,6 +384,12 @@ INSERT INTO `service_material_rules` (`service_id`, `product_id`, `material_labe
 (2, 3, 'CVT Cleaner Spray (≥126cc)', 126, 9999, 3, 'can'),
 -- Chain & Sprocket Cleaning (service_id=3)
 (3, 4, 'Chain Lubricant Spray', 0, 9999, 1, 'can');
+
+INSERT INTO `service_products` (`service_id`, `product_id`) VALUES
+(1, 1),
+(1, 2),
+(2, 3),
+(3, 4);
 
 -- Testimonials
 INSERT INTO `testimonials` (`author_name`, `content`, `rating`) VALUES

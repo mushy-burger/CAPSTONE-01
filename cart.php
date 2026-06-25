@@ -33,6 +33,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt = getDB()->prepare("DELETE FROM cart_items WHERE id = ? AND user_id = ?");
                 $stmt->execute([(int)$cartId, $userId]);
             } else {
+                $cartRow = fetchOne(
+                    "SELECT p.stock
+                     FROM cart_items ci
+                     JOIN products p ON p.id = ci.product_id
+                     WHERE ci.id = ? AND ci.user_id = ?",
+                    [(int)$cartId, $userId]
+                );
+                if (!$cartRow) {
+                    continue;
+                }
+
+                $qty = min($qty, (int)$cartRow['stock']);
+                if ($qty <= 0) {
+                    $stmt = getDB()->prepare("DELETE FROM cart_items WHERE id = ? AND user_id = ?");
+                    $stmt->execute([(int)$cartId, $userId]);
+                    continue;
+                }
+
                 $stmt = getDB()->prepare("UPDATE cart_items SET quantity = ? WHERE id = ? AND user_id = ?");
                 $stmt->execute([$qty, (int)$cartId, $userId]);
             }

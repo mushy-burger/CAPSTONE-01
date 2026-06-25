@@ -102,6 +102,76 @@ a { color: inherit; text-decoration: none; }
 .admin-card { padding: 24px; }
 .admin-card h1, .admin-card h2 { margin-top: 0; }
 .admin-card p { color: var(--muted); }
+.admin-page-stack {
+  display: grid;
+  gap: 18px;
+}
+.admin-inline-form,
+.admin-row-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.admin-inline-form {
+  justify-content: flex-end;
+}
+.admin-inline-form input,
+.admin-inline-form select,
+.admin-row-form input,
+.admin-row-form select {
+  width: auto;
+  min-width: 150px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  background: #fff;
+}
+.admin-inline-form input[type="search"] {
+  min-width: 220px;
+}
+.admin-table-wrap {
+  overflow-x: auto;
+}
+.admin-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+.admin-data-table th,
+.admin-data-table td {
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  text-align: left;
+}
+.admin-data-table th {
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+}
+.stacked-lines {
+  display: grid;
+  gap: 5px;
+}
+.stacked-lines span {
+  display: block;
+}
+.admin-toggle-form {
+  margin-top: 8px;
+}
+.admin-toggle-form label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+.analytics-grid {
+  margin-bottom: 22px;
+}
 .list-row {
   display: flex;
   justify-content: space-between;

@@ -15,11 +15,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = $_POST['password'] ?? '';
     $user = fetchOne("SELECT * FROM users WHERE email = ?", [$email]);
 
-    if ($user && password_verify($password, $user['password'])) {
+    if ($user && (int)($user['is_active'] ?? 1) !== 1) {
+        $error = 'This account has been disabled. Please contact the shop.';
+    } elseif ($user && password_verify($password, $user['password'])) {
         loginUser($user);
         redirect(in_array($user['role'], ['admin', 'staff'], true) ? baseUrl('admin/index.php') : baseUrl('index.php'));
+    } else {
+        $error = 'Invalid email or password.';
     }
-    $error = 'Invalid email or password.';
 }
 
 $pageTitle = 'Login - MotoTrack';

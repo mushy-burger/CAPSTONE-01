@@ -71,6 +71,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'delete_product') {
         $pid = (int)($_POST['product_id'] ?? 0);
+        $linked = fetchOne(
+            "SELECT
+                (SELECT COUNT(*) FROM order_items WHERE product_id = ?) AS order_refs,
+                (SELECT COUNT(*) FROM booking_products WHERE product_id = ?) AS booking_refs",
+            [$pid, $pid]
+        );
+
+        if ((int)($linked['order_refs'] ?? 0) > 0 || (int)($linked['booking_refs'] ?? 0) > 0) {
+            flashMessage('prod_error', 'This product cannot be deleted because it is used in orders or service bookings. Set it to Out of Stock instead.');
+            redirect(baseUrl('admin/products.php') . '#tab-list');
+        }
+
         $row = fetchOne("SELECT image FROM products WHERE id = ?", [$pid]);
         if ($row && $row['image'] && file_exists(__DIR__ . '/../uploads/' . $row['image'])) {
             unlink(__DIR__ . '/../uploads/' . $row['image']);

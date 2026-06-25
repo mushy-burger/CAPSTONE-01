@@ -4,11 +4,6 @@ require_once __DIR__ . '/../includes/admin-sidebar.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/MotorcycleApiService.php';
 
-getDB()->exec("CREATE TABLE IF NOT EXISTS site_settings (
-    `key` VARCHAR(100) PRIMARY KEY,
-    `value` TEXT NOT NULL DEFAULT ''
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
 function parseAppliesTo(string $applies, array $allIds): array
 {
     if ($applies === 'all' || $applies === '') {
@@ -266,6 +261,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'delete_service') {
         $serviceId = (int)($_POST['service_id'] ?? 0);
+        $linked = fetchOne(
+            "SELECT
+                (SELECT COUNT(*) FROM booking_services WHERE service_id = ?) AS booking_refs,
+                (SELECT COUNT(*) FROM booking_products WHERE service_id = ?) AS product_refs",
+            [$serviceId, $serviceId]
+        );
+
+        if ((int)($linked['booking_refs'] ?? 0) > 0 || (int)($linked['product_refs'] ?? 0) > 0) {
+            flashMessage('settings_error', 'This service cannot be deleted because it is used in service bookings.');
+            redirect(baseUrl('admin/settings.php?tab=services'));
+        }
+
+        getDB()->prepare("DELETE FROM service_products WHERE service_id = ?")->execute([$serviceId]);
+        getDB()->prepare("DELETE FROM service_material_rules WHERE service_id = ?")->execute([$serviceId]);
         getDB()->prepare("DELETE FROM service_types WHERE id = ?")->execute([$serviceId]);
         flashMessage('settings_success', 'Service deleted.');
         redirect(baseUrl('admin/settings.php?tab=services'));
@@ -288,6 +297,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $modelId = (int)($_POST['motorcycle_id'] ?? 0);
         if ($modelId > 0) {
             try {
+                $linked = fetchOne("SELECT COUNT(*) AS total FROM customer_vehicles WHERE model_id = ?", [$modelId]);
+                if ((int)($linked['total'] ?? 0) > 0) {
+                    flashMessage('settings_error', 'This motorcycle cannot be deleted because customers have saved it.');
+                    redirect(baseUrl('admin/settings.php?tab=vehicle-options'));
+                }
+
                 getDB()->prepare("DELETE FROM motorcycle_models WHERE id = ?")->execute([$modelId]);
                 flashMessage('settings_success', 'Motorcycle removed from the catalog.');
             } catch (Throwable $e) {
@@ -308,16 +323,6 @@ $homepageSettings = [
     'hero_subtext' => getSiteSetting('hero_subtext', 'Shop reliable products, save your motorcycle profile, and book compatible services with instant cost estimates.'),
     'hero_image' => getSiteSetting('hero_image', ''),
 ];
-
-try {
-    getDB()->exec("ALTER TABLE service_types ADD COLUMN required_category VARCHAR(120) DEFAULT NULL AFTER applies_to");
-} catch (Throwable $e) {
-}
-
-try {
-    getDB()->exec("ALTER TABLE service_types ADD COLUMN required_category_id INT UNSIGNED DEFAULT NULL AFTER required_category");
-} catch (Throwable $e) {
-}
 
 $motoTypes = getMotorcycleTypes();
 $motoBrands = getMotorcycleBrands();

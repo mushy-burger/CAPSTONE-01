@@ -20,20 +20,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $items) {
     $payment = sanitize($_POST['payment_method'] ?? 'cash');
     try {
         getDB()->beginTransaction();
-        foreach ($items as $item) {
-            if ((int)$item['stock'] < (int)$item['quantity']) {
-                throw new RuntimeException($item['name'] . ' does not have enough stock.');
-            }
-        }
         $stmt = getDB()->prepare("INSERT INTO orders (user_id, subtotal, total, payment_method, status) VALUES (?, ?, ?, ?, 'processing')");
         $stmt->execute([$userId, $subtotal, $subtotal, $payment]);
         $orderId = (int)getDB()->lastInsertId();
 
         $itemStmt = getDB()->prepare("INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)");
-        $stockStmt = getDB()->prepare("UPDATE products SET stock = stock - ? WHERE id = ?");
+        $stockStmt = getDB()->prepare("UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?");
         foreach ($items as $item) {
+            $stockStmt->execute([$item['quantity'], $item['id'], $item['quantity']]);
+            if ($stockStmt->rowCount() !== 1) {
+                throw new RuntimeException($item['name'] . ' does not have enough stock.');
+            }
+
             $itemStmt->execute([$orderId, $item['id'], $item['quantity'], $item['price']]);
-            $stockStmt->execute([$item['quantity'], $item['id']]);
         }
         getDB()->prepare("DELETE FROM cart_items WHERE user_id = ?")->execute([$userId]);
         getDB()->commit();

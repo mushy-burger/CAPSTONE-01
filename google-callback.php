@@ -75,6 +75,11 @@ $googleId = $profile['sub'];
 $user = fetchOne("SELECT * FROM users WHERE google_id = ? OR email = ? LIMIT 1", [$googleId, $email]);
 
 if ($user) {
+    if ((int)($user['is_active'] ?? 1) !== 1) {
+        flashMessage('auth_error', 'This account has been disabled. Please contact the shop.');
+        redirect(baseUrl('login.php'));
+    }
+
     $stmt = getDB()->prepare("UPDATE users SET google_id = ?, auth_provider = 'google', name = COALESCE(NULLIF(name, ''), ?) WHERE id = ?");
     $stmt->execute([$googleId, $name, $user['id']]);
     $user = fetchOne("SELECT * FROM users WHERE id = ?", [$user['id']]);

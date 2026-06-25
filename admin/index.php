@@ -11,11 +11,14 @@ $recentBookings = fetchAllRows(
     "SELECT
         b.*,
         u.name AS customer,
-        GROUP_CONCAT(bs.service_name ORDER BY bs.id SEPARATOR ', ') AS services
+        svc.services
      FROM bookings b
      JOIN users u ON u.id = b.user_id
-     LEFT JOIN booking_services bs ON bs.booking_id = b.id
-     GROUP BY b.id, u.name
+     LEFT JOIN (
+       SELECT booking_id, GROUP_CONCAT(service_name ORDER BY id SEPARATOR ', ') AS services
+       FROM booking_services
+       GROUP BY booking_id
+     ) svc ON svc.booking_id = b.id
      ORDER BY b.created_at DESC
      LIMIT 6"
 );
