@@ -887,9 +887,8 @@ label { display: grid; gap: 8px; font-weight: 800; color: #30343b; }
 }
 
 .motorcycle-card {
-  display: flex;
-  flex-direction: row;
-  gap: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 190px;
   width: 100%;
   padding: 0;
   box-sizing: border-box;
@@ -900,9 +899,8 @@ label { display: grid; gap: 8px; font-weight: 800; color: #30343b; }
 }
 
 .motorcycle-details {
-  flex: 1;
   min-width: 0;
-  padding: 26px 34px 30px;
+  padding: 24px 28px 28px;
 }
 
 .motorcycle-card .detail-row .value {
@@ -911,9 +909,9 @@ label { display: grid; gap: 8px; font-weight: 800; color: #30343b; }
 
 .detail-row {
   display: grid;
-  grid-template-columns: 120px 1fr;
+  grid-template-columns: minmax(72px, 96px) minmax(0, 1fr);
   align-items: center;
-  gap: 20px;
+  gap: 12px;
   padding: 16px 0;
   border-bottom: 1px solid #e5e7eb;
 }
@@ -937,12 +935,15 @@ label { display: grid; gap: 8px; font-weight: 800; color: #30343b; }
 }
 
 .value {
+  min-width: 0;
+  max-width: 100%;
   color: #111827;
   font-size: 17px;
   font-weight: 800;
-  text-align: left;
-  white-space: nowrap;
-  overflow: visible;
+  text-align: right;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
 }
 
 .value.plate-badge {
@@ -954,16 +955,16 @@ label { display: grid; gap: 8px; font-weight: 800; color: #30343b; }
   border-radius: 6px;
   font-size: 14px;
   font-weight: 700;
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
 
 .motorcycle-actions {
-  width: 240px;
   display: flex;
   flex-direction: column;
-  gap: 15px;
-  flex-shrink: 0;
+  gap: 12px;
   justify-content: flex-start;
-  padding: 34px 24px;
+  padding: 28px 16px;
   border-left: 1px solid #e5e7eb;
 }
 
@@ -972,17 +973,26 @@ label { display: grid; gap: 8px; font-weight: 800; color: #30343b; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  height: 60px;
+  gap: 8px;
+  min-height: 48px;
   width: 100%;
-  border-radius: 15px;
-  font-size: 15px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.15;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.02em;
   border: 2px solid transparent;
   cursor: pointer;
   text-decoration: none;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.motorcycle-actions i {
+  flex: 0 0 auto;
+  font-size: 13px;
 }
 
 .book-btn {
@@ -1024,11 +1034,10 @@ label { display: grid; gap: 8px; font-weight: 800; color: #30343b; }
   }
 
   .motorcycle-card {
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .motorcycle-actions {
-    width: 100%;
     padding: 24px;
     border-left: 0;
     border-top: 1px solid #e5e7eb;
@@ -1049,6 +1058,24 @@ label { display: grid; gap: 8px; font-weight: 800; color: #30343b; }
 
   .motorcycle-details {
     padding: 24px;
+  }
+}
+
+@media (max-width: 1180px) and (min-width: 981px) {
+  .motorcycle-card {
+    grid-template-columns: 1fr;
+  }
+
+  .motorcycle-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    padding: 18px 24px 24px;
+    border-left: 0;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  .motorcycle-remove-form {
+    grid-column: 1 / -1;
   }
 }
 
