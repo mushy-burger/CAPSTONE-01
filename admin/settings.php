@@ -4,6 +4,126 @@ require_once __DIR__ . '/../includes/admin-sidebar.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/MotorcycleApiService.php';
 
+function saveOptimizedHeroImage(array $file, string $basename = 'hero_image', int $maxWidth = 1920, int $webpQuality = 90): string
+{
+    $tmpPath = $file['tmp_name'] ?? '';
+    if (!is_uploaded_file($tmpPath)) {
+        throw new RuntimeException('Invalid hero image upload.');
+    }
+
+    $imageInfo = @getimagesize($tmpPath);
+    if (!$imageInfo) {
+        throw new RuntimeException('Unable to read the uploaded hero image.');
+    }
+
+    [$sourceWidth, $sourceHeight, $imageType] = $imageInfo;
+    $extensionMap = [
+        IMAGETYPE_JPEG => 'jpg',
+        IMAGETYPE_PNG => 'png',
+        IMAGETYPE_WEBP => 'webp',
+        IMAGETYPE_GIF => 'gif',
+    ];
+    $fallbackExt = $extensionMap[$imageType] ?? strtolower(pathinfo($file['name'] ?? '', PATHINFO_EXTENSION));
+    if ($fallbackExt === '') {
+        $fallbackExt = 'jpg';
+    }
+
+    $uploadDir = __DIR__ . '/../uploads';
+    if (!is_dir($uploadDir)) {
+        mkdir($uploadDir, 0755, true);
+    }
+
+    $gdAvailable = function_exists('imagecreatetruecolor');
+    if (!$gdAvailable) {
+        $filename = $basename . '_' . time() . '.' . $fallbackExt;
+        $destination = $uploadDir . '/' . $filename;
+        if (!move_uploaded_file($tmpPath, $destination)) {
+            throw new RuntimeException('Failed to save the uploaded hero image.');
+        }
+
+        foreach (glob($uploadDir . '/' . $basename . '*.*') ?: [] as $existingFile) {
+            if (basename($existingFile) !== $filename && is_file($existingFile)) {
+                @unlink($existingFile);
+            }
+        }
+
+        return $filename;
+    }
+
+    $targetWidth = $sourceWidth > $maxWidth ? $maxWidth : $sourceWidth;
+    $targetHeight = (int)round(($sourceHeight / max($sourceWidth, 1)) * $targetWidth);
+
+    switch ($imageType) {
+        case IMAGETYPE_JPEG:
+            $source = @imagecreatefromjpeg($tmpPath);
+            break;
+        case IMAGETYPE_PNG:
+            $source = @imagecreatefrompng($tmpPath);
+            break;
+        case IMAGETYPE_WEBP:
+            $source = function_exists('imagecreatefromwebp') ? @imagecreatefromwebp($tmpPath) : null;
+            break;
+        case IMAGETYPE_GIF:
+            $source = @imagecreatefromgif($tmpPath);
+            break;
+        default:
+            $source = null;
+            break;
+    }
+
+    if (!$source) {
+        throw new RuntimeException('Unsupported hero image format on this server.');
+    }
+
+    $canvas = imagecreatetruecolor($targetWidth, $targetHeight);
+    imagealphablending($canvas, true);
+    imagesavealpha($canvas, true);
+    $transparent = imagecolorallocatealpha($canvas, 0, 0, 0, 127);
+    imagefill($canvas, 0, 0, $transparent);
+
+    imagecopyresampled(
+        $canvas,
+        $source,
+        0,
+        0,
+        0,
+        0,
+        $targetWidth,
+        $targetHeight,
+        $sourceWidth,
+        $sourceHeight
+    );
+
+    $hasAlpha = in_array($imageType, [IMAGETYPE_PNG, IMAGETYPE_GIF, IMAGETYPE_WEBP], true);
+    $filename = $basename . '_' . time() . ($hasAlpha ? '.png' : '.webp');
+    $destination = $uploadDir . '/' . $filename;
+
+    if ($hasAlpha) {
+        if (!imagepng($canvas, $destination, 6)) {
+            imagedestroy($canvas);
+            imagedestroy($source);
+            throw new RuntimeException('Failed to save the hero image.');
+        }
+    } else {
+        if (!function_exists('imagewebp') || !imagewebp($canvas, $destination, $webpQuality)) {
+            imagedestroy($canvas);
+            imagedestroy($source);
+            throw new RuntimeException('Failed to optimize and save the hero image.');
+        }
+    }
+
+    imagedestroy($canvas);
+    imagedestroy($source);
+
+    foreach (glob($uploadDir . '/' . $basename . '*.*') ?: [] as $existingFile) {
+        if (basename($existingFile) !== $filename && is_file($existingFile)) {
+            @unlink($existingFile);
+        }
+    }
+
+    return $filename;
+}
+
 function parseAppliesTo(string $applies, array $allIds): array
 {
     if ($applies === 'all' || $applies === '') {
@@ -203,16 +323,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ($file['size'] > 5 * 1024 * 1024) {
                 flashMessage('settings_error', 'Image must be under 5 MB.');
             } else {
-                $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-                $dest = __DIR__ . '/../uploads/hero_image.' . $ext;
-                if (!is_dir(dirname($dest))) {
-                    mkdir(dirname($dest), 0755, true);
+                try {
+                    $savedFilename = saveOptimizedHeroImage($file, 'hero_image', 1800, 95);
+                    setSiteSetting('hero_image', $savedFilename);
+                } catch (Throwable $e) {
+                    flashMessage('settings_error', $e->getMessage());
                 }
+            }
+        }
 
-                if (move_uploaded_file($file['tmp_name'], $dest)) {
-                    setSiteSetting('hero_image', 'hero_image.' . $ext);
-                } else {
-                    flashMessage('settings_error', 'Failed to save image.');
+        if (!empty($_FILES['hero_background_image']['name'])) {
+            $file = $_FILES['hero_background_image'];
+            $allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+            if (!in_array($file['type'], $allowed, true)) {
+                flashMessage('settings_error', 'Invalid background image type. Use JPG, PNG, WebP, or GIF.');
+            } elseif ($file['size'] > 6 * 1024 * 1024) {
+                flashMessage('settings_error', 'Background image must be under 6 MB.');
+            } else {
+                try {
+                    $savedFilename = saveOptimizedHeroImage($file, 'hero_background_image', 1920, 92);
+                    setSiteSetting('hero_background_image', $savedFilename);
+                } catch (Throwable $e) {
+                    flashMessage('settings_error', $e->getMessage());
                 }
             }
         }
@@ -322,6 +455,7 @@ $homepageSettings = [
     'hero_heading' => getSiteSetting('hero_heading', 'Keep your motorcycle ready for every ride.'),
     'hero_subtext' => getSiteSetting('hero_subtext', 'Shop reliable products, save your motorcycle profile, and book compatible services with instant cost estimates.'),
     'hero_image' => getSiteSetting('hero_image', ''),
+    'hero_background_image' => getSiteSetting('hero_background_image', ''),
 ];
 
 $motoTypes = getMotorcycleTypes();
@@ -451,19 +585,58 @@ if ($editMotorcycleId && $tab === 'vehicle-options') {
       </label>
 
       <label style="display:block;margin-bottom:1.5rem;">
-        <span style="display:block;font-weight:600;margin-bottom:.5rem;">Hero image</span>
+        <span style="display:block;font-weight:600;margin-bottom:.5rem;">Hero side image</span>
         <?php
         $imgFile = $homepageSettings['hero_image'];
         $imgExists = $imgFile && file_exists(__DIR__ . '/../uploads/' . $imgFile);
         ?>
         <?php if ($imgExists): ?>
-          <img src="<?= baseUrl('uploads/' . rawurlencode($imgFile)) ?>" alt="Hero" style="display:block;max-width:220px;margin-bottom:.6rem;border-radius:8px;border:1px solid #eee;">
+          <img id="heroSidePreview" src="<?= baseUrl('uploads/' . rawurlencode($imgFile) . '?v=' . filemtime(__DIR__ . '/../uploads/' . $imgFile)) ?>" alt="Hero" style="display:block;max-width:320px;width:100%;margin-bottom:.6rem;border-radius:12px;border:1px solid #eee;object-fit:contain;aspect-ratio:16/9;background:#fff;">
+        <?php else: ?>
+          <img id="heroSidePreview" src="" alt="Hero" style="display:none;max-width:320px;width:100%;margin-bottom:.6rem;border-radius:12px;border:1px solid #eee;object-fit:contain;aspect-ratio:16/9;background:#fff;">
         <?php endif; ?>
-        <input type="file" name="hero_image" accept="image/*">
+        <input type="file" name="hero_image" id="heroSideInput" accept="image/*">
+        <small style="display:block;color:#777;margin-top:.45rem;">This is the right-side hero picture/card image.</small>
+      </label>
+
+      <label style="display:block;margin-bottom:1.5rem;">
+        <span style="display:block;font-weight:600;margin-bottom:.5rem;">Hero background image</span>
+        <?php
+        $bgFile = $homepageSettings['hero_background_image'];
+        $bgExists = $bgFile && file_exists(__DIR__ . '/../uploads/' . $bgFile);
+        ?>
+        <?php if ($bgExists): ?>
+          <img id="heroBackgroundPreview" src="<?= baseUrl('uploads/' . rawurlencode($bgFile) . '?v=' . filemtime(__DIR__ . '/../uploads/' . $bgFile)) ?>" alt="Hero background" style="display:block;max-width:320px;width:100%;margin-bottom:.6rem;border-radius:12px;border:1px solid #eee;object-fit:cover;aspect-ratio:16/9;">
+        <?php else: ?>
+          <img id="heroBackgroundPreview" src="" alt="Hero background" style="display:none;max-width:320px;width:100%;margin-bottom:.6rem;border-radius:12px;border:1px solid #eee;object-fit:cover;aspect-ratio:16/9;">
+        <?php endif; ?>
+        <input type="file" name="hero_background_image" id="heroBackgroundInput" accept="image/*">
+        <small style="display:block;color:#777;margin-top:.45rem;">Recommended: 1920x1080 workshop background image for the full hero banner.</small>
       </label>
 
       <button type="submit" class="btn btn-primary">Save homepage settings</button>
     </form>
+    <script>
+      (() => {
+        const bindPreview = (inputId, previewId) => {
+          const input = document.getElementById(inputId);
+          const preview = document.getElementById(previewId);
+          if (!input || !preview) return;
+
+          input.addEventListener('change', () => {
+            const [file] = input.files || [];
+            if (!file) return;
+
+            const objectUrl = URL.createObjectURL(file);
+            preview.src = objectUrl;
+            preview.style.display = 'block';
+          });
+        };
+
+        bindPreview('heroSideInput', 'heroSidePreview');
+        bindPreview('heroBackgroundInput', 'heroBackgroundPreview');
+      })();
+    </script>
   <?php elseif ($tab === 'services'): ?>
     <h2 style="font-size:.9rem;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:1rem;">
       <?= $editSvc ? 'Edit Service' : 'Add New Service' ?>

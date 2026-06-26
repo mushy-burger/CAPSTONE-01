@@ -14,13 +14,16 @@ $currentPage = basename($_SERVER['PHP_SELF'], '.php');
   <link rel="stylesheet" href="<?= baseUrl('assets/css/style.css?v=' . filemtime(__DIR__ . '/../assets/css/style.css')) ?>">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 </head>
-<body>
+<body class="page-<?= htmlspecialchars($currentPage, ENT_QUOTES, 'UTF-8') ?>">
 
 <header class="site-header">
   <div class="header-inner">
     <a href="<?= baseUrl('index.php') ?>" class="logo" aria-label="MotoTrack home">
       <span class="logo-icon"><i class="fas fa-motorcycle"></i></span>
-      <span class="logo-text">MotoTrack</span>
+      <span class="logo-copy">
+        <span class="logo-text">MotoTrack</span>
+        <span class="logo-kicker">Built For The Ride</span>
+      </span>
     </a>
 
     <nav class="main-nav" aria-label="Main navigation">
@@ -28,7 +31,6 @@ $currentPage = basename($_SERVER['PHP_SELF'], '.php');
       <a href="<?= baseUrl('about.php') ?>" class="<?= $currentPage === 'about' ? 'active' : '' ?>">About</a>
       <a href="<?= baseUrl('shop.php') ?>" class="<?= $currentPage === 'shop' ? 'active' : '' ?>">Shop</a>
       <a href="<?= baseUrl('book-service.php') ?>" class="<?= $currentPage === 'book-service' ? 'active' : '' ?>">Book Service</a>
-      <a href="<?= baseUrl('contact.php') ?>" class="<?= $currentPage === 'contact' ? 'active' : '' ?>">Contact</a>
     </nav>
 
     <div class="header-actions">
@@ -66,7 +68,6 @@ $currentPage = basename($_SERVER['PHP_SELF'], '.php');
     <a href="<?= baseUrl('about.php') ?>">About</a>
     <a href="<?= baseUrl('shop.php') ?>">Shop</a>
     <a href="<?= baseUrl('book-service.php') ?>">Book Service</a>
-    <a href="<?= baseUrl('contact.php') ?>">Contact</a>
     <?php if ($currentUser): ?>
       <a href="<?= baseUrl('my-vehicle.php') ?>">My Vehicle</a>
       <a href="<?= baseUrl('logout.php') ?>">Logout</a>

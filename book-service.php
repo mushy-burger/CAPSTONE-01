@@ -8,13 +8,124 @@ ensureMultiServiceBookingSchema();
 
 $user = getCurrentUser();
 $vehicles = getCustomerVehicles($user['id']);
+$activeTab = $_GET['tab'] ?? $_POST['tab'] ?? 'book';
+$activeTab = in_array($activeTab, ['book', 'appointments'], true) ? $activeTab : 'book';
+$editableStatuses = ['pending', 'confirmed', 'cancelled'];
+$pageAction = $_POST['page_action'] ?? '';
+$message = getFlash('booking_success');
+$error = getFlash('booking_error');
 
 if (!$vehicles) {
     flashMessage('notice', 'Save your motorcycle first so we can recommend compatible services.');
     redirect(baseUrl('my-vehicle.php'));
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($pageAction, ['delete_appointment', 'cancel_appointment'], true)) {
+    $bookingId = (int)($_POST['booking_id'] ?? 0);
+    $booking = fetchOne("SELECT * FROM bookings WHERE id = ? AND user_id = ?", [$bookingId, $user['id']]);
+
+    if (!$booking) {
+        flashMessage('booking_error', 'Appointment not found.');
+    } elseif ($pageAction === 'cancel_appointment') {
+        if ((string)$booking['status'] === 'completed') {
+            flashMessage('booking_error', 'Completed appointments can no longer be cancelled.');
+        } else {
+            getDB()->prepare("UPDATE bookings SET status = 'cancelled' WHERE id = ? AND user_id = ?")->execute([$bookingId, $user['id']]);
+            flashMessage('booking_success', 'Appointment cancelled.');
+        }
+    } else {
+        if (!in_array((string)$booking['status'], $editableStatuses, true)) {
+            flashMessage('booking_error', 'This appointment can no longer be deleted.');
+        } else {
+            $db = getDB();
+            $db->beginTransaction();
+            try {
+                $db->prepare("DELETE FROM booking_products WHERE booking_id = ?")->execute([$bookingId]);
+                $db->prepare("DELETE FROM booking_services WHERE booking_id = ?")->execute([$bookingId]);
+                $db->prepare("DELETE FROM bookings WHERE id = ? AND user_id = ?")->execute([$bookingId, $user['id']]);
+                $db->commit();
+                flashMessage('booking_success', 'Appointment deleted.');
+            } catch (Throwable $e) {
+                $db->rollBack();
+                flashMessage('booking_error', $e->getMessage());
+            }
+        }
+    }
+
+    redirect(baseUrl('book-service.php?tab=appointments'));
+}
+
+$appointments = fetchAllRows(
+    "SELECT b.*, v.plate_number, t.name AS type_name, br.name AS brand_name, m.name AS model_name
+     FROM bookings b
+     LEFT JOIN customer_vehicles v ON v.id = b.vehicle_id
+     LEFT JOIN motorcycle_types t ON t.id = v.type_id
+     LEFT JOIN motorcycle_brands br ON br.id = v.brand_id
+     LEFT JOIN motorcycle_models m ON m.id = v.model_id
+     WHERE b.user_id = ?
+     ORDER BY b.created_at DESC, b.id DESC",
+    [$user['id']]
+);
+$appointmentServices = fetchAllRows(
+    "SELECT bs.booking_id, bs.service_name, bs.labor_fee
+     FROM booking_services bs
+     JOIN bookings b ON b.id = bs.booking_id
+     WHERE b.user_id = ?
+     ORDER BY bs.id ASC",
+    [$user['id']]
+);
+$appointmentProducts = fetchAllRows(
+    "SELECT bp.booking_id, bp.service_id, bp.product_name, bp.product_price
+     FROM booking_products bp
+     JOIN bookings b ON b.id = bp.booking_id
+     WHERE b.user_id = ?
+     ORDER BY bp.id ASC",
+    [$user['id']]
+);
+$servicesByBooking = [];
+foreach ($appointmentServices as $appointmentService) {
+    $servicesByBooking[(int)$appointmentService['booking_id']][] = $appointmentService;
+}
+$productsByBooking = [];
+foreach ($appointmentProducts as $appointmentProduct) {
+    $productsByBooking[(int)$appointmentProduct['booking_id']][] = $appointmentProduct;
+}
+
+$editBookingId = (int)($_GET['edit_booking_id'] ?? $_POST['edit_booking_id'] ?? 0);
+$editBooking = null;
+$scheduledDateValue = $_POST['scheduled_date'] ?? '';
+$scheduledTimeValue = $_POST['scheduled_time'] ?? '';
+$notesValue = $_POST['notes'] ?? '';
+
+if ($editBookingId > 0) {
+    $editBooking = fetchOne("SELECT * FROM bookings WHERE id = ? AND user_id = ?", [$editBookingId, $user['id']]);
+    if ($editBooking && !in_array((string)$editBooking['status'], $editableStatuses, true)) {
+        $editBooking = null;
+    }
+}
+
 $vehicleId = (int)($_POST['vehicle_id'] ?? $_GET['vehicle_id'] ?? $vehicles[0]['id']);
+$selectedServiceIds = array_map('intval', (array)($_POST['service_ids'] ?? []));
+$selectedProducts = [];
+foreach ((array)($_POST['service_products'] ?? []) as $serviceId => $productId) {
+    $selectedProducts[(int)$serviceId] = (int)$productId;
+}
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' && $editBooking) {
+    $activeTab = 'book';
+    $vehicleId = (int)$editBooking['vehicle_id'];
+    $scheduledDateValue = (string)$editBooking['scheduled_date'];
+    $scheduledTimeValue = (string)($editBooking['scheduled_time'] ?? '');
+    $notesValue = (string)($editBooking['notes'] ?? '');
+    $selectedServiceIds = array_map(
+        static fn(array $row): int => (int)$row['service_id'],
+        fetchAllRows("SELECT service_id FROM booking_services WHERE booking_id = ? ORDER BY id ASC", [$editBookingId])
+    );
+    foreach (fetchAllRows("SELECT service_id, product_id FROM booking_products WHERE booking_id = ?", [$editBookingId]) as $bookingProduct) {
+        $selectedProducts[(int)$bookingProduct['service_id']] = (int)$bookingProduct['product_id'];
+    }
+}
+
 $vehicle = null;
 foreach ($vehicles as $candidateVehicle) {
     if ((int)$candidateVehicle['id'] === $vehicleId) {
@@ -24,26 +135,19 @@ foreach ($vehicles as $candidateVehicle) {
 }
 if (!$vehicle) {
     $vehicle = $vehicles[0];
+    $vehicleId = (int)$vehicle['id'];
 }
 
 $catalog = getBookingServiceCatalog((int)$vehicle['type_id'], (int)$vehicle['cc']);
 $allowedServiceIds = array_map(static fn(array $service): int => (int)$service['id'], $catalog);
 
-$selectedServiceIds = array_map('intval', (array)($_POST['service_ids'] ?? []));
 $selectedServiceIds = array_values(array_intersect($selectedServiceIds, $allowedServiceIds));
-$selectedProducts = [];
-foreach ((array)($_POST['service_products'] ?? []) as $serviceId => $productId) {
-    $selectedProducts[(int)$serviceId] = (int)$productId;
-}
-
 $selection = calculateBookingSelection($catalog, $selectedServiceIds, $selectedProducts);
-$message = '';
-$error = '';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $date = $_POST['scheduled_date'] ?? '';
-    $time = $_POST['scheduled_time'] ?? '';
-    $notes = trim($_POST['notes'] ?? '');
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pageAction === 'submit_booking') {
+    $date = $scheduledDateValue;
+    $time = $scheduledTimeValue;
+    $notes = trim($notesValue);
 
     if (!$selectedServiceIds) {
         $error = 'Select at least one service for this appointment.';
@@ -55,22 +159,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $db = getDB();
         $db->beginTransaction();
         try {
-            $bookingStmt = $db->prepare(
-                "INSERT INTO bookings
-                 (user_id, vehicle_id, scheduled_date, scheduled_time, status, notes, labor_total, products_total, total_amount)
-                 VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?)"
-            );
-            $bookingStmt->execute([
-                $user['id'],
-                $vehicle['id'],
-                $date,
-                $time ?: null,
-                $notes,
-                $selection['labor_total'],
-                $selection['products_total'],
-                $selection['total_amount'],
-            ]);
-            $bookingId = (int)$db->lastInsertId();
+            if ($editBooking) {
+                $bookingId = (int)$editBooking['id'];
+                $db->prepare(
+                    "UPDATE bookings
+                     SET vehicle_id = ?, scheduled_date = ?, scheduled_time = ?, notes = ?,
+                         labor_total = ?, products_total = ?, total_amount = ?
+                     WHERE id = ? AND user_id = ?"
+                )->execute([
+                    $vehicle['id'],
+                    $date,
+                    $time ?: null,
+                    $notes,
+                    $selection['labor_total'],
+                    $selection['products_total'],
+                    $selection['total_amount'],
+                    $bookingId,
+                    $user['id'],
+                ]);
+                $db->prepare("DELETE FROM booking_products WHERE booking_id = ?")->execute([$bookingId]);
+                $db->prepare("DELETE FROM booking_services WHERE booking_id = ?")->execute([$bookingId]);
+            } else {
+                $bookingStmt = $db->prepare(
+                    "INSERT INTO bookings
+                     (user_id, vehicle_id, scheduled_date, scheduled_time, status, notes, labor_total, products_total, total_amount)
+                     VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?)"
+                );
+                $bookingStmt->execute([
+                    $user['id'],
+                    $vehicle['id'],
+                    $date,
+                    $time ?: null,
+                    $notes,
+                    $selection['labor_total'],
+                    $selection['products_total'],
+                    $selection['total_amount'],
+                ]);
+                $bookingId = (int)$db->lastInsertId();
+            }
 
             $serviceStmt = $db->prepare(
                 "INSERT INTO booking_services (booking_id, service_id, labor_fee, service_name)
@@ -101,10 +227,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $db->commit();
-            $message = 'Service appointment request saved. Reference #' . $bookingId;
-            $selectedServiceIds = [];
-            $selectedProducts = [];
-            $selection = calculateBookingSelection($catalog, $selectedServiceIds, $selectedProducts);
+            flashMessage('booking_success', $editBooking ? 'Appointment updated successfully.' : 'Service appointment request saved. Reference #' . $bookingId);
+            redirect(baseUrl('book-service.php?tab=appointments'));
         } catch (Throwable $e) {
             $db->rollBack();
             $error = $e->getMessage();
@@ -116,18 +240,18 @@ $pageTitle = 'Book Service - MotoTrack';
 require_once __DIR__ . '/includes/header.php';
 ?>
 
-<section class="page-hero">
-  <div class="container">
-    <span class="eyebrow">Service Appointment</span>
-    <h1>Book multiple services in one visit</h1>
-    <p><?= htmlspecialchars($vehicle['brand_name'] . ' ' . $vehicle['model_name']) ?>,
-       <?= (int)$vehicle['cc'] ?>cc <?= htmlspecialchars($vehicle['type_name']) ?></p>
-  </div>
-</section>
-
 <section class="section container form-layout booking-layout">
+  <div class="page-tabs booking-page-tabs">
+    <a href="<?= baseUrl('book-service.php?tab=book') ?>" class="<?= $activeTab === 'book' ? 'active' : '' ?>">Book Service</a>
+    <a href="<?= baseUrl('book-service.php?tab=appointments') ?>" class="<?= $activeTab === 'appointments' ? 'active' : '' ?>">Appointments</a>
+  </div>
+
+  <?php if ($activeTab === 'book'): ?>
   <form class="form-panel booking-form" method="post" id="multiServiceBookingForm">
     <?= authContextField() ?>
+    <input type="hidden" name="page_action" value="submit_booking">
+    <input type="hidden" name="tab" value="book">
+    <?php if ($editBooking): ?><input type="hidden" name="edit_booking_id" value="<?= (int)$editBooking['id'] ?>"><?php endif; ?>
     <h2>Appointment details</h2>
 
     <?php if ($message): ?><div class="alert success"><?= htmlspecialchars($message) ?></div><?php endif; ?>
@@ -181,12 +305,15 @@ require_once __DIR__ . '/includes/header.php';
         <div class="service-product-sections" id="serviceProductSections"></div>
       </div>
 
-      <label>Date<input type="date" name="scheduled_date" min="<?= date('Y-m-d') ?>" value="<?= htmlspecialchars($_POST['scheduled_date'] ?? '') ?>" required></label>
-      <label>Time<input type="time" name="scheduled_time" value="<?= htmlspecialchars($_POST['scheduled_time'] ?? '') ?>"></label>
+      <label>Date<input type="date" name="scheduled_date" min="<?= date('Y-m-d') ?>" value="<?= htmlspecialchars($scheduledDateValue) ?>" required></label>
+      <label>Time<input type="time" name="scheduled_time" value="<?= htmlspecialchars($scheduledTimeValue) ?>"></label>
       <label>Notes
-        <textarea name="notes" rows="4" placeholder="Describe symptoms, preferred parts, or requests"><?= htmlspecialchars($_POST['notes'] ?? '') ?></textarea>
+        <textarea name="notes" rows="4" placeholder="Describe symptoms, preferred parts, or requests"><?= htmlspecialchars($notesValue) ?></textarea>
       </label>
-      <button class="btn btn-primary" type="submit">Submit booking</button>
+      <div class="booking-form-actions">
+        <button class="btn btn-primary" type="submit"><?= $editBooking ? 'Update appointment' : 'Submit booking' ?></button>
+        <?php if ($editBooking): ?><a class="btn btn-outline" href="<?= baseUrl('book-service.php?tab=appointments') ?>">Cancel edit</a><?php endif; ?>
+      </div>
     <?php else: ?>
       <p>No services are currently configured for <strong><?= htmlspecialchars($vehicle['type_name']) ?></strong> motorcycles.
          Please contact the shop directly.</p>
@@ -238,9 +365,88 @@ require_once __DIR__ . '/includes/header.php';
     <div><span>Final total</span><strong id="bookingTotalValue"><?= formatPrice((float)$selection['total_amount']) ?></strong></div>
     <p class="fine-print">Final cost can still change if the technician records additional parts during service.</p>
   </aside>
+  <?php else: ?>
+  <div class="form-panel booking-history-panel">
+    <h2>Your appointments</h2>
+    <?php if ($message): ?><div class="alert success"><?= htmlspecialchars($message) ?></div><?php endif; ?>
+    <?php if ($error): ?><div class="alert error"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+
+    <div class="history-list">
+      <?php if ($appointments): ?>
+        <?php foreach ($appointments as $appointment): ?>
+          <?php
+            $bookingId = (int)$appointment['id'];
+            $canEdit = in_array((string)$appointment['status'], $editableStatuses, true);
+            $vehicleLabel = trim(($appointment['brand_name'] ?? '') . ' ' . ($appointment['model_name'] ?? ''));
+          ?>
+          <article class="history-card">
+            <div class="history-card-head">
+              <div>
+                <strong>Appointment #<?= $bookingId ?></strong>
+                <span><?= htmlspecialchars(date('M j, Y', strtotime($appointment['scheduled_date']))) ?><?= !empty($appointment['scheduled_time']) ? ' at ' . htmlspecialchars(date('g:i A', strtotime((string)$appointment['scheduled_time']))) : '' ?></span>
+              </div>
+              <span class="status-pill-lite"><?= htmlspecialchars(strtoupper((string)$appointment['status'])) ?></span>
+            </div>
+
+            <div class="history-lines">
+              <div><span>Motorcycle</span><strong><?= htmlspecialchars($vehicleLabel) ?></strong></div>
+              <div><span>Type</span><strong><?= htmlspecialchars((string)($appointment['type_name'] ?? '-')) ?></strong></div>
+              <div><span>Plate</span><strong><?= htmlspecialchars((string)($appointment['plate_number'] ?: '-')) ?></strong></div>
+              <?php foreach ($servicesByBooking[$bookingId] ?? [] as $serviceRow): ?>
+                <div><span><?= htmlspecialchars($serviceRow['service_name']) ?></span><strong><?= formatPrice((float)$serviceRow['labor_fee']) ?></strong></div>
+              <?php endforeach; ?>
+              <?php foreach ($productsByBooking[$bookingId] ?? [] as $productRow): ?>
+                <div><span><?= htmlspecialchars($productRow['product_name']) ?></span><strong><?= formatPrice((float)$productRow['product_price']) ?></strong></div>
+              <?php endforeach; ?>
+            </div>
+
+            <div class="history-total">
+              <span>Total</span>
+              <strong><?= formatPrice((float)$appointment['total_amount']) ?></strong>
+            </div>
+
+            <div class="history-actions">
+              <?php if ($canEdit): ?>
+                <a class="btn btn-outline" href="<?= baseUrl('book-service.php?tab=book&edit_booking_id=' . $bookingId) ?>">Edit</a>
+              <?php endif; ?>
+              <?php if ((string)$appointment['status'] !== 'completed'): ?>
+                <form method="post">
+                  <?= authContextField() ?>
+                  <input type="hidden" name="tab" value="appointments">
+                  <input type="hidden" name="page_action" value="cancel_appointment">
+                  <input type="hidden" name="booking_id" value="<?= $bookingId ?>">
+                  <button class="btn btn-outline" type="submit">Cancel</button>
+                </form>
+              <?php endif; ?>
+              <?php if ($canEdit): ?>
+                <form method="post">
+                  <?= authContextField() ?>
+                  <input type="hidden" name="tab" value="appointments">
+                  <input type="hidden" name="page_action" value="delete_appointment">
+                  <input type="hidden" name="booking_id" value="<?= $bookingId ?>">
+                  <button class="btn btn-outline btn-danger-lite" type="submit">Delete</button>
+                </form>
+              <?php endif; ?>
+            </div>
+          </article>
+        <?php endforeach; ?>
+      <?php else: ?>
+        <p class="empty-state">No appointments yet.</p>
+      <?php endif; ?>
+    </div>
+  </div>
+
+  <aside class="summary-box booking-summary">
+    <h2>Appointments</h2>
+    <div><span>Total appointments</span><strong><?= count($appointments) ?></strong></div>
+    <div><span>Pending</span><strong><?= count(array_filter($appointments, static fn(array $appointment): bool => (string)$appointment['status'] === 'pending')) ?></strong></div>
+    <div><span>Completed</span><strong><?= count(array_filter($appointments, static fn(array $appointment): bool => (string)$appointment['status'] === 'completed')) ?></strong></div>
+    <a class="btn btn-primary" href="<?= baseUrl('book-service.php?tab=book') ?>">Book New Appointment</a>
+  </aside>
+  <?php endif; ?>
 </section>
 
-<?php if ($catalog): ?>
+<?php if ($catalog && $activeTab === 'book'): ?>
 <script>
 (() => {
   const bookingForm = document.getElementById('multiServiceBookingForm');

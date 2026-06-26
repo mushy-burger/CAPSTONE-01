@@ -28,14 +28,6 @@ $products = fetchAllRows(
 );
 ?>
 
-<section class="page-hero">
-  <div class="container">
-    <span class="eyebrow">Shop</span>
-    <h1>Motorcycle parts and accessories</h1>
-    <p>Browse current product availability and add items to your cart.</p>
-  </div>
-</section>
-
 <section class="section container">
   <form class="filter-bar" method="get">
     <?= authContextField() ?>

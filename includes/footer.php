@@ -22,7 +22,6 @@
         <li><a href="<?= baseUrl('about.php') ?>">About Us</a></li>
         <li><a href="<?= baseUrl('shop.php') ?>">Shop</a></li>
         <li><a href="<?= baseUrl('book-service.php') ?>">Book Service</a></li>
-        <li><a href="<?= baseUrl('contact.php') ?>">Contact Us</a></li>
       </ul>
     </div>
 

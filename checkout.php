@@ -2,48 +2,79 @@
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/db.php';
+require_once __DIR__ . '/includes/paymongo.php';
 requireLogin();
 
-$userId = getCurrentUser()['id'];
+$currentUser = getCurrentUser();
+$userId = $currentUser['id'];
 $items = fetchAllRows(
-    "SELECT ci.quantity, p.*
+    "SELECT ci.quantity, p.*, c.name AS category_name
      FROM cart_items ci
      JOIN products p ON p.id = ci.product_id
+     LEFT JOIN categories c ON c.id = p.category_id
      WHERE ci.user_id = ?",
     [$userId]
 );
 $subtotal = array_reduce($items, fn($sum, $item) => $sum + ((float)$item['price'] * (int)$item['quantity']), 0.0);
 $message = '';
 $error = '';
+$paymongoReady = paymongoIsConfigured();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $items) {
-    $payment = sanitize($_POST['payment_method'] ?? 'cash');
-    try {
-        getDB()->beginTransaction();
-        $stmt = getDB()->prepare("INSERT INTO orders (user_id, subtotal, total, payment_method, status) VALUES (?, ?, ?, ?, 'processing')");
-        $stmt->execute([$userId, $subtotal, $subtotal, $payment]);
-        $orderId = (int)getDB()->lastInsertId();
+    $payment = sanitize($_POST['payment_method'] ?? 'paymongo');
 
-        $itemStmt = getDB()->prepare("INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)");
-        $stockStmt = getDB()->prepare("UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?");
-        foreach ($items as $item) {
-            $stockStmt->execute([$item['quantity'], $item['id'], $item['quantity']]);
-            if ($stockStmt->rowCount() !== 1) {
-                throw new RuntimeException($item['name'] . ' does not have enough stock.');
+    if ($payment !== 'paymongo') {
+        $error = 'Please use the PayMongo payment option.';
+    } elseif (!$paymongoReady) {
+        $error = 'PayMongo is not configured yet. Add your PayMongo keys in the local .env file first.';
+    } else {
+        try {
+            getDB()->beginTransaction();
+            $stmt = getDB()->prepare(
+                "INSERT INTO orders (user_id, subtotal, total, payment_method, payment_status, status)
+                 VALUES (?, ?, ?, ?, ?, 'pending')"
+            );
+            $stmt->execute([$userId, $subtotal, $subtotal, 'paymongo', 'awaiting_payment']);
+            $orderId = (int)getDB()->lastInsertId();
+
+            $itemStmt = getDB()->prepare("INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)");
+            foreach ($items as $item) {
+                $itemStmt->execute([$orderId, $item['id'], $item['quantity'], $item['price']]);
             }
 
-            $itemStmt->execute([$orderId, $item['id'], $item['quantity'], $item['price']]);
+            $customer = fetchOne("SELECT name, email, phone FROM users WHERE id = ?", [$userId]) ?? [
+                'name' => $currentUser['name'] ?? '',
+                'email' => $currentUser['email'] ?? '',
+                'phone' => '',
+            ];
+
+            $checkout = paymongoCreateCheckoutSession(
+                ['id' => $orderId, 'user_id' => $userId],
+                $items,
+                $customer
+            );
+
+            $sessionData = $checkout['data'] ?? [];
+            $checkoutSessionId = $sessionData['id'] ?? '';
+            $checkoutUrl = $sessionData['attributes']['checkout_url'] ?? '';
+            if ($checkoutSessionId === '' || $checkoutUrl === '') {
+                throw new RuntimeException('PayMongo did not return a checkout URL.');
+            }
+
+            getDB()->prepare(
+                "UPDATE orders
+                 SET checkout_session_id = ?, payment_reference = ?, payment_status = ?
+                 WHERE id = ?"
+            )->execute([$checkoutSessionId, 'MT-' . $orderId, 'checkout_created', $orderId]);
+
+            getDB()->commit();
+            redirect($checkoutUrl);
+        } catch (Throwable $e) {
+            if (getDB()->inTransaction()) {
+                getDB()->rollBack();
+            }
+            $error = $e->getMessage();
         }
-        getDB()->prepare("DELETE FROM cart_items WHERE user_id = ?")->execute([$userId]);
-        getDB()->commit();
-        $message = 'Order placed successfully. Reference #' . $orderId;
-        $items = [];
-        $subtotal = 0.0;
-    } catch (Throwable $e) {
-        if (getDB()->inTransaction()) {
-            getDB()->rollBack();
-        }
-        $error = $e->getMessage();
     }
 }
 
@@ -64,12 +95,14 @@ require_once __DIR__ . '/includes/header.php';
     <h2>Choose Payment Method</h2>
     <?php if ($message): ?><div class="alert success"><?= htmlspecialchars($message) ?></div><?php endif; ?>
     <?php if ($error): ?><div class="alert error"><?= htmlspecialchars($error) ?></div><?php endif; ?>
-    <label><input type="radio" name="payment_method" value="cash" checked> Cash</label>
-    <label><input type="radio" name="payment_method" value="bank"> Bank transfer</label>
-    <label><input type="radio" name="payment_method" value="gcash"> GCash</label>
-    <label><input type="radio" name="payment_method" value="paymaya"> PayMaya</label>
-    <p class="fine-print">For alternate arrangements, contact the shop before placing your order.</p>
-    <button class="btn btn-primary" type="submit" <?= !$items ? 'disabled' : '' ?>>Place order</button>
+    <label><input type="radio" name="payment_method" value="paymongo" checked> PayMongo Checkout</label>
+    <p class="fine-print">
+      Pay securely using the PayMongo hosted checkout page. Available methods depend on your PayMongo account setup and may include Card, GCash, Maya, and QRPh.
+    </p>
+    <?php if (!$paymongoReady): ?>
+      <div class="alert error">PayMongo keys are missing. Add them in your local <code>.env</code> file first.</div>
+    <?php endif; ?>
+    <button class="btn btn-primary" type="submit" <?= (!$items || !$paymongoReady) ? 'disabled' : '' ?>>Pay with PayMongo</button>
   </form>
 
   <aside class="summary-box">
