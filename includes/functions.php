@@ -9,7 +9,7 @@ function baseUrl(string $path = ''): string {
             $base = substr($script, 0, $pos + strlen($marker));
         } else {
             $dir = rtrim(str_replace('\\', '/', dirname($script)), '/');
-            if (in_array(basename($dir), ['admin', 'api'], true)) {
+            if (in_array(basename($dir), ['admin', 'api', 'staff', 'tech'], true)) {
                 $dir = rtrim(str_replace('\\', '/', dirname($dir)), '/');
             }
             $base = ($dir === '' || $dir === '.' || $dir === '\\') ? '/' : $dir . '/';

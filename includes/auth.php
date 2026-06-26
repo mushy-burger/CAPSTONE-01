@@ -64,6 +64,61 @@ function requireAdminOrStaff(): void {
     }
 }
 
+function requireAdminOnly(): void {
+    requireLogin();
+    $currentUser = getCurrentUser();
+    if (!$currentUser || $currentUser['role'] !== 'admin') {
+        require_once __DIR__ . '/functions.php';
+        header('Location: ' . baseUrl('index.php'));
+        exit;
+    }
+}
+
+function requireStaff(): void {
+    requireLogin();
+    $currentUser = getCurrentUser();
+    if (!$currentUser || $currentUser['role'] !== 'staff') {
+        require_once __DIR__ . '/functions.php';
+        header('Location: ' . baseUrl('index.php'));
+        exit;
+    }
+}
+
+function requireTechnician(): void {
+    requireLogin();
+    $currentUser = getCurrentUser();
+    if (!$currentUser || $currentUser['role'] !== 'technician') {
+        require_once __DIR__ . '/functions.php';
+        header('Location: ' . baseUrl('index.php'));
+        exit;
+    }
+}
+
+// -------------------------------------------------------
+// Notification helpers
+// -------------------------------------------------------
+function createNotification(int $userId, string $message, string $type = 'booking', ?int $bookingId = null): void {
+    require_once __DIR__ . '/db.php';
+    getDB()->prepare(
+        "INSERT INTO notifications (user_id, type, message, booking_id) VALUES (?, ?, ?, ?)"
+    )->execute([$userId, $type, $message, $bookingId]);
+}
+
+function notifyAllStaff(string $message, string $type = 'booking', ?int $bookingId = null): void {
+    require_once __DIR__ . '/db.php';
+    $staffUsers = getDB()->query("SELECT id FROM users WHERE role = 'staff' AND is_active = 1")->fetchAll();
+    foreach ($staffUsers as $u) {
+        createNotification((int)$u['id'], $message, $type, $bookingId);
+    }
+}
+
+function getUnreadNotificationCount(int $userId): int {
+    require_once __DIR__ . '/db.php';
+    $stmt = getDB()->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0");
+    $stmt->execute([$userId]);
+    return (int)$stmt->fetchColumn();
+}
+
 function loginUser(array $user): void {
     session_regenerate_id(false);
     $key = currentAuthContext();

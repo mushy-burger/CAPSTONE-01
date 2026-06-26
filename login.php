@@ -19,7 +19,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'This account has been disabled. Please contact the shop.';
     } elseif ($user && password_verify($password, $user['password'])) {
         loginUser($user);
-        redirect(in_array($user['role'], ['admin', 'staff'], true) ? baseUrl('admin/index.php') : baseUrl('index.php'));
+        $destinations = [
+            'admin'       => baseUrl('admin/index.php'),
+            'staff'       => baseUrl('staff/index.php'),
+            'technician'  => baseUrl('tech/index.php'),
+        ];
+        redirect($destinations[$user['role']] ?? baseUrl('index.php'));
     } else {
         $error = 'Invalid email or password.';
     }

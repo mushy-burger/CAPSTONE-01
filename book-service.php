@@ -227,6 +227,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pageAction === 'submit_booking') {
             }
 
             $db->commit();
+
+            // Notify all staff for new bookings
+            if (!$editBooking) {
+                $scheduledLabel = date('M j, Y', strtotime($date));
+                notifyAllStaff(
+                    "New booking request from {$user['name']} scheduled for $scheduledLabel (Booking #$bookingId).",
+                    'booking',
+                    $bookingId
+                );
+            }
+
             flashMessage('booking_success', $editBooking ? 'Appointment updated successfully.' : 'Service appointment request saved. Reference #' . $bookingId);
             redirect(baseUrl('book-service.php?tab=appointments'));
         } catch (Throwable $e) {

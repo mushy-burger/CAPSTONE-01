@@ -1,9 +1,10 @@
 <?php
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/functions.php';
-requireAdminOrStaff();
+requireAdminOnly();
 $currentUser = getCurrentUser();
 $adminPage = basename($_SERVER['PHP_SELF'], '.php');
+$unreadCount = getUnreadNotificationCount((int)$currentUser['id']);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -18,11 +19,12 @@ $adminPage = basename($_SERVER['PHP_SELF'], '.php');
 <body class="admin-body">
 
 <div class="admin-layout">
-  <aside class="admin-sidebar">
+  <aside class="admin-sidebar" style="--sidebar-accent:#d71920;">
     <div class="sidebar-logo">
       <i class="fas fa-motorcycle"></i>
       <span>MotoTrack</span>
     </div>
+    <div class="role-badge role-admin">Admin</div>
     <nav class="sidebar-nav">
       <a href="<?= baseUrl('admin/index.php') ?>" class="<?= $adminPage === 'index' ? 'active' : '' ?>">
         <i class="fas fa-tachometer-alt"></i> Dashboard
@@ -30,14 +32,8 @@ $adminPage = basename($_SERVER['PHP_SELF'], '.php');
       <a href="<?= baseUrl('admin/users.php') ?>" class="<?= $adminPage === 'users' ? 'active' : '' ?>">
         <i class="fas fa-users"></i> Users
       </a>
-      <a href="<?= baseUrl('admin/products.php') ?>" class="<?= $adminPage === 'products' ? 'active' : '' ?>">
-        <i class="fas fa-box"></i> Products
-      </a>
       <a href="<?= baseUrl('admin/orders.php') ?>" class="<?= $adminPage === 'orders' ? 'active' : '' ?>">
         <i class="fas fa-shopping-bag"></i> Orders
-      </a>
-      <a href="<?= baseUrl('admin/service-requests.php') ?>" class="<?= $adminPage === 'service-requests' ? 'active' : '' ?>">
-        <i class="fas fa-tools"></i> Services
       </a>
       <a href="<?= baseUrl('admin/analytics.php') ?>" class="<?= $adminPage === 'analytics' ? 'active' : '' ?>">
         <i class="fas fa-chart-bar"></i> Analytics
@@ -55,7 +51,6 @@ $adminPage = basename($_SERVER['PHP_SELF'], '.php');
       </div>
       <div class="topbar-right">
         <a href="<?= baseUrl('index.php') ?>" class="topbar-icon" title="View Site"><i class="fas fa-external-link-alt"></i></a>
-        <span class="topbar-icon"><i class="fas fa-bell"></i></span>
         <span class="topbar-welcome">Welcome, <?= htmlspecialchars($currentUser['name']) ?>!</span>
         <a href="<?= baseUrl('logout.php') ?>" class="topbar-icon" title="Logout"><i class="fas fa-sign-out-alt"></i></a>
       </div>
