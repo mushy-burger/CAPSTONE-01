@@ -2583,3 +2583,81 @@ label {
     padding-right: 18px;
   }
 }
+
+/* ============================================
+   BOOKING PROGRESS TRACKER (customer-facing)
+   ============================================ */
+.booking-progress {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 16px 0 8px;
+  overflow-x: auto;
+}
+
+.bp-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  font-size: .72rem;
+  font-weight: 700;
+  color: #9ca3af;
+  flex: 0 0 auto;
+  text-align: center;
+  min-width: 70px;
+}
+.bp-step.bp-done  { color: #15803d; }
+.bp-step.bp-active { color: #d71920; }
+
+.bp-dot {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  display: grid;
+  place-items: center;
+  font-size: .85rem;
+  color: #9ca3af;
+  transition: background .25s, color .25s;
+}
+.bp-step.bp-done  .bp-dot { background: #15803d; color: #fff; }
+.bp-step.bp-active .bp-dot { background: #d71920; color: #fff; box-shadow: 0 0 0 4px rgba(215,25,32,.15); }
+
+.bp-line {
+  flex: 1;
+  height: 2px;
+  background: #e5e7eb;
+  min-width: 20px;
+  margin-bottom: 20px;
+  transition: background .25s;
+}
+.bp-line.bp-line-done { background: #15803d; }
+
+/* Status message banners */
+.booking-status-msg {
+  font-size: .88rem;
+  font-weight: 600;
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+.booking-status-msg--pending     { background: #f3f4f6; color: #6b7280; }
+.booking-status-msg--confirmed   { background: #eff6ff; color: #1d4ed8; }
+.booking-status-msg--in_progress { background: #fffbeb; color: #b45309; }
+.booking-status-msg--completed   { background: #f0fdf4; color: #15803d; }
+.booking-status-msg--cancelled   { background: #fef2f2; color: #b91c1c; }
+
+/* Colored status pills on the customer side */
+.status-pill-lite.status-pending     { background: #f3f4f6; color: #6b7280; }
+.status-pill-lite.status-confirmed   { background: #eff6ff; color: #1d4ed8; }
+.status-pill-lite.status-in_progress { background: #fffbeb; color: #b45309; }
+.status-pill-lite.status-completed   { background: #f0fdf4; color: #15803d; }
+.status-pill-lite.status-cancelled   { background: #fef2f2; color: #b91c1c; }
+
+@media (max-width: 640px) {
+  .booking-progress { gap: 0; }
+  .bp-step { min-width: 54px; font-size: .65rem; }
+  .bp-dot  { width: 28px; height: 28px; font-size: .75rem; }
+  .bp-line { min-width: 10px; }
+}

@@ -279,6 +279,11 @@ $statusColor = [
                 <?php if (!$isPending && !$isCancellable && $b['status'] !== 'cancelled'): ?>
                   <span class="subtext">No actions available</span>
                 <?php endif; ?>
+                <!-- Always show View Details -->
+                <a href="<?= baseUrl('staff/booking-detail.php?id=' . $bid) ?>"
+                   class="btn btn-outline" style="font-size:.8rem;padding:6px 14px;margin-top:6px;display:inline-block;">
+                  <i class="fas fa-eye"></i> View
+                </a>
               </td>
             </tr>
           <?php endforeach; ?>

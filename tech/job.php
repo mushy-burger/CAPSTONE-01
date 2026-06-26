@@ -68,8 +68,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             getDB()->prepare("UPDATE bookings SET status = ? WHERE id = ? AND technician_id = ?")
                    ->execute([$newStatus, $bookingId, $currentUser['id']]);
 
-            // If completed, notify all staff
+            // If completed, deduct stock for booking products + notify staff
             if ($newStatus === 'completed') {
+                // Deduct product stock
+                $bookedProducts = fetchAllRows(
+                    "SELECT product_id FROM booking_products WHERE booking_id = ?",
+                    [$bookingId]
+                );
+                foreach ($bookedProducts as $bp) {
+                    getDB()->prepare(
+                        "UPDATE products SET stock = GREATEST(0, stock - 1) WHERE id = ?"
+                    )->execute([$bp['product_id']]);
+                    getDB()->prepare(
+                        "UPDATE products SET status = CASE
+                           WHEN stock = 0 THEN 'out_of_stock'
+                           WHEN stock <= 5 THEN 'low_stock'
+                           ELSE 'available'
+                         END WHERE id = ?"
+                    )->execute([$bp['product_id']]);
+                }
+
                 notifyAllStaff(
                     "Job #{$bookingId} has been marked as Completed by {$currentUser['name']}.",
                     'completion',

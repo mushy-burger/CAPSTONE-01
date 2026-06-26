@@ -27,11 +27,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($pageAction, ['delete_appo
     if (!$booking) {
         flashMessage('booking_error', 'Appointment not found.');
     } elseif ($pageAction === 'cancel_appointment') {
-        if ((string)$booking['status'] === 'completed') {
-            flashMessage('booking_error', 'Completed appointments can no longer be cancelled.');
-        } else {
+        if ((string)$booking['status'] === 'pending') {
             getDB()->prepare("UPDATE bookings SET status = 'cancelled' WHERE id = ? AND user_id = ?")->execute([$bookingId, $user['id']]);
             flashMessage('booking_success', 'Appointment cancelled.');
+        } else {
+            flashMessage('booking_error', 'Only pending bookings can be self-cancelled. Please contact the shop to cancel a confirmed appointment.');
         }
     } else {
         if (!in_array((string)$booking['status'], $editableStatuses, true)) {
@@ -56,12 +56,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($pageAction, ['delete_appo
 }
 
 $appointments = fetchAllRows(
-    "SELECT b.*, v.plate_number, t.name AS type_name, br.name AS brand_name, m.name AS model_name
+    "SELECT b.*, v.plate_number, t.name AS type_name, br.name AS brand_name, m.name AS model_name,
+            tech.name AS technician_name
      FROM bookings b
      LEFT JOIN customer_vehicles v ON v.id = b.vehicle_id
      LEFT JOIN motorcycle_types t ON t.id = v.type_id
      LEFT JOIN motorcycle_brands br ON br.id = v.brand_id
      LEFT JOIN motorcycle_models m ON m.id = v.model_id
+     LEFT JOIN users tech ON tech.id = b.technician_id
      WHERE b.user_id = ?
      ORDER BY b.created_at DESC, b.id DESC",
     [$user['id']]
@@ -156,6 +158,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pageAction === 'submit_booking') {
     } elseif ($selection['errors']) {
         $error = $selection['errors'][0];
     } else {
+        // Time-slot conflict check (max 3 bookings per slot)
+        $maxPerSlot = 3;
+        $slotParams = [$date];
+        $slotSql = "SELECT COUNT(*) FROM bookings WHERE scheduled_date = ? AND status NOT IN ('cancelled')";
+        if ($time) {
+            $slotSql .= " AND scheduled_time = ?";
+            $slotParams[] = $time;
+        }
+        if ($editBooking) {
+            $slotSql .= " AND id != ?";
+            $slotParams[] = (int)$editBooking['id'];
+        }
+        $slotStmt = getDB()->prepare($slotSql);
+        $slotStmt->execute($slotParams);
+        $slotCount = (int)$slotStmt->fetchColumn();
+
+        if ($slotCount >= $maxPerSlot) {
+            $error = 'This time slot is fully booked (' . $maxPerSlot . ' appointments). Please choose a different date or time.';
+        }
+        if (!$error) {
         $db = getDB();
         $db->beginTransaction();
         try {
@@ -244,6 +266,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pageAction === 'submit_booking') {
             $db->rollBack();
             $error = $e->getMessage();
         }
+        } // end if (!$error)
     }
 }
 
@@ -386,9 +409,28 @@ require_once __DIR__ . '/includes/header.php';
       <?php if ($appointments): ?>
         <?php foreach ($appointments as $appointment): ?>
           <?php
-            $bookingId = (int)$appointment['id'];
-            $canEdit = in_array((string)$appointment['status'], $editableStatuses, true);
+            $bookingId   = (int)$appointment['id'];
+            $status      = (string)$appointment['status'];
+            $canEdit     = in_array($status, $editableStatuses, true);
+            $isPending   = $status === 'pending';
             $vehicleLabel = trim(($appointment['brand_name'] ?? '') . ' ' . ($appointment['model_name'] ?? ''));
+            $techFirstName = $appointment['technician_name'] ? explode(' ', $appointment['technician_name'])[0] : null;
+
+            // Progress steps
+            $steps = ['pending' => 0, 'confirmed' => 1, 'in_progress' => 2, 'completed' => 3, 'cancelled' => -1];
+            $currentStep = $steps[$status] ?? 0;
+            $stepLabels = ['Pending', 'Confirmed', 'In Progress', 'Completed'];
+            $stepIcons  = ['fa-clock', 'fa-check', 'fa-wrench', 'fa-flag-checkered'];
+
+            // Status messages
+            $statusMsg = match($status) {
+              'pending'     => '⏳ Waiting for staff to confirm your appointment.',
+              'confirmed'   => '✅ Confirmed!' . ($techFirstName ? " Assigned to $techFirstName." : '') . ' Please be on time.',
+              'in_progress' => '🔧 Your motorcycle is being serviced right now.' . ($techFirstName ? " Technician: $techFirstName." : ''),
+              'completed'   => '🎉 Service complete! Thank you for choosing MotoTrack.',
+              'cancelled'   => '❌ This appointment has been cancelled.',
+              default       => ''
+            };
           ?>
           <article class="history-card">
             <div class="history-card-head">
@@ -396,8 +438,25 @@ require_once __DIR__ . '/includes/header.php';
                 <strong>Appointment #<?= $bookingId ?></strong>
                 <span><?= htmlspecialchars(date('M j, Y', strtotime($appointment['scheduled_date']))) ?><?= !empty($appointment['scheduled_time']) ? ' at ' . htmlspecialchars(date('g:i A', strtotime((string)$appointment['scheduled_time']))) : '' ?></span>
               </div>
-              <span class="status-pill-lite"><?= htmlspecialchars(strtoupper((string)$appointment['status'])) ?></span>
+              <span class="status-pill-lite status-<?= htmlspecialchars($status) ?>"><?= htmlspecialchars(strtoupper(str_replace('_', ' ', $status))) ?></span>
             </div>
+
+            <?php if ($status !== 'cancelled'): ?>
+            <!-- Progress tracker -->
+            <div class="booking-progress">
+              <?php foreach ($stepLabels as $i => $label): ?>
+                <div class="bp-step <?= $i < $currentStep ? 'bp-done' : ($i === $currentStep ? 'bp-active' : 'bp-future') ?>">
+                  <div class="bp-dot"><i class="fas <?= $stepIcons[$i] ?>"></i></div>
+                  <span><?= $label ?></span>
+                </div>
+                <?php if ($i < count($stepLabels) - 1): ?><div class="bp-line <?= $i < $currentStep ? 'bp-line-done' : '' ?>"></div><?php endif; ?>
+              <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+
+            <?php if ($statusMsg): ?>
+            <div class="booking-status-msg booking-status-msg--<?= htmlspecialchars($status) ?>"><?= htmlspecialchars($statusMsg) ?></div>
+            <?php endif; ?>
 
             <div class="history-lines">
               <div><span>Motorcycle</span><strong><?= htmlspecialchars($vehicleLabel) ?></strong></div>
@@ -417,20 +476,22 @@ require_once __DIR__ . '/includes/header.php';
             </div>
 
             <div class="history-actions">
-              <?php if ($canEdit): ?>
+              <?php if ($canEdit && $isPending): ?>
                 <a class="btn btn-outline" href="<?= baseUrl('book-service.php?tab=book&edit_booking_id=' . $bookingId) ?>">Edit</a>
               <?php endif; ?>
-              <?php if ((string)$appointment['status'] !== 'completed'): ?>
-                <form method="post">
+              <?php if ($isPending): ?>
+                <form method="post" onsubmit="return confirm('Cancel appointment #<?= $bookingId ?>?')">
                   <?= authContextField() ?>
                   <input type="hidden" name="tab" value="appointments">
                   <input type="hidden" name="page_action" value="cancel_appointment">
                   <input type="hidden" name="booking_id" value="<?= $bookingId ?>">
                   <button class="btn btn-outline" type="submit">Cancel</button>
                 </form>
+              <?php elseif (in_array($status, ['confirmed', 'in_progress'], true)): ?>
+                <span style="font-size:.82rem;color:var(--muted);">📞 Contact the shop to cancel</span>
               <?php endif; ?>
-              <?php if ($canEdit): ?>
-                <form method="post">
+              <?php if ($canEdit && $isPending): ?>
+                <form method="post" onsubmit="return confirm('Delete appointment #<?= $bookingId ?>?')">
                   <?= authContextField() ?>
                   <input type="hidden" name="tab" value="appointments">
                   <input type="hidden" name="page_action" value="delete_appointment">

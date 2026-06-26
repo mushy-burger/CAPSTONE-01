@@ -35,6 +35,9 @@ $unreadCount = getUnreadNotificationCount((int)$currentUser['id']);
       <a href="<?= baseUrl('admin/orders.php') ?>" class="<?= $adminPage === 'orders' ? 'active' : '' ?>">
         <i class="fas fa-shopping-bag"></i> Orders
       </a>
+      <a href="<?= baseUrl('admin/bookings.php') ?>" class="<?= $adminPage === 'bookings' ? 'active' : '' ?>">
+        <i class="fas fa-calendar-check"></i> Bookings
+      </a>
       <a href="<?= baseUrl('admin/analytics.php') ?>" class="<?= $adminPage === 'analytics' ? 'active' : '' ?>">
         <i class="fas fa-chart-bar"></i> Analytics
       </a>

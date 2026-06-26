@@ -63,11 +63,21 @@ try {
     );
 
     $stockStmt = getDB()->prepare("UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?");
+    $statusStmt = getDB()->prepare(
+        "UPDATE products
+         SET status = CASE
+           WHEN stock = 0 THEN 'out_of_stock'
+           WHEN stock <= 5 THEN 'low_stock'
+           ELSE 'available'
+         END
+         WHERE id = ?"
+    );
     foreach ($items as $item) {
         $stockStmt->execute([$item['quantity'], $item['product_id'], $item['quantity']]);
         if ($stockStmt->rowCount() !== 1) {
             throw new RuntimeException($item['name'] . ' does not have enough stock.');
         }
+        $statusStmt->execute([$item['product_id']]);
     }
 
     getDB()->prepare(
