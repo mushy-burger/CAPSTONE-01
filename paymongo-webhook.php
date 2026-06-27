@@ -2,6 +2,7 @@
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/paymongo.php';
+require_once __DIR__ . '/includes/mail.php';
 
 header('Content-Type: application/json');
 
@@ -91,6 +92,21 @@ try {
 
     getDB()->prepare("DELETE FROM cart_items WHERE user_id = ?")->execute([$order['user_id']]);
     getDB()->commit();
+
+    // Send order confirmation email
+    try {
+        $customer = fetchOne("SELECT name, email FROM users WHERE id = ?", [$order['user_id']]);
+        if ($customer && $customer['email']) {
+            sendOrderEmail(
+                $customer['email'],
+                $customer['name'],
+                $orderId,
+                (float)$order['total'],
+                $items,
+                (string)($order['payment_method'] ?? 'paymongo')
+            );
+        }
+    } catch (Throwable) { /* Non-fatal: email failure shouldn't break webhook */ }
 
     http_response_code(200);
     echo json_encode(['ok' => true]);

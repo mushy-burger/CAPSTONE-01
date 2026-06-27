@@ -79,6 +79,10 @@ $items = fetchAllRows(
     [$userId]
 );
 $subtotal = array_reduce($items, fn($sum, $item) => $sum + ((float)$item['price'] * (int)$item['quantity']), 0.0);
+
+// Detect stale stock: items whose cart qty now exceeds current stock
+$staleItems = array_filter($items, fn($i) => (int)$i['quantity'] > (int)$i['stock']);
+
 $orders = fetchAllRows(
     "SELECT o.*
      FROM orders o
@@ -116,6 +120,21 @@ require_once __DIR__ . '/includes/header.php';
       <a href="<?= baseUrl('cart.php?tab=orders') ?>" class="<?= $activeTab === 'orders' ? 'active' : '' ?>">Checked Out Items</a>
     </div>
     <?php if ($message): ?><div class="alert success"><?= htmlspecialchars($message) ?></div><?php endif; ?>
+    <?php if ($staleItems && $activeTab === 'cart'): ?>
+      <div class="alert error" style="margin-bottom:14px;">
+        ⚠️ <strong>Stock changed</strong> — the following items now have less stock than your cart quantity:
+        <ul style="margin:6px 0 0 18px;font-size:.88rem;">
+          <?php foreach ($staleItems as $si): ?>
+            <li>
+              <strong><?= htmlspecialchars($si['name']) ?></strong>
+              — you have <?= (int)$si['quantity'] ?> in cart, only <?= (int)$si['stock'] ?> available.
+            </li>
+          <?php endforeach; ?>
+        </ul>
+        Please <strong>update your cart quantities</strong> before checking out.
+      </div>
+    <?php endif; ?>
+
     <?php if ($activeTab === 'cart'): ?>
     <?php if ($items): ?>
       <div class="cart-table">

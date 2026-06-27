@@ -31,8 +31,15 @@ $unreadCount = getUnreadNotificationCount((int)$currentUser['id']);
           <span class="notif-badge"><?= $unreadCount > 99 ? '99+' : $unreadCount ?></span>
         <?php endif; ?>
       </a>
+      <a href="<?= baseUrl('tech/history.php') ?>" class="<?= $techPage === 'history' ? 'active' : '' ?>">
+        <i class="fas fa-history"></i> Job History
+      </a>
     </nav>
-  </aside>
+    <div style="padding:16px 20px;border-top:1px solid rgba(255,255,255,.1);margin-top:auto;">
+      <a href="<?= baseUrl('forgot-password.php') ?>" style="font-size:.78rem;color:rgba(255,255,255,.5);text-decoration:none;">
+        <i class="fas fa-key"></i> Change / Reset Password
+      </a>
+    </div>
 
   <div class="admin-main">
     <header class="admin-topbar">
@@ -40,17 +47,61 @@ $unreadCount = getUnreadNotificationCount((int)$currentUser['id']);
         <span class="page-title-label"><?= htmlspecialchars($pageTitle ?? 'Work Queue') ?></span>
       </div>
       <div class="topbar-right">
-        <?php if ($unreadCount > 0): ?>
-          <a href="<?= baseUrl('tech/index.php') ?>" class="topbar-icon topbar-notif" title="<?= $unreadCount ?> new assignment<?= $unreadCount !== 1 ? 's' : '' ?>">
+        <!-- Notification Bell with Dropdown -->
+        <div class="notif-dropdown-wrap" id="notifWrap">
+          <button class="topbar-icon topbar-notif" id="notifBtn" type="button" title="Notifications">
             <i class="fas fa-bell"></i>
-            <span class="notif-badge-sm"><?= $unreadCount > 99 ? '99+' : $unreadCount ?></span>
-          </a>
-        <?php else: ?>
-          <span class="topbar-icon"><i class="fas fa-bell"></i></span>
-        <?php endif; ?>
+            <?php if ($unreadCount > 0): ?>
+              <span class="notif-badge-sm"><?= $unreadCount > 99 ? '99+' : $unreadCount ?></span>
+            <?php endif; ?>
+          </button>
+          <div class="notif-dropdown" id="notifDropdown" hidden>
+            <div class="notif-dropdown-head">
+              <strong>Notifications</strong>
+              <?php if ($unreadCount > 0): ?>
+                <a href="<?= baseUrl('api/notifications.php?mark_read=1') ?>" class="notif-mark-all">Mark all read</a>
+              <?php endif; ?>
+            </div>
+            <div class="notif-list" id="notifList"><div class="notif-item"><span>Loading...</span></div></div>
+          </div>
+        </div>
         <span class="topbar-welcome">Welcome, <?= htmlspecialchars($currentUser['name']) ?>!</span>
         <a href="<?= baseUrl('logout.php') ?>" class="topbar-icon" title="Logout"><i class="fas fa-sign-out-alt"></i></a>
       </div>
     </header>
 
     <main class="admin-content">
+
+<script>
+(function(){
+  var btn = document.getElementById('notifBtn');
+  var drop = document.getElementById('notifDropdown');
+  var list = document.getElementById('notifList');
+  if (!btn || !drop) return;
+  var loaded = false;
+  btn.addEventListener('click', function(e){
+    e.stopPropagation();
+    var hidden = drop.hidden;
+    drop.hidden = !hidden;
+    if (hidden && !loaded) {
+      loaded = true;
+      fetch('<?= baseUrl('api/notifications.php') ?>')
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+          var notifs = data.notifications || [];
+          if (!notifs.length) {
+            list.innerHTML = '<div class="notif-empty">No notifications yet.</div>';
+            return;
+          }
+          list.innerHTML = notifs.map(function(n){
+            var cls = n.is_read == 0 ? 'notif-item unread' : 'notif-item';
+            var t = n.created_at ? new Date(n.created_at).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+            return '<div class="'+cls+'"><span class="notif-msg">'+n.message.replace(/</g,'&lt;')+'</span><span class="notif-time">'+t+'</span></div>';
+          }).join('');
+        }).catch(function(){ list.innerHTML = '<div class="notif-empty">Could not load notifications.</div>'; });
+    }
+  });
+  document.addEventListener('click', function(){ drop.hidden = true; });
+  drop.addEventListener('click', function(e){ e.stopPropagation(); });
+})();
+</script>

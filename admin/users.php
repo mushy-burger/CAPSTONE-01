@@ -38,6 +38,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect(baseUrl('admin/users.php'));
     }
 
+    if ($action === 'create_account' ) {
+        $newName  = trim($_POST['new_name'] ?? '');
+        $newEmail = strtolower(trim($_POST['new_email'] ?? ''));
+        $newRole  = $_POST['new_role'] ?? '';
+        $newPass  = $_POST['new_password'] ?? '';
+        if (!in_array($newRole, ['staff', 'technician'], true)) {
+            flashMessage('users_error', 'Role must be staff or technician.');
+        } elseif ($newName === '' || $newEmail === '' || strlen($newPass) < 6) {
+            flashMessage('users_error', 'All fields are required. Password min 6 chars.');
+        } elseif (fetchOne('SELECT id FROM users WHERE email = ?', [$newEmail])) {
+            flashMessage('users_error', 'That email is already registered.');
+        } else {
+            getDB()->prepare("INSERT INTO users (name, email, password, role, is_active) VALUES (?, ?, ?, ?, 1)")
+                ->execute([$newName, $newEmail, password_hash($newPass, PASSWORD_DEFAULT), $newRole]);
+            flashMessage('users_success', ucfirst($newRole) . ' account created for ' . $newName . '.');
+        }
+        redirect(baseUrl('admin/users.php'));
+    }
+
     if ($action === 'reset_password' && $userId > 0) {
         $password = $_POST['password'] ?? '';
         if (strlen($password) < 6) {
@@ -70,24 +89,29 @@ if ($search !== '') {
     $params[] = "%$search%";
 }
 
+$perPage    = 20;
+$page       = max(1, (int)($_GET['page'] ?? 1));
+
+$totalCount = (int)(fetchOne(
+    "SELECT COUNT(*) AS n FROM users u " . ($where ? 'WHERE ' . implode(' AND ', $where) : ''),
+    $params
+)['n'] ?? 0);
+
+$totalPages = max(1, (int)ceil($totalCount / $perPage));
+$page       = min($page, $totalPages);
+$offset     = ($page - 1) * $perPage;
+
 $users = fetchAllRows(
     "SELECT
         u.*,
         COALESCE(oc.order_count, 0) AS order_count,
         COALESCE(bc.booking_count, 0) AS booking_count
      FROM users u
-     LEFT JOIN (
-       SELECT user_id, COUNT(*) AS order_count
-       FROM orders
-       GROUP BY user_id
-     ) oc ON oc.user_id = u.id
-     LEFT JOIN (
-       SELECT user_id, COUNT(*) AS booking_count
-       FROM bookings
-       GROUP BY user_id
-     ) bc ON bc.user_id = u.id
+     LEFT JOIN (SELECT user_id, COUNT(*) AS order_count FROM orders GROUP BY user_id) oc ON oc.user_id = u.id
+     LEFT JOIN (SELECT user_id, COUNT(*) AS booking_count FROM bookings GROUP BY user_id) bc ON bc.user_id = u.id
      " . ($where ? 'WHERE ' . implode(' AND ', $where) : '') . "
-     ORDER BY u.created_at DESC, u.id DESC",
+     ORDER BY u.created_at DESC, u.id DESC
+     LIMIT $perPage OFFSET $offset",
     $params
 );
 ?>
@@ -110,6 +134,24 @@ $users = fetchAllRows(
       </select>
       <button type="submit" class="btn btn-outline">Filter</button>
       <?php if ($search || $roleFilter): ?><a href="<?= baseUrl('admin/users.php') ?>" class="btn btn-outline">Reset</a><?php endif; ?>
+    </form>
+  </div>
+
+  <!-- Create Staff / Tech Account -->
+  <div style="background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:18px 20px;margin:0 0 18px;">
+    <h2 style="margin:0 0 12px;font-size:.95rem;">➕ Create Staff or Technician Account</h2>
+    <form method="post" class="admin-inline-form" style="flex-wrap:wrap;gap:8px;">
+      <?= authContextField() ?>
+      <input type="hidden" name="action" value="create_account">
+      <input type="text"     name="new_name"     placeholder="Full name"      required style="min-width:140px;flex:1;">
+      <input type="email"    name="new_email"    placeholder="Email address"  required style="min-width:180px;flex:1;">
+      <input type="password" name="new_password" placeholder="Password (min 6)" required minlength="6" style="min-width:150px;flex:1;">
+      <select name="new_role" required style="min-width:140px;">
+        <option value="">— Select Role —</option>
+        <option value="staff">Staff</option>
+        <option value="technician">Technician</option>
+      </select>
+      <button type="submit" class="btn btn-primary">Create Account</button>
     </form>
   </div>
 
@@ -190,8 +232,8 @@ $users = fetchAllRows(
                     <?= authContextField() ?>
                     <input type="hidden" name="action" value="reset_password">
                     <input type="hidden" name="user_id" value="<?= (int)$user['id'] ?>">
-                    <input type="text" name="password" placeholder="Temp password" minlength="6" required>
-                    <button type="submit" class="btn btn-outline">Reset</button>
+                    <input type="password" name="password" placeholder="New password" minlength="6" required>
+                  <button type="submit" class="btn btn-outline">Reset</button>
                   </form>
                 <?php else: ?>
                   <span class="subtext">Read only</span>
@@ -202,6 +244,24 @@ $users = fetchAllRows(
         </tbody>
       </table>
     </div>
+    <!-- Pagination -->
+    <?php if ($totalPages > 1): ?>
+      <div style="display:flex;gap:8px;align-items:center;padding:14px 24px;border-top:1px solid var(--line);flex-wrap:wrap;">
+        <?php
+          $q = http_build_query(array_filter(['q'=>$search,'role'=>$roleFilter]));
+          $base = baseUrl('admin/users.php') . ($q ? "?$q&" : '?');
+        ?>
+        <a href="<?= $base ?>page=1" class="btn btn-outline" style="font-size:.82rem;">«</a>
+        <a href="<?= $base ?>page=<?= max(1,$page-1) ?>" class="btn btn-outline" style="font-size:.82rem;">‹ Prev</a>
+        <span style="font-size:.85rem;color:var(--muted);">Page <?= $page ?> of <?= $totalPages ?> (<?= $totalCount ?> users)</span>
+        <a href="<?= $base ?>page=<?= min($totalPages,$page+1) ?>" class="btn btn-outline" style="font-size:.82rem;">Next ›</a>
+        <a href="<?= $base ?>page=<?= $totalPages ?>" class="btn btn-outline" style="font-size:.82rem;">»</a>
+      </div>
+    <?php else: ?>
+      <div style="padding:10px 24px;border-top:1px solid var(--line);font-size:.83rem;color:var(--muted);">
+        <?= $totalCount ?> user<?= $totalCount!==1?'s':'' ?> total
+      </div>
+    <?php endif; ?>
   <?php else: ?>
     <p class="empty-note">No users found.</p>
   <?php endif; ?>
