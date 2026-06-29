@@ -314,24 +314,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             setSiteSetting($field, trim($_POST[$field] ?? ''));
         }
 
-        if (!empty($_FILES['hero_image']['name'])) {
-            $file = $_FILES['hero_image'];
-            $allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-
-            if (!in_array($file['type'], $allowed, true)) {
-                flashMessage('settings_error', 'Invalid image type. Use JPG, PNG, WebP, or GIF.');
-            } elseif ($file['size'] > 5 * 1024 * 1024) {
-                flashMessage('settings_error', 'Image must be under 5 MB.');
-            } else {
-                try {
-                    $savedFilename = saveOptimizedHeroImage($file, 'hero_image', 1800, 95);
-                    setSiteSetting('hero_image', $savedFilename);
-                } catch (Throwable $e) {
-                    flashMessage('settings_error', $e->getMessage());
-                }
-            }
-        }
-
         if (!empty($_FILES['hero_background_image']['name'])) {
             $file = $_FILES['hero_background_image'];
             $allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
@@ -413,6 +395,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect(baseUrl('admin/settings.php?tab=services'));
     }
 
+    if ($action === 'delete_motorcycle_type') {
+        $typeId = (int)($_POST['type_id'] ?? 0);
+        if ($typeId <= 0) {
+            flashMessage('settings_error', 'Invalid motorcycle type.');
+            redirect(baseUrl('admin/settings.php?tab=services'));
+        }
+
+        $db = getDB();
+        try {
+            $db->beginTransaction();
+            $db->prepare(
+                "UPDATE bookings
+                 SET vehicle_id = NULL
+                 WHERE vehicle_id IN (SELECT id FROM customer_vehicles WHERE type_id = ?)"
+            )->execute([$typeId]);
+            $db->prepare("DELETE FROM customer_vehicles WHERE type_id = ?")->execute([$typeId]);
+            $db->prepare("DELETE FROM motorcycle_models WHERE type_id = ?")->execute([$typeId]);
+
+            $services = $db->query("SELECT id, applies_to FROM service_types")->fetchAll();
+            foreach ($services as $service) {
+                $appliesTo = trim((string)($service['applies_to'] ?? ''));
+                if ($appliesTo === '' || strtolower($appliesTo) === 'all') {
+                    continue;
+                }
+
+                $typeIds = array_values(array_filter(
+                    array_map('intval', preg_split('/\s*,\s*/', $appliesTo) ?: []),
+                    static fn(int $id): bool => $id !== $typeId
+                ));
+                $nextAppliesTo = $typeIds ? implode(',', $typeIds) : 'all';
+                $db->prepare("UPDATE service_types SET applies_to = ? WHERE id = ?")
+                    ->execute([$nextAppliesTo, (int)$service['id']]);
+            }
+
+            $db->prepare("DELETE FROM motorcycle_types WHERE id = ?")->execute([$typeId]);
+            $db->commit();
+            flashMessage('settings_success', 'Motorcycle type deleted.');
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            flashMessage('settings_error', 'Unable to delete this motorcycle type.');
+        }
+
+        redirect(baseUrl('admin/settings.php?tab=services'));
+    }
+
     if ($action === 'save_motorcycle_catalog') {
         $modelId = (int)($_POST['motorcycle_id'] ?? 0);
 
@@ -429,18 +458,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'delete_motorcycle_catalog') {
         $modelId = (int)($_POST['motorcycle_id'] ?? 0);
         if ($modelId > 0) {
+            $db = getDB();
             try {
-                $linked = fetchOne("SELECT COUNT(*) AS total FROM customer_vehicles WHERE model_id = ?", [$modelId]);
-                if ((int)($linked['total'] ?? 0) > 0) {
-                    flashMessage('settings_error', 'This motorcycle cannot be deleted because customers have saved it.');
-                    redirect(baseUrl('admin/settings.php?tab=vehicle-options'));
-                }
-
-                getDB()->prepare("DELETE FROM motorcycle_models WHERE id = ?")->execute([$modelId]);
+                $db->beginTransaction();
+                $db->prepare(
+                    "UPDATE bookings
+                     SET vehicle_id = NULL
+                     WHERE vehicle_id IN (SELECT id FROM customer_vehicles WHERE model_id = ?)"
+                )->execute([$modelId]);
+                $db->prepare("DELETE FROM customer_vehicles WHERE model_id = ?")->execute([$modelId]);
+                $db->prepare("DELETE FROM motorcycle_models WHERE id = ?")->execute([$modelId]);
+                $db->commit();
                 flashMessage('settings_success', 'Motorcycle removed from the catalog.');
             } catch (Throwable $e) {
-                flashMessage('settings_error', 'Unable to delete this motorcycle. It may still be used in customer records.');
+                if ($db->inTransaction()) {
+                    $db->rollBack();
+                }
+                flashMessage('settings_error', 'Unable to delete this motorcycle.');
             }
+        }
+
+        redirect(baseUrl('admin/settings.php?tab=vehicle-options'));
+    }
+
+    if ($action === 'delete_motorcycle_catalog_bulk') {
+        $modelIds = array_values(array_unique(array_filter(array_map('intval', $_POST['motorcycle_ids'] ?? []))));
+
+        if (!$modelIds) {
+            flashMessage('settings_error', 'Select at least one motorcycle to delete.');
+            redirect(baseUrl('admin/settings.php?tab=vehicle-options'));
+        }
+
+        $db = getDB();
+        try {
+            $placeholders = implode(',', array_fill(0, count($modelIds), '?'));
+            $db->beginTransaction();
+            $db->prepare(
+                "UPDATE bookings
+                 SET vehicle_id = NULL
+                 WHERE vehicle_id IN (SELECT id FROM customer_vehicles WHERE model_id IN ($placeholders))"
+            )->execute($modelIds);
+            $db->prepare("DELETE FROM customer_vehicles WHERE model_id IN ($placeholders)")->execute($modelIds);
+            $db->prepare("DELETE FROM motorcycle_models WHERE id IN ($placeholders)")->execute($modelIds);
+            $db->commit();
+            $deletedCount = count($modelIds);
+            flashMessage('settings_success', $deletedCount . ' motorcycle' . ($deletedCount === 1 ? '' : 's') . ' removed from the catalog.');
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            flashMessage('settings_error', 'Unable to delete the selected motorcycles.');
         }
 
         redirect(baseUrl('admin/settings.php?tab=vehicle-options'));
@@ -454,7 +521,6 @@ $homepageSettings = [
     'hero_eyebrow' => getSiteSetting('hero_eyebrow', 'Parts, accessories, and maintenance'),
     'hero_heading' => getSiteSetting('hero_heading', 'Keep your motorcycle ready for every ride.'),
     'hero_subtext' => getSiteSetting('hero_subtext', 'Shop reliable products, save your motorcycle profile, and book compatible services with instant cost estimates.'),
-    'hero_image' => getSiteSetting('hero_image', ''),
     'hero_background_image' => getSiteSetting('hero_background_image', ''),
 ];
 
@@ -546,13 +612,18 @@ if ($editMotorcycleId && $tab === 'vehicle-options') {
 }
 ?>
 
-<section class="admin-card">
-  <h1>Settings</h1>
+<section class="admin-card settings-admin-shell">
+  <div class="admin-page-head">
+    <div>
+      <h1>Settings</h1>
+      <p>Manage homepage content, compatible services, and motorcycle catalog options.</p>
+    </div>
+  </div>
 
-  <div style="display:flex;border-bottom:2px solid #eee;margin:1.2rem 0 1.5rem;gap:.3rem;flex-wrap:wrap;">
-    <a href="<?= baseUrl('admin/settings.php?tab=homepage') ?>" style="<?= tabStyle($tab === 'homepage') ?>">Homepage</a>
-    <a href="<?= baseUrl('admin/settings.php?tab=services') ?>" style="<?= tabStyle($tab === 'services') ?>">Compatible Services</a>
-    <a href="<?= baseUrl('admin/settings.php?tab=vehicle-options') ?>" style="<?= tabStyle($tab === 'vehicle-options') ?>">Vehicle Options</a>
+  <div class="admin-tabs settings-tabs">
+    <a href="<?= baseUrl('admin/settings.php?tab=homepage') ?>" class="admin-tab <?= $tab === 'homepage' ? 'active' : '' ?>">Homepage</a>
+    <a href="<?= baseUrl('admin/settings.php?tab=services') ?>" class="admin-tab <?= $tab === 'services' ? 'active' : '' ?>">Compatible Services</a>
+    <a href="<?= baseUrl('admin/settings.php?tab=vehicle-options') ?>" class="admin-tab <?= $tab === 'vehicle-options' ? 'active' : '' ?>">Vehicle Options</a>
   </div>
 
   <?php if ($flash): ?>
@@ -582,21 +653,6 @@ if ($editMotorcycleId && $tab === 'vehicle-options') {
       <label style="display:block;margin-bottom:1rem;">
         <span style="display:block;font-weight:600;margin-bottom:.3rem;">Subtext</span>
         <textarea name="hero_subtext" rows="3" style="width:100%;padding:.5rem .75rem;border:1px solid #ddd;border-radius:6px;resize:vertical;"><?= htmlspecialchars($homepageSettings['hero_subtext']) ?></textarea>
-      </label>
-
-      <label style="display:block;margin-bottom:1.5rem;">
-        <span style="display:block;font-weight:600;margin-bottom:.5rem;">Hero side image</span>
-        <?php
-        $imgFile = $homepageSettings['hero_image'];
-        $imgExists = $imgFile && file_exists(__DIR__ . '/../uploads/' . $imgFile);
-        ?>
-        <?php if ($imgExists): ?>
-          <img id="heroSidePreview" src="<?= baseUrl('uploads/' . rawurlencode($imgFile) . '?v=' . filemtime(__DIR__ . '/../uploads/' . $imgFile)) ?>" alt="Hero" style="display:block;max-width:320px;width:100%;margin-bottom:.6rem;border-radius:12px;border:1px solid #eee;object-fit:contain;aspect-ratio:16/9;background:#fff;">
-        <?php else: ?>
-          <img id="heroSidePreview" src="" alt="Hero" style="display:none;max-width:320px;width:100%;margin-bottom:.6rem;border-radius:12px;border:1px solid #eee;object-fit:contain;aspect-ratio:16/9;background:#fff;">
-        <?php endif; ?>
-        <input type="file" name="hero_image" id="heroSideInput" accept="image/*">
-        <small style="display:block;color:#777;margin-top:.45rem;">This is the right-side hero picture/card image.</small>
       </label>
 
       <label style="display:block;margin-bottom:1.5rem;">
@@ -633,131 +689,191 @@ if ($editMotorcycleId && $tab === 'vehicle-options') {
           });
         };
 
-        bindPreview('heroSideInput', 'heroSidePreview');
         bindPreview('heroBackgroundInput', 'heroBackgroundPreview');
       })();
     </script>
   <?php elseif ($tab === 'services'): ?>
-    <h2 style="font-size:.9rem;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:1rem;">
-      <?= $editSvc ? 'Edit Service' : 'Add New Service' ?>
-    </h2>
+    <section class="admin-page-stack settings-services-panel">
+      <div class="admin-page-head">
+        <div>
+          <h1>Compatible Services</h1>
+          <p>Define service types, labor fees, required product categories, and supported motorcycle types.</p>
+        </div>
+        <a href="<?= baseUrl('admin/settings.php?tab=services') ?>" class="btn btn-primary"><i class="fas fa-plus"></i> Add Service</a>
+      </div>
 
-    <form method="post" style="max-width:600px;background:#f9f9f9;border:1px solid #eee;border-radius:10px;padding:1.25rem;margin-bottom:2rem;">
-      <?= authContextField() ?>
-      <input type="hidden" name="action" value="save_service">
-      <?php if ($editSvc): ?>
-        <input type="hidden" name="service_id" value="<?= (int)$editSvc['id'] ?>">
-      <?php endif; ?>
+      <div class="admin-form-box settings-service-form">
+        <h3><?= $editSvc ? 'Edit Service' : 'New Service' ?></h3>
+        <form method="post">
+          <?= authContextField() ?>
+          <input type="hidden" name="action" value="save_service">
+          <?php if ($editSvc): ?>
+            <input type="hidden" name="service_id" value="<?= (int)$editSvc['id'] ?>">
+          <?php endif; ?>
 
-      <label style="display:block;margin-bottom:.9rem;">
-        <span style="display:block;font-weight:600;margin-bottom:.3rem;">Service name</span>
-        <input type="text" name="svc_name" value="<?= htmlspecialchars($editSvc['name'] ?? '') ?>" required style="width:100%;padding:.45rem .7rem;border:1px solid #ddd;border-radius:6px;">
-      </label>
-
-      <label style="display:block;margin-bottom:.9rem;">
-        <span style="display:block;font-weight:600;margin-bottom:.3rem;">Description</span>
-        <textarea name="svc_description" rows="2" style="width:100%;padding:.45rem .7rem;border:1px solid #ddd;border-radius:6px;resize:vertical;"><?= htmlspecialchars($editSvc['description'] ?? '') ?></textarea>
-      </label>
-
-      <label style="display:block;margin-bottom:.9rem;">
-        <span style="display:block;font-weight:600;margin-bottom:.3rem;">Labor fee (PHP)</span>
-        <input type="number" name="svc_labor_fee" min="0" step="0.01" value="<?= isset($editSvc) ? (float)$editSvc['labor_fee'] : '0' ?>" style="width:160px;padding:.45rem .7rem;border:1px solid #ddd;border-radius:6px;">
-      </label>
-
-      <label style="display:block;margin-bottom:.9rem;">
-        <span style="display:block;font-weight:600;margin-bottom:.3rem;">Required product category</span>
-        <select
-          name="svc_required_category_id"
-          style="width:100%;padding:.45rem .7rem;border:1px solid #ddd;border-radius:6px;"
-        >
-          <option value="">No category required</option>
-          <?php foreach ($productCategories as $category): ?>
-            <option
-              value="<?= (int)$category['id'] ?>"
-              <?= (int)($editSvc['required_category_id'] ?? 0) === (int)$category['id'] ? 'selected' : '' ?>
-            >
-              <?= htmlspecialchars($category['name']) ?>
-            </option>
-          <?php endforeach; ?>
-        </select>
-      </label>
-
-      <div style="margin-bottom:1.1rem;">
-        <span style="display:block;font-weight:600;margin-bottom:.5rem;">Applies to motorcycle types</span>
-        <?php
-        $allTypeIds = array_map('intval', array_column($motoTypes, 'id'));
-        $checkedIds = $editSvc ? parseAppliesTo($editSvc['applies_to'], $allTypeIds) : $allTypeIds;
-        ?>
-        <div style="display:flex;gap:1rem;flex-wrap:wrap;">
-          <?php foreach ($motoTypes as $type): ?>
-            <label style="display:flex;align-items:center;gap:.4rem;font-weight:400;cursor:pointer;">
-              <input type="checkbox" name="svc_type_ids[]" value="<?= (int)$type['id'] ?>" <?= in_array((int)$type['id'], $checkedIds, true) ? 'checked' : '' ?>>
-              <?= htmlspecialchars($type['name']) ?>
+          <div class="form-grid-2">
+            <label>Service name
+              <input type="text" name="svc_name" value="<?= htmlspecialchars($editSvc['name'] ?? '') ?>" required>
             </label>
-          <?php endforeach; ?>
+            <label>Labor fee (PHP)
+              <input type="number" name="svc_labor_fee" min="0" step="0.01" value="<?= isset($editSvc) ? (float)$editSvc['labor_fee'] : '0' ?>">
+            </label>
+          </div>
+
+          <label>Description
+            <textarea name="svc_description" rows="3"><?= htmlspecialchars($editSvc['description'] ?? '') ?></textarea>
+          </label>
+
+          <label>Required product category
+            <select name="svc_required_category_id">
+              <option value="">No category required</option>
+              <?php foreach ($productCategories as $category): ?>
+                <option
+                  value="<?= (int)$category['id'] ?>"
+                  <?= (int)($editSvc['required_category_id'] ?? 0) === (int)$category['id'] ? 'selected' : '' ?>
+                >
+                  <?= htmlspecialchars($category['name']) ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+          </label>
+
+          <label>Applies to motorcycle types
+            <?php
+            $allTypeIds = array_map('intval', array_column($motoTypes, 'id'));
+            $checkedIds = $editSvc ? parseAppliesTo($editSvc['applies_to'], $allTypeIds) : $allTypeIds;
+            ?>
+            <div class="checkbox-group">
+              <?php foreach ($motoTypes as $type): ?>
+                <label class="inline-check">
+                  <input type="checkbox" name="svc_type_ids[]" value="<?= (int)$type['id'] ?>" <?= in_array((int)$type['id'], $checkedIds, true) ? 'checked' : '' ?>>
+                  <?= htmlspecialchars($type['name']) ?>
+                </label>
+              <?php endforeach; ?>
+            </div>
+          </label>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary"><?= $editSvc ? 'Update Service' : 'Add Service' ?></button>
+            <?php if ($editSvc): ?>
+              <a href="<?= baseUrl('admin/settings.php?tab=services') ?>" class="btn btn-outline">Cancel</a>
+            <?php endif; ?>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="admin-page-stack settings-services-panel">
+      <div class="admin-page-head">
+        <div>
+          <h2>Motorcycle Types</h2>
+          <p>Review service compatibility groups and delete unused motorcycle types when needed.</p>
         </div>
       </div>
 
-      <div style="display:flex;gap:.6rem;">
-        <button type="submit" class="btn btn-primary"><?= $editSvc ? 'Update service' : 'Add service' ?></button>
-        <?php if ($editSvc): ?>
-          <a href="<?= baseUrl('admin/settings.php?tab=services') ?>" class="btn btn-outline">Cancel</a>
-        <?php endif; ?>
-      </div>
-    </form>
-
-    <h2 style="font-size:.9rem;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.75rem;">Existing Services</h2>
-    <?php if ($serviceTypes): ?>
-      <div style="overflow-x:auto;">
-        <table style="width:100%;border-collapse:collapse;font-size:.92rem;">
-          <thead>
-            <tr style="border-bottom:2px solid #eee;text-align:left;">
-              <th style="padding:.5rem .75rem;">Service</th>
-              <th style="padding:.5rem .75rem;">Labor</th>
-              <th style="padding:.5rem .75rem;">Required category</th>
-              <th style="padding:.5rem .75rem;">Applies to</th>
-              <th style="padding:.5rem .75rem;"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <?php foreach ($serviceTypes as $serviceType): ?>
-              <?php
-              $appIds = parseAppliesTo($serviceType['applies_to'], $allTypeIds);
-              $typeNames = [];
-              foreach ($motoTypes as $type) {
-                  if (in_array((int)$type['id'], $appIds, true)) {
-                      $typeNames[] = $type['name'];
-                  }
-              }
-              $appLabel = count($typeNames) === count($motoTypes) ? 'All types' : implode(', ', $typeNames);
-              ?>
-              <tr style="border-bottom:1px solid #f0f0f0;">
-                <td style="padding:.6rem .75rem;">
-                  <strong><?= htmlspecialchars($serviceType['name']) ?></strong>
-                  <?php if ($serviceType['description']): ?>
-                    <div style="font-size:.8rem;color:#888;"><?= htmlspecialchars(mb_strimwidth($serviceType['description'], 0, 80, '...')) ?></div>
-                  <?php endif; ?>
-                </td>
-                <td style="padding:.6rem .75rem;white-space:nowrap;">PHP <?= number_format((float)$serviceType['labor_fee'], 2) ?></td>
-                <td style="padding:.6rem .75rem;"><?= htmlspecialchars($serviceType['required_category'] ?: 'None') ?></td>
-                <td style="padding:.6rem .75rem;"><span style="font-size:.82rem;background:#f0f0f0;border-radius:4px;padding:.15rem .45rem;"><?= htmlspecialchars($appLabel) ?></span></td>
-                <td style="padding:.6rem .75rem;white-space:nowrap;text-align:right;">
-                  <a href="<?= baseUrl('admin/settings.php?tab=services&edit_service=' . (int)$serviceType['id']) ?>" class="btn btn-outline" style="font-size:.78rem;padding:.25rem .6rem;">Edit</a>
-                  <form method="post" style="display:inline;" onsubmit="return confirm('Delete this service?')">
-                    <?= authContextField() ?>
-                    <input type="hidden" name="action" value="delete_service">
-                    <input type="hidden" name="service_id" value="<?= (int)$serviceType['id'] ?>">
-                    <button type="submit" class="btn btn-outline" style="font-size:.78rem;padding:.25rem .6rem;color:#c0392b;border-color:#c0392b;">Delete</button>
-                  </form>
-                </td>
+      <?php if ($motoTypes): ?>
+        <div class="admin-table-wrap">
+          <table class="admin-data-table settings-data-table">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Catalog Models</th>
+                <th>Saved Vehicles</th>
+                <th>Actions</th>
               </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              <?php foreach ($motoTypes as $type): ?>
+                <?php
+                $typeStats = fetchOne(
+                    "SELECT
+                        (SELECT COUNT(*) FROM motorcycle_models WHERE type_id = ?) AS model_count,
+                        (SELECT COUNT(*) FROM customer_vehicles WHERE type_id = ?) AS vehicle_count",
+                    [(int)$type['id'], (int)$type['id']]
+                );
+                ?>
+                <tr>
+                  <td><strong><?= htmlspecialchars($type['name']) ?></strong></td>
+                  <td><span class="settings-count-badge"><?= (int)($typeStats['model_count'] ?? 0) ?></span></td>
+                  <td><span class="settings-count-badge"><?= (int)($typeStats['vehicle_count'] ?? 0) ?></span></td>
+                  <td class="settings-table-actions">
+                    <form method="post" onsubmit="return confirm('Delete this motorcycle type? Related catalog models and saved customer vehicles will also be removed.')">
+                      <?= authContextField() ?>
+                      <input type="hidden" name="action" value="delete_motorcycle_type">
+                      <input type="hidden" name="type_id" value="<?= (int)$type['id'] ?>">
+                      <button type="submit" class="btn btn-outline danger-btn settings-action-btn">Delete</button>
+                    </form>
+                  </td>
+                </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+      <?php else: ?>
+        <p class="empty-note">No motorcycle types yet.</p>
+      <?php endif; ?>
+    </section>
+
+    <section class="admin-page-stack settings-services-panel">
+      <div class="admin-page-head">
+        <div>
+          <h2>Existing Services</h2>
+          <p>Manage the services shown to customers and staff during booking.</p>
+        </div>
       </div>
-    <?php else: ?>
-      <p>No services yet. Add one above.</p>
-    <?php endif; ?>
+
+      <?php if ($serviceTypes): ?>
+        <div class="admin-table-wrap">
+          <table class="admin-data-table settings-data-table">
+            <thead>
+              <tr>
+                <th>Service</th>
+                <th>Labor</th>
+                <th>Required Category</th>
+                <th>Applies To</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php foreach ($serviceTypes as $serviceType): ?>
+                <?php
+                $appIds = parseAppliesTo($serviceType['applies_to'], $allTypeIds);
+                $typeNames = [];
+                foreach ($motoTypes as $type) {
+                    if (in_array((int)$type['id'], $appIds, true)) {
+                        $typeNames[] = $type['name'];
+                    }
+                }
+                $appLabel = count($typeNames) === count($motoTypes) ? 'All types' : implode(', ', $typeNames);
+                ?>
+                <tr>
+                  <td>
+                    <strong><?= htmlspecialchars($serviceType['name']) ?></strong>
+                    <?php if ($serviceType['description']): ?>
+                      <div class="subtext"><?= htmlspecialchars(mb_strimwidth($serviceType['description'], 0, 80, '...')) ?></div>
+                    <?php endif; ?>
+                  </td>
+                  <td><?= formatPrice((float)$serviceType['labor_fee']) ?></td>
+                  <td><?= htmlspecialchars($serviceType['required_category'] ?: 'None') ?></td>
+                  <td><span class="settings-tag"><?= htmlspecialchars($appLabel) ?></span></td>
+                  <td class="settings-table-actions">
+                    <a href="<?= baseUrl('admin/settings.php?tab=services&edit_service=' . (int)$serviceType['id']) ?>" class="btn btn-outline settings-action-btn">Edit</a>
+                    <form method="post" onsubmit="return confirm('Delete this service?')">
+                      <?= authContextField() ?>
+                      <input type="hidden" name="action" value="delete_service">
+                      <input type="hidden" name="service_id" value="<?= (int)$serviceType['id'] ?>">
+                      <button type="submit" class="btn btn-outline danger-btn settings-action-btn">Delete</button>
+                    </form>
+                  </td>
+                </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+      <?php else: ?>
+        <p class="empty-note">No services yet. Add one above.</p>
+      <?php endif; ?>
+    </section>
   <?php else: ?>
     <div class="vehicle-admin-shell" id="vehicleManager" data-base-url="<?= htmlspecialchars(baseUrl('')) ?>">
       <div class="vehicle-admin-hero">
@@ -819,20 +935,33 @@ if ($editMotorcycleId && $tab === 'vehicle-options') {
         </form>
 
         <?php if ($catalogRows): ?>
+          <form method="post" id="bulkMotorcycleDeleteForm" onsubmit="return confirm('Delete the selected motorcycles from the catalog?')">
+            <?= authContextField() ?>
+            <input type="hidden" name="action" value="delete_motorcycle_catalog_bulk">
+          </form>
+          <div class="vehicle-bulk-actions">
+            <button type="submit" class="btn btn-outline danger-btn" id="bulkMotorcycleDeleteBtn" form="bulkMotorcycleDeleteForm" disabled>Delete Selected</button>
+          </div>
           <div class="vehicle-table-wrap">
             <table class="vehicle-table">
               <thead>
-                <tr>
-                  <th>Type</th>
-                  <th>Brand</th>
-                  <th>Model</th>
-                  <th>Engine CC</th>
-                  <th>Actions</th>
-                </tr>
+                  <tr>
+                    <th class="vehicle-select-col">
+                      <input type="checkbox" id="selectAllMotorcycles" aria-label="Select all motorcycles">
+                    </th>
+                    <th>Type</th>
+                    <th>Brand</th>
+                    <th>Model</th>
+                    <th>Engine CC</th>
+                    <th>Actions</th>
+                  </tr>
               </thead>
               <tbody>
                 <?php foreach ($catalogRows as $row): ?>
                   <tr>
+                    <td class="vehicle-select-col">
+                      <input type="checkbox" name="motorcycle_ids[]" value="<?= (int)$row['id'] ?>" class="js-motorcycle-select" form="bulkMotorcycleDeleteForm" aria-label="Select <?= htmlspecialchars($row['brand_name'] . ' ' . $row['model_name']) ?>">
+                    </td>
                     <td><?= htmlspecialchars($row['type_name']) ?></td>
                     <td><?= htmlspecialchars($row['brand_name']) ?></td>
                     <td><?= htmlspecialchars($row['model_name']) ?></td>

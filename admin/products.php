@@ -518,4 +518,5 @@ if ($editProd || $editCategory) {
   <?php endif; ?>
 })();
 </script>
+<?= authContextScriptTag() ?>
 </main></div></div></body></html>

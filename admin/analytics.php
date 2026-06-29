@@ -190,4 +190,5 @@ $lowStock      = fetchAllRows("SELECT p.name, p.stock, p.status, c.name AS categ
   </div>
 </section>
 
+<?= authContextScriptTag() ?>
 </main></div></div></body></html>

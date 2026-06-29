@@ -29,6 +29,10 @@ function baseUrl(string $path = ''): string {
     return $url;
 }
 
+function authContextScriptTag(): string {
+    return '<script src="' . baseUrl('assets/js/main.js?v=' . filemtime(__DIR__ . '/../assets/js/main.js')) . '"></script>';
+}
+
 function formatPrice(float $amount): string {
     return 'PHP ' . number_format($amount, 2);
 }
@@ -51,6 +55,36 @@ function sanitize(string $input): string {
 }
 
 function redirect(string $url): void {
+    if (function_exists('currentAuthContext')) {
+        $ctx = currentAuthContext();
+        $urlPath = parse_url($url, PHP_URL_PATH) ?? '';
+        $scheme = parse_url($url, PHP_URL_SCHEME);
+        $host = parse_url($url, PHP_URL_HOST);
+        $currentHost = $_SERVER['HTTP_HOST'] ?? '';
+
+        if (
+            $ctx !== 'default'
+            && str_ends_with($urlPath, '.php')
+            && (!$scheme || !$host || strcasecmp($host, $currentHost) === 0)
+        ) {
+            $fragment = '';
+            $fragmentPos = strpos($url, '#');
+            if ($fragmentPos !== false) {
+                $fragment = substr($url, $fragmentPos);
+                $url = substr($url, 0, $fragmentPos);
+            }
+
+            $query = parse_url($url, PHP_URL_QUERY) ?? '';
+            parse_str($query, $params);
+            if (!isset($params['ctx'])) {
+                $separator = str_contains($url, '?') ? '&' : '?';
+                $url .= $separator . 'ctx=' . rawurlencode($ctx);
+            }
+
+            $url .= $fragment;
+        }
+    }
+
     header('Location: ' . $url);
     exit;
 }

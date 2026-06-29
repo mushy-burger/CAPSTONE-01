@@ -36,18 +36,18 @@ $totalProducts   = (int)(fetchOne("SELECT COUNT(*) AS n FROM products WHERE stat
 </section>
 
 <!-- What We Do -->
-<section class="section container two-column">
-  <div>
+<section class="section container about-intro">
+  <div class="about-copy">
     <span class="eyebrow">What We Do</span>
     <h2>Clear parts, clear services, clear estimates.</h2>
     <p>Customers can browse available parts and accessories, then book maintenance matched to their motorcycle type. Staff confirm requests, assign certified technicians, and track inventory aligned with sales and service usage.</p>
     <p>Technicians receive their job queue digitally — no paperwork — and can add notes directly to each job as they work.</p>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;">
+    <div class="about-actions" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;">
       <a class="btn btn-primary" href="<?= baseUrl('book-service.php') ?>">Book a Service</a>
       <a class="btn btn-outline" href="<?= baseUrl('shop.php') ?>">Browse Parts</a>
     </div>
   </div>
-  <div class="feature-list">
+  <div class="feature-list about-features">
     <div><i class="fas fa-motorcycle"></i><strong>Motorcycle Profile</strong><span>Type, brand, model, and CC drive service suggestions and pricing.</span></div>
     <div><i class="fas fa-boxes-stacked"></i><strong>Inventory-Aware Shop</strong><span>Products show live stock and auto-deduct after checkout or service.</span></div>
     <div><i class="fas fa-wrench"></i><strong>Service Estimates</strong><span>Labor plus material rules calculate expected cost before you book.</span></div>

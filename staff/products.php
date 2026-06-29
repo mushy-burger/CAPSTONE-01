@@ -1,7 +1,10 @@
-﻿<?php
+<?php
 $pageTitle = 'Products';
-require_once __DIR__ . '/../includes/staff-sidebar.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/db.php';
+requireStaff();
+$currentUser = getCurrentUser();
 
 function buildUniqueCategorySlug(string $name, ?int $ignoreId = null): string {
     $base = slug($name);
@@ -106,7 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (!$name || !$categoryId || $price <= 0) {
             flashMessage('prod_error', 'Name, category, and a valid price are required.');
-            redirect(baseUrl('admin/products.php' . ($pid ? '?edit=' . $pid : '')) . '#tab-manage');
+            redirect(baseUrl('staff/products.php' . ($pid ? '?edit=' . $pid : '')) . '#tab-manage');
         }
 
         $imageName = $_POST['existing_image'] ?? null;
@@ -115,7 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
             if (!in_array($file['type'], $allowed, true)) {
                 flashMessage('prod_error', 'Invalid image type.');
-                redirect(baseUrl('admin/products.php' . ($pid ? '?edit=' . $pid : '')) . '#tab-manage');
+                redirect(baseUrl('staff/products.php' . ($pid ? '?edit=' . $pid : '')) . '#tab-manage');
             }
 
             $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
@@ -195,6 +198,8 @@ $activeTab = ($_GET['tab'] ?? 'manage') === 'list' ? 'list' : 'manage';
 if ($editProd || $editCategory) {
     $activeTab = 'manage';
 }
+
+require_once __DIR__ . '/../includes/staff-sidebar.php';
 ?>
 
 <section class="admin-card products-admin-shell">
@@ -370,7 +375,7 @@ if ($editProd || $editCategory) {
           <?php endforeach; ?>
         </select>
         <button type="submit" class="btn btn-dark">Filter</button>
-        <?php if ($search || $catFilter): ?><a href="<?= baseUrl('admin/products.php?tab=list') ?>" class="btn btn-outline">Clear</a><?php endif; ?>
+        <?php if ($search || $catFilter): ?><a href="<?= baseUrl('staff/products.php?tab=list') ?>" class="btn btn-outline">Clear</a><?php endif; ?>
       </form>
     </div>
 
@@ -422,7 +427,7 @@ if ($editProd || $editCategory) {
                 <td><?= $p['featured'] ? 'â˜…' : 'â˜†' ?></td>
                 <td class="product-actions">
                   <a href="<?= baseUrl('product.php?id=' . (int)$p['id']) ?>" target="_blank" class="btn btn-outline" title="Preview"><i class="fas fa-eye"></i></a>
-                  <a href="<?= baseUrl('admin/products.php?tab=manage&edit=' . (int)$p['id']) ?>#product-form" class="btn btn-outline">Edit</a>
+                  <a href="<?= baseUrl('staff/products.php?tab=manage&edit=' . (int)$p['id']) ?>#product-form" class="btn btn-outline">Edit</a>
                   <form method="post" onsubmit="return confirm('Delete \'<?= htmlspecialchars(addslashes($p['name'])) ?>\'?')">
                     <?= authContextField() ?>
                     <input type="hidden" name="action" value="delete_product">
@@ -518,6 +523,7 @@ if ($editProd || $editCategory) {
   <?php endif; ?>
 })();
 </script>
+<?= authContextScriptTag() ?>
 </main></div></div></body></html>
 
 

@@ -284,4 +284,5 @@ $pageTitle = 'Job #' . $bookingId;
   </div>
 </div>
 
+<?= authContextScriptTag() ?>
 </main></div></div></body></html>

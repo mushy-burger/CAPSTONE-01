@@ -194,4 +194,5 @@ $filteredRevenue = array_sum(array_column(
   <?php endif; ?>
 </section>
 
+<?= authContextScriptTag() ?>
 </main></div></div></body></html>

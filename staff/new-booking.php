@@ -1,17 +1,23 @@
 <?php
 $pageTitle = 'New Booking';
-require_once __DIR__ . '/../includes/staff-sidebar.php';
-require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/auth.php';
-
-$flash    = getFlash('nb_success');
-$flashErr = getFlash('nb_error');
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/db.php';
+requireStaff();
+$currentUser = getCurrentUser();
 
 // Load data for form
 $customers  = fetchAllRows("SELECT id, name, email, phone FROM users WHERE role='customer' AND is_active=1 ORDER BY name");
 $techs      = fetchAllRows("SELECT id, name FROM users WHERE role='technician' AND is_active=1 ORDER BY name");
-$services   = fetchAllRows("SELECT s.id, s.name, s.labor_fee, st.name AS type_name FROM services s JOIN service_types st ON st.id=s.service_type_id WHERE s.is_active=1 ORDER BY st.name, s.name");
-$vehicles   = fetchAllRows("SELECT v.id, CONCAT(b.name,' ',m.name,' (',mt.name,') ',v.engine_cc,'cc') AS label FROM customer_vehicles v JOIN motorcycle_models m ON m.id=v.model_id JOIN motorcycle_brands b ON b.id=m.brand_id JOIN motorcycle_types mt ON mt.id=m.type_id WHERE v.is_active=1 ORDER BY label");
+$services   = fetchAllRows("SELECT id, name, labor_fee, applies_to FROM service_types ORDER BY name");
+$vehicles   = fetchAllRows(
+    "SELECT v.id, CONCAT(b.name, ' ', m.name, ' (', mt.name, ') ', v.cc, 'cc') AS label
+     FROM customer_vehicles v
+     JOIN motorcycle_models m ON m.id = v.model_id
+     JOIN motorcycle_brands b ON b.id = v.brand_id
+     JOIN motorcycle_types mt ON mt.id = v.type_id
+     ORDER BY label"
+);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $customerId  = (int)($_POST['customer_id'] ?? 0);
@@ -39,7 +45,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Calculate total
     $selectedServices = fetchAllRows(
-        "SELECT id, name, labor_fee FROM services WHERE id IN (" . implode(',', $serviceIds) . ")"
+        "SELECT id, name, labor_fee FROM service_types WHERE id IN (" . implode(',', array_fill(0, count($serviceIds), '?')) . ")",
+        $serviceIds
     );
     $totalAmount = array_sum(array_column($selectedServices, 'labor_fee'));
 
@@ -65,11 +72,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Notify tech if assigned
         if ($techId > 0 && function_exists('createNotification')) {
-            createNotification($techId, "You have been assigned to Booking #{$bookingId} by staff.", $bookingId);
+            createNotification($techId, "You have been assigned to Booking #{$bookingId} by staff.", 'booking', $bookingId);
         }
         // Notify customer
         if (function_exists('createNotification')) {
-            createNotification($customerId, "A service booking (#{$bookingId}) has been created for you by the shop.", $bookingId);
+            createNotification($customerId, "A service booking (#{$bookingId}) has been created for you by the shop.", 'booking', $bookingId);
         }
 
         getDB()->commit();
@@ -81,6 +88,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect(baseUrl('staff/new-booking.php'));
     }
 }
+
+$flash    = getFlash('nb_success');
+$flashErr = getFlash('nb_error');
+
+require_once __DIR__ . '/../includes/staff-sidebar.php';
 ?>
 
 <section class="admin-hero">
@@ -96,6 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <?php if ($flashErr): ?><div class="alert error"><?= htmlspecialchars($flashErr) ?></div><?php endif; ?>
 
   <form method="post" class="admin-form-box" style="background:none;border:none;padding:0;">
+    <?= authContextField() ?>
 
     <!-- Customer & Vehicle -->
     <div class="admin-form-box">
@@ -174,4 +187,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   </form>
 </section>
 
+<?= authContextScriptTag() ?>
 </main></div></div></body></html>

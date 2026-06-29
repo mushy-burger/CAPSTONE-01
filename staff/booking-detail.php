@@ -335,4 +335,5 @@ $pageTitle = 'Booking #' . $bookingId;
   </div>
 </div>
 
+<?= authContextScriptTag() ?>
 </main></div></div></body></html>

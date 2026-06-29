@@ -273,4 +273,5 @@ $editModel   = $editModelId ? fetchOne("SELECT * FROM motorcycle_models WHERE id
   </div>
 </section>
 
+<?= authContextScriptTag() ?>
 </main></div></div></body></html>

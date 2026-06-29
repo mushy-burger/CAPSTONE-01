@@ -130,4 +130,5 @@ $pendingBookings = fetchAllRows(
   <?php endif; ?>
 </section>
 
+<?= authContextScriptTag() ?>
 </main></div></div></body></html>

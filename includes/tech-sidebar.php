@@ -40,6 +40,7 @@ $unreadCount = getUnreadNotificationCount((int)$currentUser['id']);
         <i class="fas fa-key"></i> Change / Reset Password
       </a>
     </div>
+  </aside>
 
   <div class="admin-main">
     <header class="admin-topbar">

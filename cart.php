@@ -137,24 +137,31 @@ require_once __DIR__ . '/includes/header.php';
 
     <?php if ($activeTab === 'cart'): ?>
     <?php if ($items): ?>
+      <form method="post" action="<?= baseUrl('checkout.php') ?>" id="cartCheckoutForm">
+        <?= authContextField() ?>
+        <input type="hidden" name="action" value="prepare_checkout">
+      </form>
       <div class="cart-table">
-        <div class="cart-row cart-head"><span>Product</span><span>Price</span><span>Quantity</span><span>Subtotal</span><span>Action</span></div>
+        <div class="cart-row cart-head"><span>Select</span><span>Product</span><span>Price</span><span>Quantity</span><span>Subtotal</span><span>Action</span></div>
         <?php foreach ($items as $item): ?>
-          <div class="cart-row">
+          <?php $lineSubtotal = (float)$item['price'] * (int)$item['quantity']; ?>
+          <div class="cart-row" data-cart-row data-price="<?= htmlspecialchars((string)(float)$item['price']) ?>">
+            <span class="cart-select-cell">
+              <input type="checkbox" name="selected_cart_ids[]" value="<?= (int)$item['cart_id'] ?>" class="cart-select-checkbox" form="cartCheckoutForm" checked>
+            </span>
             <span class="cart-item-cell">
               <?= productImageHtml($item['image'] ?? '', $item['name'], 'cart-item-thumb') ?>
               <span><?= htmlspecialchars($item['name']) ?></span>
             </span>
             <span><?= formatPrice((float)$item['price']) ?></span>
             <span>
-              <form method="post" action="<?= baseUrl('cart.php?tab=cart') ?>" class="cart-qty-form">
-                <?= authContextField() ?>
-                <input type="hidden" name="action" value="update">
-                <input type="number" name="qty[<?= (int)$item['cart_id'] ?>]" min="0" max="<?= (int)$item['stock'] ?>" value="<?= (int)$item['quantity'] ?>">
-                <button class="btn btn-outline cart-inline-btn" type="submit">Update</button>
-              </form>
+              <span class="cart-qty-counter">
+                <button type="button" class="cart-qty-btn" data-cart-qty-minus aria-label="Decrease quantity">-</button>
+                <input type="number" name="qty[<?= (int)$item['cart_id'] ?>]" min="1" max="<?= (int)$item['stock'] ?>" value="<?= (int)$item['quantity'] ?>" data-cart-qty form="cartCheckoutForm">
+                <button type="button" class="cart-qty-btn" data-cart-qty-plus aria-label="Increase quantity">+</button>
+              </span>
             </span>
-            <strong><?= formatPrice((float)$item['price'] * (int)$item['quantity']) ?></strong>
+            <strong data-cart-line-subtotal><?= formatPrice($lineSubtotal) ?></strong>
             <span>
               <form method="post" action="<?= baseUrl('cart.php?tab=cart') ?>" class="cart-remove-form">
                 <?= authContextField() ?>
@@ -213,9 +220,10 @@ require_once __DIR__ . '/includes/header.php';
 
   <aside class="summary-box">
     <h2>Cart Totals</h2>
-    <div><span>Subtotal</span><strong><?= formatPrice($subtotal) ?></strong></div>
-    <div><span>Total</span><strong><?= formatPrice($subtotal) ?></strong></div>
-    <a class="btn btn-primary <?= !$items ? 'disabled' : '' ?>" href="<?= baseUrl('checkout.php') ?>">Proceed to checkout</a>
+    <div><span>Subtotal</span><strong data-cart-selected-subtotal><?= formatPrice($subtotal) ?></strong></div>
+    <div><span>Total</span><strong data-cart-selected-total><?= formatPrice($subtotal) ?></strong></div>
+    <button class="btn btn-primary" type="submit" form="cartCheckoutForm" data-cart-checkout-btn <?= !$items ? 'disabled' : '' ?>>Proceed to checkout</button>
+    <?php if ($items): ?><p class="fine-print" data-cart-selection-message></p><?php endif; ?>
   </aside>
 </section>
 

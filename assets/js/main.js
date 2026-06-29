@@ -1,12 +1,61 @@
 function makeTabContext() {
   if (!window.sessionStorage) return null;
   let ctx = sessionStorage.getItem('mototrack_tab_ctx');
+  const current = new URL(window.location.href);
+  const urlCtx = current.searchParams.get('ctx');
+  if (urlCtx && /^[a-zA-Z0-9_-]{8,64}$/.test(urlCtx)) {
+    ctx = urlCtx;
+    sessionStorage.setItem('mototrack_tab_ctx', ctx);
+    return ctx;
+  }
+
   if (!ctx) {
     const randomPart = Math.random().toString(36).slice(2);
     ctx = `tab_${Date.now().toString(36)}_${randomPart}`;
     sessionStorage.setItem('mototrack_tab_ctx', ctx);
   }
   return ctx;
+}
+
+function isSameOriginPhpUrl(url) {
+  return url.origin === window.location.origin && url.pathname.endsWith('.php');
+}
+
+function withTabContext(value, ctx) {
+  if (!ctx) return value;
+
+  const url = new URL(value, window.location.href);
+  if (!isSameOriginPhpUrl(url)) return value;
+
+  url.searchParams.set('ctx', ctx);
+  return url.toString();
+}
+
+function syncTabContextTargets(root = document) {
+  const ctx = makeTabContext();
+  if (!ctx) return;
+
+  root.querySelectorAll?.('a[href]').forEach((link) => {
+    const href = link.getAttribute('href');
+    if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:')) return;
+    link.href = withTabContext(href, ctx);
+  });
+
+  root.querySelectorAll?.('form').forEach((form) => {
+    const action = form.getAttribute('action');
+    if (action) {
+      form.action = withTabContext(action, ctx);
+    }
+
+    let input = form.querySelector('input[name="ctx"]');
+    if (!input) {
+      input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'ctx';
+      form.appendChild(input);
+    }
+    input.value = ctx;
+  });
 }
 
 function preserveTabContext() {
@@ -21,36 +70,72 @@ function preserveTabContext() {
     return;
   }
 
-  document.querySelectorAll('a[href]').forEach((link) => {
-    const href = link.getAttribute('href');
-    if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:')) return;
-    const url = new URL(href, window.location.href);
-    if (url.origin !== window.location.origin) return;
-    if (!url.pathname.endsWith('.php')) return;
-    url.searchParams.set('ctx', ctx);
-    link.href = url.toString();
-  });
-
-  document.querySelectorAll('form').forEach((form) => {
-    const action = form.getAttribute('action');
-    if (action) {
-      const url = new URL(action, window.location.href);
-      if (url.origin === window.location.origin && url.pathname.endsWith('.php')) {
-        url.searchParams.set('ctx', ctx);
-        form.action = url.toString();
-      }
-    }
-    if (!form.querySelector('input[name="ctx"]')) {
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = 'ctx';
-      input.value = ctx;
-      form.appendChild(input);
-    }
-  });
+  syncTabContextTargets(document);
 }
 
 preserveTabContext();
+
+document.addEventListener('DOMContentLoaded', () => syncTabContextTargets(document));
+document.addEventListener('click', (event) => {
+  const link = event.target.closest?.('a[href]');
+  if (link) syncTabContextTargets(document);
+}, true);
+document.addEventListener('submit', (event) => {
+  const form = event.target.closest?.('form');
+  if (form) syncTabContextTargets(form.parentElement || document);
+}, true);
+
+if (!window.__mototrackFetchContextPatched) {
+  window.__mototrackFetchContextPatched = true;
+  const originalFetch = window.fetch.bind(window);
+
+  window.fetch = (resource, options = {}) => {
+    const ctx = makeTabContext();
+    let nextResource = resource;
+    const nextOptions = { ...options };
+    let isSameOriginRequest = false;
+
+    if (ctx) {
+      if (typeof resource === 'string' || resource instanceof URL) {
+        const url = new URL(resource.toString(), window.location.href);
+        if (url.origin === window.location.origin) {
+          isSameOriginRequest = true;
+          url.searchParams.set('ctx', ctx);
+          nextResource = url.toString();
+        }
+      } else if (resource instanceof Request) {
+        const url = new URL(resource.url, window.location.href);
+        if (url.origin === window.location.origin) {
+          isSameOriginRequest = true;
+          url.searchParams.set('ctx', ctx);
+          nextResource = new Request(url.toString(), resource);
+        }
+      }
+
+      if (isSameOriginRequest) {
+        const headers = new Headers(nextOptions.headers || (nextResource instanceof Request ? nextResource.headers : undefined));
+        headers.set('X-Auth-Context', ctx);
+        nextOptions.headers = headers;
+      }
+    }
+
+    return originalFetch(nextResource, nextOptions);
+  };
+}
+
+if (window.MutationObserver) {
+  let syncQueued = false;
+  const observer = new MutationObserver((mutations) => {
+    if (!syncQueued && mutations.some((mutation) => mutation.addedNodes.length > 0)) {
+      syncQueued = true;
+      window.setTimeout(() => {
+        syncQueued = false;
+        syncTabContextTargets(document);
+      }, 0);
+    }
+  });
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+}
 
 function clearPageTextSelection() {
   const active = document.activeElement;
@@ -85,6 +170,81 @@ const mobileNav = document.getElementById('mobileNav');
 
 if (menuToggle && mobileNav) {
   menuToggle.addEventListener('click', () => mobileNav.classList.toggle('open'));
+}
+
+const cartCheckoutForm = document.getElementById('cartCheckoutForm');
+
+if (cartCheckoutForm) {
+  const currency = new Intl.NumberFormat('en-PH', {
+    style: 'currency',
+    currency: 'PHP',
+    minimumFractionDigits: 2,
+  });
+  const rows = Array.from(document.querySelectorAll('[data-cart-row]'));
+  const subtotalTarget = document.querySelector('[data-cart-selected-subtotal]');
+  const totalTarget = document.querySelector('[data-cart-selected-total]');
+  const checkoutBtn = document.querySelector('[data-cart-checkout-btn]');
+  const message = document.querySelector('[data-cart-selection-message]');
+
+  const clampQuantity = (input) => {
+    const min = Number(input.min || 1);
+    const max = Number(input.max || 9999);
+    const value = Math.max(min, Math.min(Number(input.value || min), max));
+    input.value = String(value);
+    return value;
+  };
+
+  const updateCartTotals = () => {
+    let selectedTotal = 0;
+    let selectedCount = 0;
+
+    rows.forEach((row) => {
+      const checkbox = row.querySelector('.cart-select-checkbox');
+      const qtyInput = row.querySelector('[data-cart-qty]');
+      const lineTarget = row.querySelector('[data-cart-line-subtotal]');
+      const price = Number(row.dataset.price || 0);
+      const qty = qtyInput ? clampQuantity(qtyInput) : 1;
+      const lineTotal = price * qty;
+
+      if (lineTarget) lineTarget.textContent = currency.format(lineTotal);
+      if (checkbox?.checked) {
+        selectedCount += 1;
+        selectedTotal += lineTotal;
+      }
+    });
+
+    if (subtotalTarget) subtotalTarget.textContent = currency.format(selectedTotal);
+    if (totalTarget) totalTarget.textContent = currency.format(selectedTotal);
+    if (checkoutBtn) checkoutBtn.disabled = selectedCount === 0;
+    if (message) message.textContent = selectedCount === 0 ? 'Select at least one item to checkout.' : `${selectedCount} item${selectedCount === 1 ? '' : 's'} selected.`;
+  };
+
+  rows.forEach((row) => {
+    const qtyInput = row.querySelector('[data-cart-qty]');
+    const checkbox = row.querySelector('.cart-select-checkbox');
+    row.querySelector('[data-cart-qty-minus]')?.addEventListener('click', () => {
+      if (!qtyInput) return;
+      qtyInput.value = String(Math.max(Number(qtyInput.min || 1), Number(qtyInput.value || 1) - 1));
+      updateCartTotals();
+    });
+    row.querySelector('[data-cart-qty-plus]')?.addEventListener('click', () => {
+      if (!qtyInput) return;
+      qtyInput.value = String(Math.min(Number(qtyInput.max || 9999), Number(qtyInput.value || 1) + 1));
+      updateCartTotals();
+    });
+    qtyInput?.addEventListener('input', updateCartTotals);
+    checkbox?.addEventListener('change', updateCartTotals);
+  });
+
+  cartCheckoutForm.addEventListener('submit', (event) => {
+    const hasSelection = rows.some((row) => row.querySelector('.cart-select-checkbox')?.checked);
+    if (!hasSelection) {
+      event.preventDefault();
+      if (message) message.textContent = 'Select at least one item to checkout.';
+    }
+  });
+
+  updateCartTotals();
 }
 
 document.querySelectorAll('.password-toggle').forEach((button) => {
@@ -174,6 +334,9 @@ if (vehicleManager) {
   const quickForm = document.querySelector('.vehicle-quick-form');
   const editButtons = document.querySelectorAll('.js-edit-motorcycle');
   const baseUrl = vehicleManager.dataset.baseUrl || '';
+  const selectAllMotorcycles = document.getElementById('selectAllMotorcycles');
+  const motorcycleSelectBoxes = Array.from(document.querySelectorAll('.js-motorcycle-select'));
+  const bulkMotorcycleDeleteBtn = document.getElementById('bulkMotorcycleDeleteBtn');
 
   let currentStep = 1;
   let activeCandidates = [];
@@ -453,6 +616,33 @@ if (vehicleManager) {
       openEditModal(button);
     });
   });
+
+  const syncBulkMotorcycleDelete = () => {
+    const selectedCount = motorcycleSelectBoxes.filter((checkbox) => checkbox.checked).length;
+    if (bulkMotorcycleDeleteBtn) {
+      bulkMotorcycleDeleteBtn.disabled = selectedCount === 0;
+      bulkMotorcycleDeleteBtn.textContent = selectedCount > 0
+        ? `Delete Selected (${selectedCount})`
+        : 'Delete Selected';
+    }
+    if (selectAllMotorcycles) {
+      selectAllMotorcycles.checked = selectedCount > 0 && selectedCount === motorcycleSelectBoxes.length;
+      selectAllMotorcycles.indeterminate = selectedCount > 0 && selectedCount < motorcycleSelectBoxes.length;
+    }
+  };
+
+  selectAllMotorcycles?.addEventListener('change', () => {
+    motorcycleSelectBoxes.forEach((checkbox) => {
+      checkbox.checked = selectAllMotorcycles.checked;
+    });
+    syncBulkMotorcycleDelete();
+  });
+
+  motorcycleSelectBoxes.forEach((checkbox) => {
+    checkbox.addEventListener('change', syncBulkMotorcycleDelete);
+  });
+
+  syncBulkMotorcycleDelete();
 
   editModal?.querySelectorAll('[data-close-edit-modal]').forEach((button) => {
     button.addEventListener('click', closeEditModal);

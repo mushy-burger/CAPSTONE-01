@@ -754,6 +754,28 @@ a { color: inherit; text-decoration: none; }
   text-transform: uppercase;
 }
 
+.vehicle-select-col {
+  width: 44px;
+  text-align: center !important;
+}
+
+.vehicle-select-col input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.vehicle-bulk-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.vehicle-bulk-actions .btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .vehicle-status {
   display: inline-flex;
   align-items: center;
@@ -1064,6 +1086,66 @@ a { color: inherit; text-decoration: none; }
 .checkbox-group { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; }
 .inline-check { display: flex; align-items: center; gap: 6px; font-weight: 600; cursor: pointer; }
 .inline-check input { width: auto; }
+
+.settings-admin-shell {
+  display: grid;
+  gap: 20px;
+}
+
+.settings-tabs {
+  margin-bottom: 4px;
+}
+
+.settings-services-panel {
+  margin-top: 0;
+}
+
+.settings-service-form {
+  max-width: 960px;
+}
+
+.settings-data-table td:last-child,
+.settings-data-table th:last-child {
+  text-align: right;
+}
+
+.settings-table-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.settings-table-actions form {
+  display: inline-flex;
+  margin: 0;
+}
+
+.settings-action-btn {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: .78rem;
+}
+
+.settings-tag,
+.settings-count-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #475569;
+  font-size: .78rem;
+  font-weight: 800;
+}
+
+.settings-count-badge {
+  min-width: 34px;
+  justify-content: center;
+  color: var(--ink);
+}
 
 /* Confirm / tech-select in bookings table */
 .confirm-form { display: flex; flex-direction: column; gap: 4px; }

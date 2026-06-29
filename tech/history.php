@@ -57,7 +57,7 @@ $paginatedParams = array_merge($params, [$perPage, $offset]);
 $jobs = fetchAllRows(
     "SELECT b.id, b.status, b.scheduled_date, b.scheduled_time, b.total_amount, b.tech_notes,
             u.name AS customer_name, u.phone AS customer_phone,
-            v.engine_cc,
+            v.cc AS engine_cc,
             CONCAT(mb.name,' ',mm.name) AS bike_label,
             svc.services
      FROM bookings b
@@ -182,4 +182,5 @@ $statusColors = [
   <?php endif; ?>
 </section>
 
+<?= authContextScriptTag() ?>
 </main></div></div></body></html>

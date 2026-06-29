@@ -66,7 +66,28 @@ function paymongoApiRequest(string $method, string $path, ?array $payload = null
     return $decoded;
 }
 
-function paymongoCreateCheckoutSession(array $order, array $items, array $customer): array {
+function paymongoNormalizePaymentMethod(string $method): string {
+    $method = strtolower(trim($method));
+    return match ($method) {
+        'maya' => 'paymaya',
+        'paymaya' => 'paymaya',
+        'gcash' => 'gcash',
+        'card' => 'card',
+        'qrph' => 'qrph',
+        default => 'paymongo',
+    };
+}
+
+function paymongoPaymentMethodTypes(string $method = 'paymongo'): array {
+    $method = paymongoNormalizePaymentMethod($method);
+    if ($method === 'paymongo') {
+        return ['card', 'gcash', 'paymaya', 'qrph'];
+    }
+
+    return [$method];
+}
+
+function paymongoCreateCheckoutSession(array $order, array $items, array $customer, string $paymentMethod = 'paymongo'): array {
     $lineItems = [];
     foreach ($items as $item) {
         $descriptionParts = array_filter([
@@ -98,7 +119,7 @@ function paymongoCreateCheckoutSession(array $order, array $items, array $custom
                     'order_id' => (string)(int)$order['id'],
                     'user_id' => (string)(int)$order['user_id'],
                 ],
-                'payment_method_types' => ['card', 'gcash', 'maya', 'qrph'],
+                'payment_method_types' => paymongoPaymentMethodTypes($paymentMethod),
                 'reference_number' => 'MT-' . (int)$order['id'],
                 'send_email_receipt' => true,
                 'show_description' => true,
@@ -111,6 +132,120 @@ function paymongoCreateCheckoutSession(array $order, array $items, array $custom
     ];
 
     return paymongoApiRequest('POST', '/v2/checkout_sessions', $payload);
+}
+
+function paymongoRetrieveCheckoutSession(string $checkoutSessionId): array {
+    $checkoutSessionId = trim($checkoutSessionId);
+    if ($checkoutSessionId === '') {
+        throw new RuntimeException('Missing PayMongo checkout session id.');
+    }
+
+    return paymongoApiRequest('GET', '/v1/checkout_sessions/' . rawurlencode($checkoutSessionId));
+}
+
+function paymongoCheckoutSessionIsPaid(array $session): bool {
+    $attributes = $session['data']['attributes'] ?? $session['attributes'] ?? [];
+    $statusValues = [
+        strtolower((string)($attributes['status'] ?? '')),
+        strtolower((string)($attributes['payment_status'] ?? '')),
+        strtolower((string)($attributes['payment_intent']['attributes']['status'] ?? '')),
+    ];
+
+    if (in_array('paid', $statusValues, true)) {
+        return true;
+    }
+
+    if (!empty($attributes['paid_at'])) {
+        return true;
+    }
+
+    $payments = $attributes['payments'] ?? [];
+    if (is_array($payments)) {
+        foreach ($payments as $payment) {
+            $paymentAttributes = $payment['attributes'] ?? [];
+            if (strtolower((string)($paymentAttributes['status'] ?? '')) === 'paid') {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+function paymongoCheckoutSessionOrderId(array $session): int {
+    $attributes = $session['data']['attributes'] ?? $session['attributes'] ?? [];
+    return (int)($attributes['metadata']['order_id'] ?? 0);
+}
+
+function fulfillPaidOrder(int $orderId, string $checkoutSessionId = ''): void {
+    $db = getDB();
+    $db->beginTransaction();
+
+    try {
+        $order = fetchOne("SELECT * FROM orders WHERE id = ? FOR UPDATE", [$orderId]);
+        if (!$order) {
+            throw new RuntimeException('Order not found.');
+        }
+
+        if (($order['payment_status'] ?? '') === 'paid') {
+            $db->commit();
+            return;
+        }
+
+        $items = fetchAllRows(
+            "SELECT oi.quantity, oi.product_id, oi.cart_item_id, p.name
+             FROM order_items oi
+             JOIN products p ON p.id = oi.product_id
+             WHERE oi.order_id = ?",
+            [$orderId]
+        );
+
+        $stockStmt = $db->prepare("UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?");
+        $statusStmt = $db->prepare(
+            "UPDATE products
+             SET status = CASE
+               WHEN stock = 0 THEN 'out_of_stock'
+               WHEN stock <= 5 THEN 'low_stock'
+               ELSE 'available'
+             END
+             WHERE id = ?"
+        );
+
+        foreach ($items as $item) {
+            $stockStmt->execute([(int)$item['quantity'], (int)$item['product_id'], (int)$item['quantity']]);
+            if ($stockStmt->rowCount() !== 1) {
+                throw new RuntimeException($item['name'] . ' does not have enough stock.');
+            }
+            $statusStmt->execute([(int)$item['product_id']]);
+        }
+
+        $db->prepare(
+            "UPDATE orders
+             SET payment_status = 'paid',
+                 status = 'completed',
+                 checkout_session_id = COALESCE(NULLIF(checkout_session_id, ''), ?),
+                 paid_at = NOW()
+             WHERE id = ?"
+        )->execute([$checkoutSessionId, $orderId]);
+
+        $cartItemIds = array_values(array_unique(array_filter(array_map(
+            static fn(array $item): int => (int)($item['cart_item_id'] ?? 0),
+            $items
+        ))));
+
+        if ($cartItemIds) {
+            $placeholders = implode(',', array_fill(0, count($cartItemIds), '?'));
+            $params = array_merge([(int)$order['user_id']], $cartItemIds);
+            $db->prepare("DELETE FROM cart_items WHERE user_id = ? AND id IN ($placeholders)")->execute($params);
+        }
+
+        $db->commit();
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        throw $e;
+    }
 }
 
 function paymongoExtractSignature(string $header, string $key): string {

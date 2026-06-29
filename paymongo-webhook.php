@@ -41,20 +41,8 @@ if ($orderId <= 0) {
 }
 
 try {
-    getDB()->beginTransaction();
-
-    $order = fetchOne("SELECT * FROM orders WHERE id = ? FOR UPDATE", [$orderId]);
-    if (!$order) {
-        throw new RuntimeException('Order not found.');
-    }
-
-    if (($order['payment_status'] ?? '') === 'paid') {
-        getDB()->commit();
-        http_response_code(200);
-        echo json_encode(['ok' => true, 'message' => 'Order already processed.']);
-        exit;
-    }
-
+    $order = fetchOne("SELECT * FROM orders WHERE id = ?", [$orderId]);
+    $wasPaid = ($order['payment_status'] ?? '') === 'paid';
     $items = fetchAllRows(
         "SELECT oi.quantity, oi.product_id, oi.price, p.name
          FROM order_items oi
@@ -63,57 +51,29 @@ try {
         [$orderId]
     );
 
-    $stockStmt = getDB()->prepare("UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?");
-    $statusStmt = getDB()->prepare(
-        "UPDATE products
-         SET status = CASE
-           WHEN stock = 0 THEN 'out_of_stock'
-           WHEN stock <= 5 THEN 'low_stock'
-           ELSE 'available'
-         END
-         WHERE id = ?"
-    );
-    foreach ($items as $item) {
-        $stockStmt->execute([$item['quantity'], $item['product_id'], $item['quantity']]);
-        if ($stockStmt->rowCount() !== 1) {
-            throw new RuntimeException($item['name'] . ' does not have enough stock.');
-        }
-        $statusStmt->execute([$item['product_id']]);
-    }
+    fulfillPaidOrder($orderId, $checkoutSessionId);
 
-    getDB()->prepare(
-        "UPDATE orders
-         SET payment_status = 'paid',
-             status = 'processing',
-             checkout_session_id = COALESCE(NULLIF(checkout_session_id, ''), ?),
-             paid_at = NOW()
-         WHERE id = ?"
-    )->execute([$checkoutSessionId, $orderId]);
-
-    getDB()->prepare("DELETE FROM cart_items WHERE user_id = ?")->execute([$order['user_id']]);
-    getDB()->commit();
-
-    // Send order confirmation email
-    try {
+    if (!$wasPaid && $order) {
         $customer = fetchOne("SELECT name, email FROM users WHERE id = ?", [$order['user_id']]);
         if ($customer && $customer['email']) {
-            sendOrderEmail(
-                $customer['email'],
-                $customer['name'],
-                $orderId,
-                (float)$order['total'],
-                $items,
-                (string)($order['payment_method'] ?? 'paymongo')
-            );
+            try {
+                sendOrderEmail(
+                    $customer['email'],
+                    $customer['name'],
+                    $orderId,
+                    (float)$order['total'],
+                    $items,
+                    (string)($order['payment_method'] ?? 'paymongo')
+                );
+            } catch (Throwable) {
+                /* Non-fatal: email failure should not break webhook confirmation. */
+            }
         }
-    } catch (Throwable) { /* Non-fatal: email failure shouldn't break webhook */ }
+    }
 
     http_response_code(200);
     echo json_encode(['ok' => true]);
 } catch (Throwable $e) {
-    if (getDB()->inTransaction()) {
-        getDB()->rollBack();
-    }
     http_response_code(500);
     echo json_encode(['ok' => false, 'message' => $e->getMessage()]);
 }

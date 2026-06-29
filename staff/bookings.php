@@ -1,7 +1,10 @@
 <?php
 $pageTitle = 'Bookings';
-require_once __DIR__ . '/../includes/staff-sidebar.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/db.php';
+requireStaff();
+$currentUser = getCurrentUser();
 
 $validStatuses = ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled'];
 
@@ -149,6 +152,8 @@ $statusColor = [
     'completed'   => '#15803d',
     'cancelled'   => '#b91c1c',
 ];
+
+require_once __DIR__ . '/../includes/staff-sidebar.php';
 ?>
 
 <section class="admin-card admin-page-stack">
@@ -308,4 +313,5 @@ $statusColor = [
 </script>
 <?php endif; ?>
 
+<?= authContextScriptTag() ?>
 </main></div></div></body></html>

@@ -224,4 +224,5 @@ $statusColor = [
 </section>
 <?php endif; ?>
 
+<?= authContextScriptTag() ?>
 </main></div></div></body></html>

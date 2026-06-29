@@ -3,10 +3,38 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+function validAuthContext(string $ctx): bool {
+    return preg_match('/^[a-zA-Z0-9_-]{8,64}$/', $ctx) === 1;
+}
+
 function currentAuthContext(): string {
-    $ctx = $_POST['ctx'] ?? $_GET['ctx'] ?? '';
-    $ctx = is_string($ctx) ? $ctx : '';
-    return preg_match('/^[a-zA-Z0-9_-]{8,64}$/', $ctx) ? $ctx : 'default';
+    $candidates = [
+        $_POST['ctx'] ?? '',
+        $_GET['ctx'] ?? '',
+        $_SERVER['HTTP_X_AUTH_CONTEXT'] ?? '',
+    ];
+
+    $referrer = $_SERVER['HTTP_REFERER'] ?? '';
+    if (is_string($referrer) && $referrer !== '') {
+        $referrerParts = parse_url($referrer);
+        if (is_array($referrerParts)) {
+            $referrerHost = $referrerParts['host'] ?? '';
+            $currentHost = $_SERVER['HTTP_HOST'] ?? '';
+            if ($referrerHost === '' || strcasecmp($referrerHost, $currentHost) === 0) {
+                parse_str($referrerParts['query'] ?? '', $referrerQuery);
+                $candidates[] = $referrerQuery['ctx'] ?? '';
+            }
+        }
+    }
+
+    foreach ($candidates as $ctx) {
+        $ctx = is_string($ctx) ? $ctx : '';
+        if (validAuthContext($ctx)) {
+            return $ctx;
+        }
+    }
+
+    return 'default';
 }
 
 function getAuthContext(): array {
@@ -125,9 +153,10 @@ function loginUser(array $user): void {
 
     if ($key === 'default') {
         $key = 'tab_' . bin2hex(random_bytes(16));
-        $_GET['ctx'] = $key;
-        $_POST['ctx'] = $key;
     }
+
+    $_GET['ctx'] = $key;
+    $_POST['ctx'] = $key;
 
     $_SESSION['auth_contexts'][$key] = [
         'user_id' => (int)$user['id'],

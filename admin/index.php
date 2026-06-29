@@ -101,4 +101,9 @@ $recentUsers  = fetchAllRows(
   </div>
 </section>
 
-</main></div></div></body></html>
+</main>
+</div>
+</div>
+<?= authContextScriptTag() ?>
+</body>
+</html>
