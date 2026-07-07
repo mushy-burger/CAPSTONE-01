@@ -29,6 +29,11 @@ function baseUrl(string $path = ''): string {
     return $url;
 }
 
+function uploadUrl(string $relativePath): string {
+    $encoded = implode('/', array_map('rawurlencode', explode('/', $relativePath)));
+    return baseUrl('uploads/' . $encoded);
+}
+
 function authContextScriptTag(): string {
     return '<script src="' . baseUrl('assets/js/main.js?v=' . filemtime(__DIR__ . '/../assets/js/main.js')) . '"></script>';
 }

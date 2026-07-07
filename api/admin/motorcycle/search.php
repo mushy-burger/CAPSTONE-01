@@ -5,7 +5,7 @@ require_once __DIR__ . '/../../../includes/MotorcycleApiService.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 
-requireRole('admin');
+requireAdminOrStaff();
 
 function respondAdminMotorcycle(array $payload, int $status = 200): void
 {

@@ -104,6 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $price       = (float)($_POST['price'] ?? 0);
         $origPrice   = ($_POST['original_price'] ?? '') !== '' ? (float)$_POST['original_price'] : null;
         $stock       = (int)($_POST['stock'] ?? 0);
+        $minStock    = max(0, (int)($_POST['min_stock'] ?? 10));
         $status      = in_array($_POST['status'] ?? '', ['available', 'low_stock', 'out_of_stock'], true) ? $_POST['status'] : 'available';
         $featured    = isset($_POST['featured']) ? 1 : 0;
 
@@ -137,13 +138,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($pid) {
             getDB()->prepare(
-                "UPDATE products SET name=?,category_id=?,brand=?,description=?,price=?,original_price=?,stock=?,status=?,featured=?,image=? WHERE id=?"
-            )->execute([$name, $categoryId, $brand, $description, $price, $origPrice, $stock, $status, $featured, $imageName, $pid]);
+                "UPDATE products SET name=?,category_id=?,brand=?,description=?,price=?,original_price=?,stock=?,min_stock=?,status=?,featured=?,image=? WHERE id=?"
+            )->execute([$name, $categoryId, $brand, $description, $price, $origPrice, $stock, $minStock, $status, $featured, $imageName, $pid]);
             flashMessage('prod_success', 'Product updated.');
         } else {
             getDB()->prepare(
-                "INSERT INTO products (name,category_id,brand,description,price,original_price,stock,status,featured,image) VALUES (?,?,?,?,?,?,?,?,?,?)"
-            )->execute([$name, $categoryId, $brand, $description, $price, $origPrice, $stock, $status, $featured, $imageName]);
+                "INSERT INTO products (name,category_id,brand,description,price,original_price,stock,min_stock,status,featured,image) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+            )->execute([$name, $categoryId, $brand, $description, $price, $origPrice, $stock, $minStock, $status, $featured, $imageName]);
             flashMessage('prod_success', 'Product added.');
         }
 
@@ -252,7 +253,7 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
             <div class="category-row">
               <div class="category-row-copy">
                 <strong><?= htmlspecialchars($cat['name']) ?></strong>
-                <span><?= htmlspecialchars($cat['slug']) ?> Â· <?= (int)$cat['product_count'] ?> product<?= (int)$cat['product_count'] === 1 ? '' : 's' ?></span>
+                <span><?= htmlspecialchars($cat['slug']) ?> &middot; <?= (int)$cat['product_count'] ?> product<?= (int)$cat['product_count'] === 1 ? '' : 's' ?></span>
               </div>
               <div class="category-row-actions">
                 <a href="#tab-manage" class="btn btn-outline js-edit-category" data-edit-category="<?= (int)$cat['id'] ?>">Edit</a>
@@ -317,6 +318,11 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
         </label>
 
         <label>
+          <span>Minimum stock level</span>
+          <input type="number" name="min_stock" min="0" value="<?= isset($editProd) ? (int)$editProd['min_stock'] : '10' ?>">
+        </label>
+
+        <label>
           <span>Status</span>
           <select name="status">
             <?php foreach (['available' => 'Available', 'low_stock' => 'Low Stock', 'out_of_stock' => 'Out of Stock'] as $val => $label): ?>
@@ -338,7 +344,7 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
           ?>
           <?php if ($existingImageOk): ?>
             <div class="upload-preview">
-              <img src="<?= baseUrl('uploads/' . rawurlencode($existingImage)) ?>" alt="Current image">
+              <img src="<?= uploadUrl($existingImage) ?>" alt="Current image">
             </div>
           <?php endif; ?>
           <input type="file" name="image" id="productImageInput" accept="image/*">
@@ -398,7 +404,7 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
             <?php foreach ($products as $p): ?>
               <?php
                 $imgSrc = ($p['image'] && file_exists(__DIR__ . '/../uploads/' . $p['image']))
-                    ? baseUrl('uploads/' . rawurlencode($p['image']))
+                    ? uploadUrl($p['image'])
                     : null;
                 $statusColors = ['available' => '#27ae60', 'low_stock' => '#e67e22', 'out_of_stock' => '#c0392b'];
                 $sc = $statusColors[$p['status']] ?? '#888';
@@ -424,7 +430,7 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
                 </td>
                 <td><?= (int)$p['stock'] ?></td>
                 <td><span class="status-pill" style="--status-color: <?= $sc ?>;"><?= ucfirst(str_replace('_', ' ', $p['status'])) ?></span></td>
-                <td><?= $p['featured'] ? 'â˜…' : 'â˜†' ?></td>
+                <td><?= $p['featured'] ? '&#9733;' : '&#9734;' ?></td>
                 <td class="product-actions">
                   <a href="<?= baseUrl('product.php?id=' . (int)$p['id']) ?>" target="_blank" class="btn btn-outline" title="Preview"><i class="fas fa-eye"></i></a>
                   <a href="<?= baseUrl('staff/products.php?tab=manage&edit=' . (int)$p['id']) ?>#product-form" class="btn btn-outline">Edit</a>

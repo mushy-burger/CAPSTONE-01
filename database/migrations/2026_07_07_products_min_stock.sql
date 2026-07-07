@@ -1,0 +1,2 @@
+ALTER TABLE `products`
+  ADD COLUMN `min_stock` INT UNSIGNED NOT NULL DEFAULT 10 AFTER `stock`;
