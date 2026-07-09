@@ -65,8 +65,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ];
         $current = $booking['status'];
         if (isset($allowedTransitions[$current]) && in_array($newStatus, $allowedTransitions[$current], true)) {
-            getDB()->prepare("UPDATE bookings SET status = ? WHERE id = ? AND technician_id = ?")
-                   ->execute([$newStatus, $bookingId, $currentUser['id']]);
+            if ($newStatus === 'completed') {
+                // completed_at feeds technician earnings and the auto-assignment fairness tie-breakers
+                getDB()->prepare("UPDATE bookings SET status = ?, completed_at = COALESCE(completed_at, NOW()) WHERE id = ? AND technician_id = ?")
+                       ->execute([$newStatus, $bookingId, $currentUser['id']]);
+            } else {
+                getDB()->prepare("UPDATE bookings SET status = ? WHERE id = ? AND technician_id = ?")
+                       ->execute([$newStatus, $bookingId, $currentUser['id']]);
+            }
 
             // If completed, deduct stock for booking products + notify staff
             if ($newStatus === 'completed') {

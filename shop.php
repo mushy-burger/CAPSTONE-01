@@ -67,15 +67,23 @@ $products = fetchAllRows(
     <?php endif; ?>
   </form>
 
-  <!-- Category Pills -->
-  <div class="category-pills">
-    <a href="<?= baseUrl('shop.php') ?>" class="<?= !$categoryId ? 'active' : '' ?>">All</a>
-    <?php foreach ($categories as $category): ?>
-      <a href="<?= baseUrl('shop.php?category=' . (int)$category['id']) ?>"
-         class="<?= $categoryId === (int)$category['id'] ? 'active' : '' ?>">
-        <?= htmlspecialchars($category['name']) ?>
-      </a>
-    <?php endforeach; ?>
+  <!-- Category Filter Bar -->
+  <div class="category-pills-shell">
+    <button type="button" class="pill-nav" id="pillNavLeft" aria-label="Scroll categories left" hidden>
+      <i class="fas fa-chevron-left"></i>
+    </button>
+    <div class="category-pills" id="categoryPills">
+      <a href="<?= baseUrl('shop.php') ?>" class="<?= !$categoryId ? 'active' : '' ?>">All</a>
+      <?php foreach ($categories as $category): ?>
+        <a href="<?= baseUrl('shop.php?category=' . (int)$category['id']) ?>"
+           class="<?= $categoryId === (int)$category['id'] ? 'active' : '' ?>">
+          <?= htmlspecialchars($category['name']) ?>
+        </a>
+      <?php endforeach; ?>
+    </div>
+    <button type="button" class="pill-nav" id="pillNavRight" aria-label="Scroll categories right" hidden>
+      <i class="fas fa-chevron-right"></i>
+    </button>
   </div>
 
   <!-- Results count -->
@@ -111,5 +119,31 @@ $products = fetchAllRows(
     <p class="empty-state">No products matched your search. <a href="<?= baseUrl('shop.php') ?>">Clear filters</a></p>
   <?php endif; ?>
 </section>
+
+<script>
+(() => {
+  // Category filter bar: horizontal scroll with arrows that appear only on overflow
+  const pills = document.getElementById('categoryPills');
+  const left = document.getElementById('pillNavLeft');
+  const right = document.getElementById('pillNavRight');
+  if (!pills || !left || !right) return;
+
+  const sync = () => {
+    const overflowing = pills.scrollWidth > pills.clientWidth + 4;
+    left.hidden = right.hidden = !overflowing;
+    if (overflowing) {
+      left.disabled = pills.scrollLeft <= 4;
+      right.disabled = pills.scrollLeft + pills.clientWidth >= pills.scrollWidth - 4;
+    }
+  };
+
+  const step = () => Math.max(160, Math.round(pills.clientWidth * 0.6));
+  left.addEventListener('click', () => pills.scrollBy({ left: -step(), behavior: 'smooth' }));
+  right.addEventListener('click', () => pills.scrollBy({ left: step(), behavior: 'smooth' }));
+  pills.addEventListener('scroll', sync, { passive: true });
+  window.addEventListener('resize', sync);
+  sync();
+})();
+</script>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

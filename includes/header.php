@@ -46,6 +46,9 @@ $currentPage = basename($_SERVER['PHP_SELF'], '.php');
         <a href="<?= baseUrl('my-vehicle.php') ?>" class="header-icon wide" title="My Vehicle">
           <i class="fas fa-motorcycle"></i><span>My Vehicle</span>
         </a>
+        <a href="<?= baseUrl('profile.php') ?>" class="header-icon <?= $currentPage === 'profile' ? 'active' : '' ?>" title="My Profile">
+          <i class="fas fa-user"></i>
+        </a>
         <?php if (in_array($currentUser['role'], ['admin','staff'], true)): ?>
           <a href="<?= baseUrl('admin/index.php') ?>" class="btn btn-small">Admin</a>
         <?php endif; ?>
@@ -70,6 +73,7 @@ $currentPage = basename($_SERVER['PHP_SELF'], '.php');
     <a href="<?= baseUrl('book-service.php') ?>">Book Service</a>
     <?php if ($currentUser): ?>
       <a href="<?= baseUrl('my-vehicle.php') ?>">My Vehicle</a>
+      <a href="<?= baseUrl('profile.php') ?>">My Profile</a>
       <a href="<?= baseUrl('logout.php') ?>">Logout</a>
     <?php else: ?>
       <a href="<?= baseUrl('login.php') ?>">Login</a>

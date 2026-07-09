@@ -3,6 +3,7 @@ $pageTitle = 'Bookings';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/TechnicianService.php';
 requireStaff();
 $currentUser = getCurrentUser();
 
@@ -17,7 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action    = $_POST['action'] ?? '';
     $bookingId = (int)($_POST['booking_id'] ?? 0);
 
-    // CONFIRM + ASSIGN TECH
+    // CONFIRM (MANUAL ASSIGN) — staff picks the technician themselves
     if ($action === 'confirm_booking' && $bookingId > 0) {
         $techId = (int)($_POST['technician_id'] ?? 0);
 
@@ -40,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         getDB()->prepare(
-            "UPDATE bookings SET status = 'confirmed', technician_id = ? WHERE id = ?"
+            "UPDATE bookings SET status = 'confirmed', technician_id = ?, assigned_at = NOW() WHERE id = ?"
         )->execute([$techId, $bookingId]);
 
         // Notify the assigned technician
@@ -52,7 +53,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $bookingId
         );
 
-        flashMessage('bk_success', "Booking #$bookingId confirmed and assigned to {$tech['name']}.");
+        flashMessage('bk_success', "Booking #$bookingId confirmed and manually assigned to {$tech['name']}.");
+        redirect(baseUrl('staff/bookings.php'));
+    }
+
+    // CONFIRM (AUTO-ASSIGN) — system picks the fairest ready + qualified technician
+    if ($action === 'confirm_auto' && $bookingId > 0) {
+        $booking = fetchOne("SELECT b.*, u.name AS customer_name FROM bookings b JOIN users u ON u.id = b.user_id WHERE b.id = ?", [$bookingId]);
+
+        if (!$booking || $booking['status'] !== 'pending') {
+            flashMessage('bk_error', 'This booking cannot be confirmed (it may have already been processed).');
+            redirect(baseUrl('staff/bookings.php'));
+        }
+
+        $tech = techAutoAssignCandidate($bookingId);
+        if (!$tech) {
+            flashMessage('bk_error', "No technician is currently Ready/On Site and qualified for all of booking #$bookingId's services. Use Manual Assign, or update technician availability/skills.");
+            redirect(baseUrl('staff/bookings.php'));
+        }
+
+        getDB()->prepare(
+            "UPDATE bookings SET status = 'confirmed', technician_id = ?, assigned_at = NOW() WHERE id = ?"
+        )->execute([$tech['id'], $bookingId]);
+
+        $scheduledDate = date('M j, Y', strtotime($booking['scheduled_date']));
+        createNotification(
+            $tech['id'],
+            "New job assigned to you: Booking #$bookingId for {$booking['customer_name']} on $scheduledDate.",
+            'assignment',
+            $bookingId
+        );
+
+        flashMessage('bk_success', "Booking #$bookingId confirmed — auto-assigned to {$tech['name']}.");
         redirect(baseUrl('staff/bookings.php'));
     }
 
@@ -72,7 +104,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'update_status' && $bookingId > 0) {
         $newStatus = $_POST['status'] ?? '';
         if (in_array($newStatus, $validStatuses, true)) {
-            getDB()->prepare("UPDATE bookings SET status = ? WHERE id = ?")->execute([$newStatus, $bookingId]);
+            if ($newStatus === 'completed') {
+                getDB()->prepare("UPDATE bookings SET status = ?, completed_at = COALESCE(completed_at, NOW()) WHERE id = ?")
+                       ->execute([$newStatus, $bookingId]);
+            } else {
+                getDB()->prepare("UPDATE bookings SET status = ? WHERE id = ?")->execute([$newStatus, $bookingId]);
+            }
             flashMessage('bk_success', 'Booking status updated.');
         } else {
             flashMessage('bk_error', 'Invalid status.');
@@ -140,10 +177,18 @@ $bookings = fetchAllRows(
     $params
 );
 
-// Technicians for assign dropdown
+// Technicians for assign dropdown (with availability for the manual-assign markers)
 $technicians = fetchAllRows(
-    "SELECT id, name FROM users WHERE role = 'technician' AND is_active = 1 ORDER BY name"
+    "SELECT id, name, availability_status FROM users WHERE role = 'technician' AND is_active = 1 ORDER BY name"
 );
+
+// Qualification data for manual-assign warning markers: which services each tech
+// can do, and which services each listed booking requires.
+$techQualifications = techQualificationMap();
+$bookingServiceIds = [];
+foreach (fetchAllRows("SELECT booking_id, service_id FROM booking_services") as $bsRow) {
+    $bookingServiceIds[(int)$bsRow['booking_id']][] = (int)$bsRow['service_id'];
+}
 
 $statusColor = [
     'pending'     => '#6b7280',
@@ -153,8 +198,44 @@ $statusColor = [
     'cancelled'   => '#b91c1c',
 ];
 
+// KPI cards: overall booking counts by status (independent of the list filters)
+$statusCounts = ['pending' => 0, 'confirmed' => 0, 'in_progress' => 0, 'completed' => 0, 'cancelled' => 0];
+foreach (fetchAllRows("SELECT status, COUNT(*) AS n FROM bookings GROUP BY status") as $scRow) {
+    if (isset($statusCounts[$scRow['status']])) {
+        $statusCounts[$scRow['status']] = (int)$scRow['n'];
+    }
+}
+$totalBookings = array_sum($statusCounts);
+$statusPct = static fn(int $n): int => $totalBookings > 0 ? (int)round($n / $totalBookings * 100) : 0;
+
+$bookingStatCards = [
+    ['label' => 'Total Bookings', 'count' => $totalBookings,                'icon' => 'fa-layer-group',     'color' => '#d71920', 'desc' => 'All service bookings'],
+    ['label' => 'Pending',        'count' => $statusCounts['pending'],      'icon' => 'fa-hourglass-half',  'color' => '#e8b93c', 'desc' => 'Awaiting confirmation'],
+    ['label' => 'Confirmed',      'count' => $statusCounts['confirmed'],    'icon' => 'fa-calendar-check',  'color' => '#4f8df9', 'desc' => 'Assigned & scheduled'],
+    ['label' => 'In Progress',    'count' => $statusCounts['in_progress'],  'icon' => 'fa-wrench',          'color' => '#f0883e', 'desc' => 'Being serviced now'],
+    ['label' => 'Completed',      'count' => $statusCounts['completed'],    'icon' => 'fa-flag-checkered',  'color' => '#2fbf71', 'desc' => 'Finished jobs'],
+    ['label' => 'Cancelled',      'count' => $statusCounts['cancelled'],    'icon' => 'fa-ban',             'color' => '#f16a6a', 'desc' => 'Called off'],
+];
+
 require_once __DIR__ . '/../includes/staff-sidebar.php';
 ?>
+
+<!-- Booking status KPI cards -->
+<section class="bk-stats-grid">
+  <?php foreach ($bookingStatCards as $card): ?>
+    <article class="bk-stat-card" style="--stat-color: <?= $card['color'] ?>;">
+      <span class="bk-stat-icon"><i class="fas <?= $card['icon'] ?>"></i></span>
+      <span class="bk-stat-label"><?= $card['label'] ?></span>
+      <span class="bk-stat-value"><?= $card['count'] ?></span>
+      <span class="bk-stat-desc">
+        <?= $card['desc'] ?>
+        <?php if ($card['label'] !== 'Total Bookings'): ?>
+          &middot; <strong><?= $statusPct($card['count']) ?>%</strong> of all
+        <?php endif; ?>
+      </span>
+    </article>
+  <?php endforeach; ?>
+</section>
 
 <section class="admin-card admin-page-stack">
   <div class="admin-page-head">
@@ -252,20 +333,41 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
               <!-- Actions column -->
               <td>
                 <?php if ($isPending): ?>
-                  <!-- CONFIRM FORM with tech assignment -->
-                  <form method="post" class="confirm-form" id="confirm-form-<?= $bid ?>">
+                  <!-- CONFIRM = AUTO-ASSIGN the fairest ready + qualified technician -->
+                  <form method="post" id="confirm-form-<?= $bid ?>">
+                    <?= authContextField() ?>
+                    <input type="hidden" name="action" value="confirm_auto">
+                    <input type="hidden" name="booking_id" value="<?= $bid ?>">
+                    <button type="submit" class="btn btn-primary" style="font-size:.8rem;padding:6px 14px;">
+                      <i class="fas fa-bolt"></i> Confirm (Auto-Assign)
+                    </button>
+                  </form>
+
+                  <!-- MANUAL ASSIGN — staff override, all technicians selectable -->
+                  <form method="post" class="confirm-form" style="margin-top:6px;">
                     <?= authContextField() ?>
                     <input type="hidden" name="action" value="confirm_booking">
                     <input type="hidden" name="booking_id" value="<?= $bid ?>">
+                    <?php $requiredIds = $bookingServiceIds[$bid] ?? []; ?>
                     <select name="technician_id" required class="tech-select"
                             <?= ($preloadConfirmId === $bid) ? 'autofocus' : '' ?>>
-                      <option value="">— Assign Tech —</option>
+                      <option value="">— Manual Assign —</option>
                       <?php foreach ($technicians as $t): ?>
-                        <option value="<?= (int)$t['id'] ?>"><?= htmlspecialchars($t['name']) ?></option>
+                        <?php
+                          $tid = (int)$t['id'];
+                          $qualified = true;
+                          foreach ($requiredIds as $sid) {
+                              if (!isset($techQualifications[$tid][$sid])) { $qualified = false; break; }
+                          }
+                          $marks = [];
+                          if (!$qualified) $marks[] = '⚠ not qualified';
+                          if (($t['availability_status'] ?? 'off_duty') !== 'ready') $marks[] = 'off duty';
+                        ?>
+                        <option value="<?= $tid ?>"><?= htmlspecialchars($t['name'] . ($marks ? ' (' . implode(', ', $marks) . ')' : '')) ?></option>
                       <?php endforeach; ?>
                     </select>
-                    <button type="submit" class="btn btn-primary" style="font-size:.8rem;padding:6px 14px;margin-top:6px;">
-                      <i class="fas fa-check"></i> Confirm
+                    <button type="submit" class="btn btn-outline" style="font-size:.8rem;padding:6px 14px;margin-top:6px;">
+                      <i class="fas fa-user-cog"></i> Assign
                     </button>
                   </form>
                 <?php endif; ?>
@@ -307,7 +409,8 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
     var form = document.getElementById('confirm-form-<?= $preloadConfirmId ?>');
     if (form) {
       form.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      form.querySelector('select').focus();
+      var sel = form.parentElement ? form.parentElement.querySelector('select.tech-select') : null;
+      if (sel) sel.focus();
     }
   });
 </script>

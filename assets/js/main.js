@@ -658,3 +658,24 @@ if (vehicleManager) {
     }
   });
 }
+
+// Vehicle Options wizard stepper (UI only): mirrors the panel state that
+// showStep() toggles, so the stepper needs no hooks into the wizard logic.
+document.querySelectorAll('.vhx-modal').forEach((modal) => {
+  const items = Array.from(modal.querySelectorAll('[data-stepper-item]'));
+  if (!items.length) return;
+  const panels = Array.from(modal.querySelectorAll('.vehicle-modal__step[data-step]'));
+  const syncStepper = () => {
+    const active = panels.find((panel) => panel.classList.contains('is-active'));
+    const step = active ? active.dataset.step : '1';
+    const current = step === 'result' ? items.length + 1 : (parseInt(step, 10) || 1);
+    items.forEach((item) => {
+      const n = parseInt(item.dataset.stepperItem, 10);
+      item.classList.toggle('is-active', n === current);
+      item.classList.toggle('is-done', n < current);
+    });
+  };
+  const stepObserver = new MutationObserver(syncStepper);
+  panels.forEach((panel) => stepObserver.observe(panel, { attributes: true, attributeFilter: ['class'] }));
+  syncStepper();
+});

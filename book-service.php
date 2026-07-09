@@ -2,6 +2,7 @@
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/db.php';
+require_once __DIR__ . '/includes/BookingSlots.php';
 requireLogin();
 
 ensureMultiServiceBookingSchema();
@@ -95,9 +96,9 @@ foreach ($appointmentProducts as $appointmentProduct) {
 
 $editBookingId = (int)($_GET['edit_booking_id'] ?? $_POST['edit_booking_id'] ?? 0);
 $editBooking = null;
-$scheduledDateValue = $_POST['scheduled_date'] ?? '';
-$scheduledTimeValue = $_POST['scheduled_time'] ?? '';
-$notesValue = $_POST['notes'] ?? '';
+$scheduledDateValue = $_POST['scheduled_date'] ?? $_GET['scheduled_date'] ?? '';
+$scheduledTimeValue = $_POST['scheduled_time'] ?? $_GET['scheduled_time'] ?? '';
+$notesValue = $_POST['notes'] ?? $_GET['notes'] ?? '';
 
 if ($editBookingId > 0) {
     $editBooking = fetchOne("SELECT * FROM bookings WHERE id = ? AND user_id = ?", [$editBookingId, $user['id']]);
@@ -151,31 +152,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pageAction === 'submit_booking') {
     $time = $scheduledTimeValue;
     $notes = trim($notesValue);
 
+    // Normalize a possible HH:MM:SS value (edit mode preloads from the DB) to the slot format
+    if (strlen($time) > 5) {
+        $time = substr($time, 0, 5);
+    }
+
     if (!$selectedServiceIds) {
         $error = 'Select at least one service for this appointment.';
     } elseif (!$date) {
         $error = 'Please choose an appointment date.';
+    } elseif ($date < date('Y-m-d')) {
+        $error = 'The appointment date cannot be in the past.';
+    } elseif (!$time || !array_key_exists($time, bookingTimeSlots())) {
+        $error = 'Please choose a time slot within shop hours (8:00 AM – 5:00 PM).';
     } elseif ($selection['errors']) {
         $error = $selection['errors'][0];
     } else {
-        // Time-slot conflict check (max 3 bookings per slot)
-        $maxPerSlot = 3;
-        $slotParams = [$date];
-        $slotSql = "SELECT COUNT(*) FROM bookings WHERE scheduled_date = ? AND status NOT IN ('cancelled')";
-        if ($time) {
-            $slotSql .= " AND scheduled_time = ?";
-            $slotParams[] = $time;
-        }
-        if ($editBooking) {
-            $slotSql .= " AND id != ?";
-            $slotParams[] = (int)$editBooking['id'];
-        }
-        $slotStmt = getDB()->prepare($slotSql);
-        $slotStmt->execute($slotParams);
-        $slotCount = (int)$slotStmt->fetchColumn();
-
-        if ($slotCount >= $maxPerSlot) {
-            $error = 'This time slot is fully booked (' . $maxPerSlot . ' appointments). Please choose a different date or time.';
+        // Slot capacity check: max BOOKING_MAX_PER_SLOT active bookings per date+time,
+        // regardless of service type. Re-checked here so the UI can't be bypassed.
+        $availability = bookingSlotAvailability($date, $editBooking ? (int)$editBooking['id'] : null);
+        if (($availability[$time] ?? 0) <= 0) {
+            $error = 'This time slot is fully booked (' . BOOKING_MAX_PER_SLOT . ' appointments). Please choose a different date or time.';
         }
         if (!$error) {
         $db = getDB();
@@ -341,8 +338,43 @@ require_once __DIR__ . '/includes/header.php';
         <div class="service-product-sections" id="serviceProductSections"></div>
       </div>
 
-      <label>Date<input type="date" name="scheduled_date" min="<?= date('Y-m-d') ?>" value="<?= htmlspecialchars($scheduledDateValue) ?>" required></label>
-      <label>Time<input type="time" name="scheduled_time" value="<?= htmlspecialchars($scheduledTimeValue) ?>"></label>
+      <label>Date<input type="date" name="scheduled_date" id="bookingDateInput" min="<?= date('Y-m-d') ?>" value="<?= htmlspecialchars($scheduledDateValue) ?>" required></label>
+
+      <?php
+        // Server-rendered initial slot availability (JS refreshes it when the date changes)
+        $scheduledTimeSlot = substr((string)$scheduledTimeValue, 0, 5);
+        $initialSlotAvailability = null;
+        if ($scheduledDateValue && $scheduledDateValue >= date('Y-m-d')) {
+            $initialSlotAvailability = bookingSlotAvailability($scheduledDateValue, $editBooking ? (int)$editBooking['id'] : null);
+        }
+      ?>
+      <div class="booking-slot-picker">
+        <div class="booking-block-heading">
+          <span class="eyebrow">Time Slot</span>
+          <strong>Choose an available time (shop hours 8:00 AM – 5:00 PM, max <?= BOOKING_MAX_PER_SLOT ?> bookings per slot)</strong>
+        </div>
+        <input type="hidden" name="scheduled_time" id="scheduledTimeInput" value="<?= htmlspecialchars($scheduledTimeSlot) ?>">
+        <div class="time-slot-grid" id="timeSlotGrid">
+          <?php if ($initialSlotAvailability !== null): ?>
+            <?php foreach (bookingTimeSlots() as $slotValue => $slotLabel): ?>
+              <?php
+                $remaining  = $initialSlotAvailability[$slotValue];
+                $isFull     = $remaining <= 0;
+                $isSelected = !$isFull && $scheduledTimeSlot === $slotValue;
+              ?>
+              <button type="button"
+                      class="time-slot-card<?= $isFull ? ' is-full' : '' ?><?= $isSelected ? ' is-selected' : '' ?>"
+                      data-slot="<?= $slotValue ?>" <?= $isFull ? 'disabled' : '' ?>>
+                <strong><?= $slotLabel ?></strong>
+                <small><?= $isFull ? 'Fully Booked' : ($remaining === 1 ? '1 slot left' : $remaining . ' slots left') ?></small>
+              </button>
+            <?php endforeach; ?>
+          <?php else: ?>
+            <p class="fine-print" style="grid-column:1/-1;">Pick a date to see available times.</p>
+          <?php endif; ?>
+        </div>
+        <p class="slot-picker-warning" id="slotPickerWarning" hidden>Please choose a time slot before submitting.</p>
+      </div>
       <label>Notes
         <textarea name="notes" rows="4" placeholder="Describe symptoms, preferred parts, or requests"><?= htmlspecialchars($notesValue) ?></textarea>
       </label>
@@ -783,6 +815,108 @@ require_once __DIR__ . '/includes/header.php';
 
   syncProductSections();
   updateBookingUi();
+})();
+</script>
+<script>
+(() => {
+  // Time-slot picker: shows live availability per slot (max <?= BOOKING_MAX_PER_SLOT ?> active bookings per date+time)
+  const form = document.getElementById('multiServiceBookingForm');
+  const dateInput = document.getElementById('bookingDateInput');
+  const grid = document.getElementById('timeSlotGrid');
+  const hiddenTime = document.getElementById('scheduledTimeInput');
+  const warning = document.getElementById('slotPickerWarning');
+  if (!form || !dateInput || !grid || !hiddenTime) return;
+
+  const endpoint = <?= json_encode(baseUrl('api/booking-slots.php'), JSON_UNESCAPED_SLASHES) ?>;
+  const excludeBookingId = <?= (int)($editBooking['id'] ?? 0) ?>;
+
+  const bindCard = (card) => {
+    card.addEventListener('click', () => {
+      if (card.disabled) return;
+      hiddenTime.value = card.dataset.slot || '';
+      grid.querySelectorAll('.time-slot-card').forEach((b) => b.classList.remove('is-selected'));
+      card.classList.add('is-selected');
+      if (warning) warning.hidden = true;
+    });
+  };
+
+  const renderSlots = (slots) => {
+    grid.innerHTML = '';
+    slots.forEach((slot) => {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'time-slot-card';
+      card.dataset.slot = slot.value;
+      const isFull = slot.remaining <= 0;
+      if (isFull) {
+        card.classList.add('is-full');
+        card.disabled = true;
+      } else if (hiddenTime.value === slot.value) {
+        card.classList.add('is-selected');
+      }
+      const label = document.createElement('strong');
+      label.textContent = slot.label;
+      const sub = document.createElement('small');
+      sub.textContent = isFull ? 'Fully Booked' : (slot.remaining === 1 ? '1 slot left' : slot.remaining + ' slots left');
+      card.appendChild(label);
+      card.appendChild(sub);
+      bindCard(card);
+      grid.appendChild(card);
+    });
+  };
+
+  const showMessage = (text) => {
+    grid.innerHTML = '';
+    const p = document.createElement('p');
+    p.className = 'fine-print';
+    p.style.gridColumn = '1/-1';
+    p.textContent = text;
+    grid.appendChild(p);
+  };
+
+  const loadAvailability = async () => {
+    const date = dateInput.value;
+    if (!date) {
+      showMessage('Pick a date to see available times.');
+      return;
+    }
+    showMessage('Checking availability…');
+    try {
+      // endpoint may already carry a ?ctx= query param (multi-tab auth context),
+      // so extend the query string instead of appending a second '?'
+      const url = new URL(endpoint, window.location.href);
+      url.searchParams.set('date', date);
+      if (excludeBookingId) url.searchParams.set('exclude_booking_id', excludeBookingId);
+      const response = await fetch(url.toString());
+      const data = await response.json();
+      if (!data.ok) {
+        showMessage(data.message || 'Could not load availability.');
+        return;
+      }
+      // Drop a previously selected slot that has since filled up
+      const selected = data.slots.find((slot) => slot.value === hiddenTime.value);
+      if (selected && selected.remaining <= 0) hiddenTime.value = '';
+      renderSlots(data.slots);
+    } catch (err) {
+      showMessage('Could not load availability. Please try again.');
+    }
+  };
+
+  // Server already rendered cards for a preselected date — just wire up clicks
+  grid.querySelectorAll('.time-slot-card').forEach(bindCard);
+
+  dateInput.addEventListener('change', () => {
+    hiddenTime.value = '';
+    loadAvailability();
+  });
+
+  form.addEventListener('submit', (event) => {
+    if (!hiddenTime.value) {
+      event.preventDefault();
+      if (warning) warning.hidden = false;
+      grid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  });
 })();
 </script>
 <?php endif; ?>

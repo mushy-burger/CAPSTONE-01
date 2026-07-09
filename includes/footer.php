@@ -40,6 +40,33 @@
   </div>
 </footer>
 
+<?php if (!$currentUser || !in_array($currentUser['role'], ['admin', 'staff', 'technician'], true)): ?>
+<link rel="stylesheet" href="<?= baseUrl('assets/css/chatbot.css?v=' . filemtime(__DIR__ . '/../assets/css/chatbot.css')) ?>">
+<div id="chatbotWidget" data-base-url="<?= htmlspecialchars(baseUrl('')) ?>">
+  <button type="button" class="chatbot-launcher" id="chatbotLauncher" aria-label="Open MotoTrack Assistant" aria-expanded="false">
+    <i class="fas fa-comment-dots"></i>
+  </button>
+
+  <div class="chatbot-panel" id="chatbotPanel">
+    <div class="chatbot-header">
+      <div>
+        <strong>MotoTrack Assistant</strong>
+        <span>Ask about motorcycles, parts, or services</span>
+      </div>
+      <button type="button" class="chatbot-close" id="chatbotClose" aria-label="Close chat">&times;</button>
+    </div>
+    <div class="chatbot-messages" id="chatbotMessages">
+      <div class="chatbot-bubble bot">Hi<?= $currentUser ? ' ' . htmlspecialchars(explode(' ', $currentUser['name'])[0]) : '' ?>! I'm the MotoTrack Assistant. Ask me anything about motorcycles, our parts, or our services.</div>
+    </div>
+    <form class="chatbot-input-row" id="chatbotForm">
+      <textarea id="chatbotInput" rows="1" placeholder="Type your question..." required></textarea>
+      <button type="submit" id="chatbotSend"><i class="fas fa-paper-plane"></i></button>
+    </form>
+  </div>
+</div>
+<script src="<?= baseUrl('assets/js/chatbot.js?v=' . filemtime(__DIR__ . '/../assets/js/chatbot.js')) ?>"></script>
+<?php endif; ?>
+
 <script src="<?= baseUrl('assets/js/main.js?v=' . filemtime(__DIR__ . '/../assets/js/main.js')) ?>"></script>
 </body>
 </html>

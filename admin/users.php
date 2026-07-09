@@ -2,6 +2,7 @@
 $pageTitle = 'Users';
 require_once __DIR__ . '/../includes/admin-sidebar.php';
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/TechnicianService.php';
 
 $roleOptions = ['admin', 'staff', 'technician', 'customer'];
 $canManageUsers = $currentUser['role'] === 'admin';
@@ -52,7 +53,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             getDB()->prepare("INSERT INTO users (name, email, password, role, is_active) VALUES (?, ?, ?, ?, 1)")
                 ->execute([$newName, $newEmail, password_hash($newPass, PASSWORD_DEFAULT), $newRole]);
+            $newUserId = (int)getDB()->lastInsertId();
+            if ($newRole === 'technician') {
+                techSetQualifiedServices($newUserId, $_POST['tech_service_ids'] ?? []);
+            }
             flashMessage('users_success', ucfirst($newRole) . ' account created for ' . $newName . '.');
+        }
+        redirect(baseUrl('admin/users.php'));
+    }
+
+    if ($action === 'save_tech_services' && $userId > 0) {
+        $tech = fetchOne("SELECT id FROM users WHERE id = ? AND role = 'technician'", [$userId]);
+        if (!$tech) {
+            flashMessage('users_error', 'Skills can only be set for technician accounts.');
+        } else {
+            techSetQualifiedServices($userId, $_POST['tech_service_ids'] ?? []);
+            flashMessage('users_success', 'Technician skills updated.');
         }
         redirect(baseUrl('admin/users.php'));
     }
@@ -114,6 +130,14 @@ $users = fetchAllRows(
      LIMIT $perPage OFFSET $offset",
     $params
 );
+
+$allServices = fetchAllRows("SELECT id, name FROM service_types ORDER BY name");
+$techQualifications = techQualificationMap();
+
+$editSkillsId = (int)($_GET['edit_skills'] ?? 0);
+$editSkillsUser = $editSkillsId
+    ? fetchOne("SELECT id, name FROM users WHERE id = ? AND role = 'technician'", [$editSkillsId])
+    : null;
 ?>
 
 <section class="admin-card admin-page-stack">
@@ -146,14 +170,65 @@ $users = fetchAllRows(
       <input type="text"     name="new_name"     placeholder="Full name"      required style="min-width:140px;flex:1;">
       <input type="email"    name="new_email"    placeholder="Email address"  required style="min-width:180px;flex:1;">
       <input type="password" name="new_password" placeholder="Password (min 6)" required minlength="6" style="min-width:150px;flex:1;">
-      <select name="new_role" required style="min-width:140px;">
+      <select name="new_role" id="createAccountRole" required style="min-width:140px;">
         <option value="">— Select Role —</option>
         <option value="staff">Staff</option>
         <option value="technician">Technician</option>
       </select>
       <button type="submit" class="btn btn-primary">Create Account</button>
+
+      <div id="techServicesSection" hidden style="flex-basis:100%;margin-top:10px;border-top:1px dashed var(--line);padding-top:12px;">
+        <strong style="display:block;font-size:.85rem;margin-bottom:8px;">
+          <i class="fas fa-tools" style="color:var(--accent);"></i> Qualified Services
+          <span class="subtext" style="font-weight:400;">— which services can this technician perform? (used by auto-assignment)</span>
+        </strong>
+        <?php if ($allServices): ?>
+          <div style="display:flex;flex-wrap:wrap;gap:8px 18px;">
+            <?php foreach ($allServices as $svc): ?>
+              <label style="display:inline-flex;align-items:center;gap:7px;font-size:.86rem;font-weight:600;">
+                <input type="checkbox" name="tech_service_ids[]" value="<?= (int)$svc['id'] ?>" style="width:16px;height:16px;min-height:0;accent-color:var(--accent);">
+                <?= htmlspecialchars($svc['name']) ?>
+              </label>
+            <?php endforeach; ?>
+          </div>
+        <?php else: ?>
+          <span class="subtext">No services exist yet — add services first in Settings &rarr; Compatible Services.</span>
+        <?php endif; ?>
+      </div>
     </form>
   </div>
+
+  <?php if ($editSkillsUser): ?>
+  <!-- Edit an existing technician's qualified services -->
+  <div style="background:#fff7f7;border:1px solid var(--accent);border-radius:8px;padding:18px 20px;margin:0 0 18px;">
+    <h2 style="margin:0 0 12px;font-size:.95rem;">
+      <i class="fas fa-tools" style="color:var(--accent);"></i>
+      Edit Skills — <?= htmlspecialchars($editSkillsUser['name']) ?>
+    </h2>
+    <form method="post">
+      <?= authContextField() ?>
+      <input type="hidden" name="action" value="save_tech_services">
+      <input type="hidden" name="user_id" value="<?= (int)$editSkillsUser['id'] ?>">
+      <?php $currentSkills = $techQualifications[(int)$editSkillsUser['id']] ?? []; ?>
+      <?php if ($allServices): ?>
+        <div style="display:flex;flex-wrap:wrap;gap:8px 18px;margin-bottom:12px;">
+          <?php foreach ($allServices as $svc): ?>
+            <label style="display:inline-flex;align-items:center;gap:7px;font-size:.86rem;font-weight:600;">
+              <input type="checkbox" name="tech_service_ids[]" value="<?= (int)$svc['id'] ?>"
+                     <?= isset($currentSkills[(int)$svc['id']]) ? 'checked' : '' ?>
+                     style="width:16px;height:16px;min-height:0;accent-color:var(--accent);">
+              <?= htmlspecialchars($svc['name']) ?>
+            </label>
+          <?php endforeach; ?>
+        </div>
+        <button type="submit" class="btn btn-primary" style="font-size:.85rem;">Save Skills</button>
+        <a href="<?= baseUrl('admin/users.php') ?>" class="btn btn-outline" style="font-size:.85rem;">Cancel</a>
+      <?php else: ?>
+        <span class="subtext">No services exist yet — add services first in Settings &rarr; Compatible Services.</span>
+      <?php endif; ?>
+    </form>
+  </div>
+  <?php endif; ?>
 
   <?php if (!$canManageUsers): ?>
     <div class="alert error">Only administrators can change roles, reset passwords, or disable accounts.</div>
@@ -207,6 +282,12 @@ $users = fetchAllRows(
                 <span class="status-pill" style="--status-color: <?= $active ? '#15803d' : '#b91c1c' ?>;">
                   <?= $active ? 'Active' : 'Disabled' ?>
                 </span>
+                <?php if ($user['role'] === 'technician'): ?>
+                  <?php $isReady = ($user['availability_status'] ?? 'off_duty') === 'ready'; ?>
+                  <span class="status-pill" style="--status-color: <?= $isReady ? '#2563eb' : '#6b7280' ?>;margin-top:4px;">
+                    <?= $isReady ? 'Ready / On Site' : 'Off Duty' ?>
+                  </span>
+                <?php endif; ?>
                 <?php if ($canManageUsers && !$isSelf): ?>
                   <form method="post" class="admin-toggle-form">
                     <?= authContextField() ?>
@@ -235,6 +316,12 @@ $users = fetchAllRows(
                     <input type="password" name="password" placeholder="New password" minlength="6" required>
                   <button type="submit" class="btn btn-outline">Reset</button>
                   </form>
+                  <?php if ($user['role'] === 'technician'): ?>
+                    <?php $skillCount = count($techQualifications[(int)$user['id']] ?? []); ?>
+                    <a href="<?= baseUrl('admin/users.php?edit_skills=' . (int)$user['id']) ?>" class="btn btn-outline" style="font-size:.8rem;margin-top:6px;display:inline-block;">
+                      <i class="fas fa-tools"></i> Skills (<?= $skillCount ?>)
+                    </a>
+                  <?php endif; ?>
                 <?php else: ?>
                   <span class="subtext">Read only</span>
                 <?php endif; ?>
@@ -268,4 +355,16 @@ $users = fetchAllRows(
 </section>
 
 <?= authContextScriptTag() ?>
+<script>
+(function () {
+  var roleSelect = document.getElementById('createAccountRole');
+  var techSection = document.getElementById('techServicesSection');
+  if (!roleSelect || !techSection) return;
+  function sync() {
+    techSection.hidden = roleSelect.value !== 'technician';
+  }
+  roleSelect.addEventListener('change', sync);
+  sync();
+})();
+</script>
 </main></div></div></body></html>

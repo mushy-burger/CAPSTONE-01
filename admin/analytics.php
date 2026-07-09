@@ -2,6 +2,7 @@
 $pageTitle = 'Analytics';
 require_once __DIR__ . '/../includes/admin-sidebar.php';
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/TechnicianService.php';
 
 // Date range filter
 $dateFrom = trim($_GET['date_from'] ?? '');
@@ -54,19 +55,40 @@ $dailySales = fetchAllRows(
     $dateParams
 );
 
-// Technician performance
+// Labor income + 60/40 split (labor fees only — product sales excluded)
+$totalLaborIncome = (float)(fetchOne(
+    "SELECT COALESCE(SUM(bs.labor_fee),0) AS n
+     FROM bookings b JOIN booking_services bs ON bs.booking_id = b.id
+     WHERE b.status = 'completed'"
+)['n'] ?? 0);
+$technicianPayouts = $totalLaborIncome * TECH_LABOR_SHARE;
+$shopLaborEarnings = $totalLaborIncome - $technicianPayouts;
+$customersServiced = (int)(fetchOne(
+    "SELECT COUNT(DISTINCT user_id) AS n FROM bookings WHERE status = 'completed'"
+)['n'] ?? 0);
+$completedServicesCount = (int)(fetchOne(
+    "SELECT COUNT(*) AS n
+     FROM booking_services bs JOIN bookings b ON b.id = bs.booking_id
+     WHERE b.status = 'completed'"
+)['n'] ?? 0);
+
+// Technician performance & earnings (labor-only: total_amount would wrongly include product costs)
 $techPerformance = fetchAllRows(
-    "SELECT u.name AS tech_name, COUNT(b.id) AS jobs_done, COALESCE(SUM(b.total_amount),0) AS value
+    "SELECT u.name AS tech_name,
+            COUNT(DISTINCT b.id) AS jobs_done,
+            COUNT(DISTINCT b.user_id) AS customers_serviced,
+            COALESCE(SUM(bs.labor_fee),0) AS labor
      FROM bookings b
      JOIN users u ON u.id = b.technician_id
+     LEFT JOIN booking_services bs ON bs.booking_id = b.id
      WHERE b.status = 'completed'
      GROUP BY b.technician_id, u.name
-     ORDER BY jobs_done DESC
+     ORDER BY labor DESC
      LIMIT 8"
 );
 
-$lowStockCount = (int)(fetchOne("SELECT COUNT(*) AS n FROM products WHERE stock<=10")['n'] ?? 0);
-$lowStock      = fetchAllRows("SELECT p.name, p.stock, p.status, c.name AS category_name FROM products p JOIN categories c ON c.id=p.category_id WHERE p.stock<=10 ORDER BY p.stock ASC, p.name LIMIT 10");
+$lowStockCount = (int)(fetchOne("SELECT COUNT(*) AS n FROM products WHERE stock <= min_stock")['n'] ?? 0);
+$lowStock      = fetchAllRows("SELECT p.name, p.stock, p.status, c.name AS category_name FROM products p JOIN categories c ON c.id=p.category_id WHERE p.stock <= p.min_stock ORDER BY p.stock ASC, p.name LIMIT 10");
 ?>
 
 <section class="admin-hero">
@@ -103,6 +125,15 @@ $lowStock      = fetchAllRows("SELECT p.name, p.stock, p.status, c.name AS categ
   <article><span><?= htmlspecialchars($labelPeriod) ?> Revenue</span><strong><?= formatPrice($periodRevenue) ?></strong><i class="fas fa-chart-line"></i></article>
   <article><span><?= htmlspecialchars($labelPeriod) ?> Orders</span><strong><?= $periodOrders ?></strong><i class="fas fa-shopping-bag"></i></article>
   <article><span>Active Services</span><strong><?= $pendingBookings ?></strong><i class="fas fa-tools"></i></article>
+</section>
+
+<!-- Labor income & 60/40 split (completed services, labor fees only) -->
+<section class="metric-grid" style="grid-template-columns:repeat(5, minmax(0,1fr));">
+  <article><span>Total Labor Income</span><strong style="font-size:1.5rem;"><?= formatPrice($totalLaborIncome) ?></strong><i class="fas fa-hand-holding-usd"></i></article>
+  <article><span>Shop Earnings (<?= (int)((1 - TECH_LABOR_SHARE) * 100) ?>%)</span><strong style="font-size:1.5rem;color:#15803d;"><?= formatPrice($shopLaborEarnings) ?></strong><i class="fas fa-store"></i></article>
+  <article><span>Technician Payouts (<?= (int)(TECH_LABOR_SHARE * 100) ?>%)</span><strong style="font-size:1.5rem;color:#2563eb;"><?= formatPrice($technicianPayouts) ?></strong><i class="fas fa-user-cog"></i></article>
+  <article><span>Customers Serviced</span><strong style="font-size:1.5rem;"><?= $customersServiced ?></strong><i class="fas fa-user-check"></i></article>
+  <article><span>Completed Services</span><strong style="font-size:1.5rem;"><?= $completedServicesCount ?></strong><i class="fas fa-check-double"></i></article>
 </section>
 
 <section class="admin-grid analytics-grid">
@@ -167,11 +198,18 @@ $lowStock      = fetchAllRows("SELECT p.name, p.stock, p.status, c.name AS categ
   </div>
 
   <div class="admin-card">
-    <h2>Technician Performance</h2>
+    <h2>Technician Performance &amp; Earnings</h2>
+    <p class="subtext" style="margin:0 0 8px;">Labor fees only &mdash; each technician earns <?= (int)(TECH_LABOR_SHARE * 100) ?>% of their completed jobs' labor.</p>
     <?php foreach ($techPerformance as $row): ?>
       <div class="list-row">
-        <span><?= htmlspecialchars($row['tech_name']) ?></span>
-        <strong><?= (int)$row['jobs_done'] ?> job<?= (int)$row['jobs_done']===1?'':'s' ?> &mdash; <?= formatPrice((float)$row['value']) ?></strong>
+        <span>
+          <?= htmlspecialchars($row['tech_name']) ?>
+          <span class="subtext"><?= (int)$row['jobs_done'] ?> job<?= (int)$row['jobs_done']===1?'':'s' ?> &middot; <?= (int)$row['customers_serviced'] ?> customer<?= (int)$row['customers_serviced']===1?'':'s' ?></span>
+        </span>
+        <strong>
+          <?= formatPrice((float)$row['labor'] * TECH_LABOR_SHARE) ?>
+          <span class="subtext" style="font-weight:400;">of <?= formatPrice((float)$row['labor']) ?> labor</span>
+        </strong>
       </div>
     <?php endforeach; ?>
     <?php if (!$techPerformance): ?><p>No completed jobs yet.</p><?php endif; ?>
@@ -179,7 +217,7 @@ $lowStock      = fetchAllRows("SELECT p.name, p.stock, p.status, c.name AS categ
 
   <div class="admin-card">
     <h2>Low-Stock Risk</h2>
-    <p><?= $lowStockCount ?> product<?= $lowStockCount===1?'':'s' ?> at or below 10 units.</p>
+    <p><?= $lowStockCount ?> product<?= $lowStockCount===1?'':'s' ?> at or below their minimum stock level.</p>
     <?php foreach ($lowStock as $row): ?>
       <div class="list-row">
         <span><?= htmlspecialchars($row['name']) ?><span class="subtext"><?= htmlspecialchars($row['category_name']) ?></span></span>

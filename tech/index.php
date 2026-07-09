@@ -2,6 +2,7 @@
 $pageTitle = 'Work Queue';
 require_once __DIR__ . '/../includes/tech-sidebar.php';
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/TechnicianService.php';
 
 // Mark tech's notifications as read
 getDB()->prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0")
@@ -22,6 +23,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             getDB()->prepare("UPDATE bookings SET status = 'in_progress' WHERE id = ?")->execute([$bookingId]);
             flashMessage('tech_success', "Job #$bookingId is now In Progress.");
         }
+        redirect(baseUrl('tech/index.php'));
+    }
+
+    // Ready / Off Duty availability toggle (only 'ready' techs receive auto-assignments)
+    if ($action === 'toggle_availability') {
+        $newAvailability = isset($_POST['is_ready']) ? 'ready' : 'off_duty';
+        getDB()->prepare("UPDATE users SET availability_status = ? WHERE id = ?")
+               ->execute([$newAvailability, $currentUser['id']]);
+        flashMessage('tech_success', $newAvailability === 'ready'
+            ? 'You are now Ready / On Site — you can receive new job assignments.'
+            : 'You are now Off Duty — you will not receive automatic assignments.');
         redirect(baseUrl('tech/index.php'));
     }
 }
@@ -89,18 +101,79 @@ $statusColor = [
     'in_progress' => '#d97706',
     'completed'   => '#15803d',
 ];
+
+// --- My availability + my stats/earnings (this technician only) ---
+$myAvailability = fetchOne("SELECT availability_status FROM users WHERE id = ?", [$currentUser['id']])['availability_status'] ?? 'off_duty';
+$isReady = $myAvailability === 'ready';
+
+$techId = (int)$currentUser['id'];
+$customersServicedToday = (int)(fetchOne(
+    "SELECT COUNT(DISTINCT user_id) AS n FROM bookings
+     WHERE technician_id = ? AND status = 'completed'
+       AND completed_at IS NOT NULL AND DATE(completed_at) = CURDATE()",
+    [$techId]
+)['n'] ?? 0);
+$pendingJobsCount   = (int)(fetchOne("SELECT COUNT(*) AS n FROM bookings WHERE technician_id = ? AND status = 'confirmed'", [$techId])['n'] ?? 0);
+$completedJobsCount = (int)(fetchOne("SELECT COUNT(*) AS n FROM bookings WHERE technician_id = ? AND status = 'completed'", [$techId])['n'] ?? 0);
+
+$today      = date('Y-m-d');
+$weekStart  = date('Y-m-d', strtotime('monday this week'));
+$monthStart = date('Y-m-01');
+$earningsToday = techEarningsBetween($techId, $today, $today);
+$earningsWeek  = techEarningsBetween($techId, $weekStart, $today);
+$earningsMonth = techEarningsBetween($techId, $monthStart, $today);
+$earningsPerService = techEarningsPerService($techId);
 ?>
 
-<section class="admin-hero">
+<section class="admin-hero" style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap;">
   <div>
     <span class="eyebrow">Technician Panel</span>
     <h1>Work Queue</h1>
     <p>Jobs assigned to you. Complete your active jobs and log any notes.</p>
   </div>
+  <div style="text-align:right;">
+    <span class="status-pill" style="--status-color:<?= $isReady ? '#2563eb' : '#6b7280' ?>;font-size:.9rem;">
+      <?= $isReady ? '🟢 Ready / On Site' : '⚪ Off Duty' ?>
+    </span>
+    <form method="post" class="admin-toggle-form">
+      <?= authContextField() ?>
+      <input type="hidden" name="action" value="toggle_availability">
+      <label>
+        <input type="checkbox" name="is_ready" value="1" <?= $isReady ? 'checked' : '' ?> onchange="this.form.submit()">
+        Available for new jobs
+      </label>
+    </form>
+  </div>
 </section>
 
 <?php if ($flash): ?><div class="alert success"><?= htmlspecialchars($flash) ?></div><?php endif; ?>
 <?php if ($flashErr): ?><div class="alert error"><?= htmlspecialchars($flashErr) ?></div><?php endif; ?>
+
+<!-- MY STATS & EARNINGS (visible only to me) -->
+<section class="metric-grid" style="grid-template-columns:repeat(6, minmax(0,1fr));">
+  <article><span>Customers Today</span><strong><?= $customersServicedToday ?></strong><i class="fas fa-user-check"></i></article>
+  <article><span>Pending Jobs</span><strong><?= $pendingJobsCount ?></strong><i class="fas fa-hourglass-half"></i></article>
+  <article><span>Completed Jobs</span><strong><?= $completedJobsCount ?></strong><i class="fas fa-check-double"></i></article>
+  <article><span>Today's Earnings</span><strong style="font-size:1.35rem;"><?= formatPrice($earningsToday) ?></strong><i class="fas fa-peso-sign"></i></article>
+  <article><span>This Week</span><strong style="font-size:1.35rem;"><?= formatPrice($earningsWeek) ?></strong><i class="fas fa-calendar-week"></i></article>
+  <article><span>This Month</span><strong style="font-size:1.35rem;"><?= formatPrice($earningsMonth) ?></strong><i class="fas fa-calendar"></i></article>
+</section>
+
+<?php if ($earningsPerService): ?>
+<section class="admin-card" style="margin-bottom:28px;padding:24px;">
+  <h2 style="margin-top:0;">My Earnings per Service</h2>
+  <p class="subtext" style="margin:0 0 10px;">Your <?= (int)(TECH_LABOR_SHARE * 100) ?>% share of the labor fee on completed jobs.</p>
+  <?php foreach ($earningsPerService as $eps): ?>
+    <div class="list-row">
+      <span>
+        <?= htmlspecialchars($eps['service_name']) ?>
+        <span class="subtext"><?= $eps['jobs'] ?> job<?= $eps['jobs'] === 1 ? '' : 's' ?></span>
+      </span>
+      <strong><?= formatPrice($eps['earnings']) ?></strong>
+    </div>
+  <?php endforeach; ?>
+</section>
+<?php endif; ?>
 
 <!-- ACTIVE & CONFIRMED JOBS -->
 <section class="admin-card admin-page-stack" style="margin-bottom:28px;">

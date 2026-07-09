@@ -165,6 +165,28 @@ $customersServedToday = (int)(fetchOne(
 $totalTechnicians = (int)(fetchOne("SELECT COUNT(*) AS n FROM users WHERE role='technician' AND is_active=1")['n'] ?? 0);
 $busyTechnicians = (int)(fetchOne("SELECT COUNT(DISTINCT technician_id) AS n FROM bookings WHERE status IN ('confirmed','in_progress') AND technician_id IS NOT NULL")['n'] ?? 0);
 $availableTechnicians = max(0, $totalTechnicians - $busyTechnicians);
+
+// --- Total Customers modal: customers served per day (last 14 days), for day-by-day review ---
+$customersServedByDay = fetchAllRows(
+    "SELECT day, COUNT(DISTINCT user_id) AS n FROM (
+        SELECT scheduled_date AS day, user_id FROM bookings
+         WHERE status = 'completed' AND user_id IS NOT NULL AND scheduled_date >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)
+        UNION ALL
+        SELECT DATE(created_at) AS day, user_id FROM orders
+         WHERE payment_status = 'paid' AND user_id IS NOT NULL AND created_at >= DATE_SUB(CURDATE(), INTERVAL 13 DAY)
+    ) served
+    GROUP BY day
+    ORDER BY day ASC"
+);
+$customersServedTotal14d = array_sum(array_column($customersServedByDay, 'n'));
+$avgCustomersServedPerDay = $customersServedTotal14d / 14;
+$newCustomersThisWeek = (int)(fetchOne("SELECT COUNT(*) AS n FROM users WHERE role='customer' AND created_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)")['n'] ?? 0);
+$busiestCustomerDay = null;
+foreach ($customersServedByDay as $row) {
+    if ($busiestCustomerDay === null || (int)$row['n'] > (int)$busiestCustomerDay['n']) {
+        $busiestCustomerDay = $row;
+    }
+}
 ?>
 
 <section class="admin-hero admin-hero-live">
@@ -195,10 +217,11 @@ $availableTechnicians = max(0, $totalTechnicians - $busyTechnicians);
     <?= renderTrend($salesTrend, 'from yesterday') ?>
     <i class="fas fa-chart-line"></i>
   </article>
-  <article>
+  <article class="metric-tile-clickable" data-open-modal="customersModal" role="button" tabindex="0" aria-haspopup="dialog">
     <span>Total Customers</span>
     <strong><?= $totalUsers ?></strong>
     <i class="fas fa-users"></i>
+    <em class="metric-hint">View trends</em>
   </article>
   <article>
     <span>New Today</span>
@@ -448,6 +471,57 @@ $availableTechnicians = max(0, $totalTechnicians - $busyTechnicians);
   </div>
 </div>
 
+<!-- Total Customers modal -->
+<div class="dash-modal" id="customersModal" aria-hidden="true">
+  <div class="dash-modal__backdrop" data-close-modal></div>
+  <div class="dash-modal__dialog">
+    <button type="button" class="dash-modal__close" data-close-modal aria-label="Close">&times;</button>
+    <h2><i class="fas fa-users"></i> Customer Trends</h2>
+    <p class="dash-modal__subtitle">How many customers you served each day &mdash; last 14 days.</p>
+    <div class="dash-modal__body">
+      <div class="dash-stat-row">
+        <div class="dash-stat"><span>Total Registered Customers</span><strong><?= $totalUsers ?></strong></div>
+        <div class="dash-stat"><span>New This Week</span><strong><?= $newCustomersThisWeek ?></strong></div>
+        <div class="dash-stat"><span>Avg. Served / Day (14d)</span><strong><?= number_format($avgCustomersServedPerDay, 1) ?></strong></div>
+        <div class="dash-stat">
+          <span>Busiest Day</span>
+          <?php if ($busiestCustomerDay): ?>
+            <strong><?= (int)$busiestCustomerDay['n'] ?> customer<?= (int)$busiestCustomerDay['n'] === 1 ? '' : 's' ?></strong>
+            <em class="dash-stat-sub"><?= htmlspecialchars(date('M j, Y', strtotime($busiestCustomerDay['day']))) ?></em>
+          <?php else: ?>
+            <strong>&mdash;</strong>
+          <?php endif; ?>
+        </div>
+      </div>
+      <?php if ($customersServedByDay): ?>
+        <div class="dash-chart-wrap"><canvas id="customersByDayChart" aria-label="Customers served by day, last 14 days"></canvas></div>
+      <?php else: ?>
+        <div class="dash-empty-state">
+          <i class="fas fa-users"></i>
+          <p>No customers served in the last 14 days yet.</p>
+          <span>This fills in as bookings and orders are completed.</span>
+        </div>
+      <?php endif; ?>
+      <h3 class="dash-section-title">Day-by-Day Breakdown</h3>
+      <?php if ($customersServedByDay): ?>
+        <div class="dash-rank-list">
+          <?php foreach (array_reverse($customersServedByDay) as $row): ?>
+            <div class="dash-rank-row">
+              <span class="dash-rank-name"><?= htmlspecialchars(date('l, M j, Y', strtotime($row['day']))) ?></span>
+              <strong class="dash-rank-revenue"><?= (int)$row['n'] ?> customer<?= (int)$row['n'] === 1 ? '' : 's' ?></strong>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      <?php else: ?>
+        <div class="dash-empty-state">
+          <i class="fas fa-list"></i>
+          <p>Nothing to show yet.</p>
+        </div>
+      <?php endif; ?>
+    </div>
+  </div>
+</div>
+
 <!-- Order Detail modal (populated from Recent Orders) -->
 <div class="dash-modal" id="orderDetailModal" aria-hidden="true">
   <div class="dash-modal__backdrop" data-close-modal></div>
@@ -466,6 +540,7 @@ $availableTechnicians = max(0, $totalTechnicians - $busyTechnicians);
 
 <script type="application/json" id="recentOrderDetailsData"><?= json_encode($recentOrderDetails, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?></script>
 <script type="application/json" id="revenueByDayData"><?= json_encode($revenueByDay, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?></script>
+<script type="application/json" id="customersByDayData"><?= json_encode($customersServedByDay, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?></script>
 
 </main>
 </div>
@@ -584,6 +659,48 @@ $availableTechnicians = max(0, $totalTechnicians - $busyTechnicians);
         scales: {
           x: { grid: { display: false }, title: { display: true, text: 'Date', font: { size: 11, weight: 'bold' } } },
           y: { beginAtZero: true, title: { display: true, text: 'Revenue (PHP)', font: { size: 11, weight: 'bold' } }, ticks: { callback: function (v) { return v.toLocaleString(); } } }
+        }
+      }
+    });
+  }
+
+  // Customers served by day chart
+  var customersByDay = [];
+  try {
+    customersByDay = JSON.parse(document.getElementById('customersByDayData').textContent || '[]');
+  } catch (e) { customersByDay = []; }
+
+  var customersChartCanvas = document.getElementById('customersByDayChart');
+  if (customersChartCanvas && customersByDay.length && window.Chart) {
+    new Chart(customersChartCanvas, {
+      type: 'bar',
+      data: {
+        labels: customersByDay.map(function (r) {
+          var d = new Date(r.day + 'T00:00:00');
+          return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }),
+        datasets: [{
+          label: 'Customers Served',
+          data: customersByDay.map(function (r) { return parseInt(r.n, 10); }),
+          backgroundColor: '#2563eb',
+          borderRadius: 6,
+          maxBarThickness: 26
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function (ctx) { return ctx.parsed.y + ' customer' + (ctx.parsed.y === 1 ? '' : 's'); }
+            }
+          }
+        },
+        scales: {
+          x: { grid: { display: false }, title: { display: true, text: 'Date', font: { size: 11, weight: 'bold' } } },
+          y: { beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: 'Customers Served', font: { size: 11, weight: 'bold' } } }
         }
       }
     });

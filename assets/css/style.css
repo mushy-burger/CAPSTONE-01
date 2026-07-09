@@ -215,7 +215,9 @@ main { min-height: 60vh; }
   width: min(1640px, calc(100% - 56px));
   max-width: none;
   min-height: calc(100vh - 72px);
-  margin: 106px auto 24px;
+  /* Navbar is absolute/transparent on the homepage — the hero starts at the top
+     and its top padding clears the floating navbar (no extra margin gap). */
+  margin: 8px auto 24px;
   padding: 152px 56px 34px;
   display: flex;
   align-items: stretch;
@@ -671,20 +673,58 @@ input, select, textarea {
 textarea { resize: vertical; }
 label { display: grid; gap: 8px; font-weight: 800; color: #30343b; }
 
-.category-pills {
+.category-pills-shell {
+  position: relative;
   display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 28px;
 }
 
+.category-pills {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.category-pills::-webkit-scrollbar { display: none; }
+
 .category-pills a {
-  padding: 9px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  height: 44px;
+  padding: 0 20px;
+  line-height: 1;
+  white-space: nowrap;
   border: 1px solid var(--line);
   border-radius: 999px;
   font-weight: 800;
 }
 .category-pills a.active, .category-pills a:hover { background: var(--ink); color: #fff; }
+
+.pill-nav {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.pill-nav:disabled { opacity: 0.35; cursor: default; }
 
 .page-tabs {
   display: flex;
@@ -1041,6 +1081,67 @@ label { display: grid; gap: 8px; font-weight: 800; color: #30343b; }
 
 .booking-block-heading strong {
   font-size: 1.05rem;
+}
+
+.booking-slot-picker {
+  display: grid;
+  gap: 12px;
+}
+
+.time-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+  gap: 10px;
+}
+
+.time-slot-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 12px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.time-slot-card strong { font-size: 0.95rem; }
+
+.time-slot-card small {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.time-slot-card:hover:not(:disabled) {
+  border-color: rgba(255, 84, 95, 0.85);
+  transform: translateY(-1px);
+}
+
+.time-slot-card.is-selected {
+  border-color: var(--accent);
+  background: rgba(215, 25, 32, 0.2);
+  box-shadow: 0 0 0 3px rgba(215, 25, 32, 0.16);
+}
+
+.time-slot-card.is-full {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.time-slot-card.is-full small { color: #f87171; }
+
+.slot-picker-warning {
+  margin: 0;
+  color: #f87171;
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 .booking-service-picker,
@@ -1747,7 +1848,7 @@ label { display: grid; gap: 8px; font-weight: 800; color: #30343b; }
   .hero-home {
     width: calc(100% - 24px);
     min-height: auto;
-    margin: 96px auto 18px;
+    margin: 8px auto 18px;
     padding: 108px 16px 16px;
     align-items: stretch;
     border-radius: 24px;
@@ -2159,14 +2260,21 @@ label {
   color: rgba(255, 255, 255, 0.82);
 }
 
+.category-pills-shell {
+  padding: 12px;
+  border-radius: 26px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(180deg, rgba(12, 13, 18, 0.94), rgba(15, 16, 21, 0.9));
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.18);
+}
+
 .category-pills {
   gap: 12px;
+  padding: 2px;
 }
 
 .category-pills a,
 .page-tabs a {
-  min-height: 46px;
-  padding: 0 18px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.04);
@@ -2177,6 +2285,31 @@ label {
     border-color 180ms ease,
     color 180ms ease,
     box-shadow 180ms ease;
+}
+
+.page-tabs a {
+  min-height: 46px;
+  padding: 0 18px;
+}
+
+.category-pills a {
+  height: 46px;
+  padding: 0 22px;
+  font-size: 0.92rem;
+  letter-spacing: 0.02em;
+}
+
+.pill-nav {
+  width: 42px;
+  height: 42px;
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.75);
+  transition: background 180ms ease, border-color 180ms ease, color 180ms ease;
+}
+.pill-nav:hover:not(:disabled) {
+  border-color: rgba(255, 84, 95, 0.85);
+  color: #fff;
 }
 
 .category-pills a.active,
@@ -2681,8 +2814,7 @@ label {
     display: none;
   }
 
-  .page-tabs a,
-  .category-pills a {
+  .page-tabs a {
     width: 100%;
     justify-content: center;
   }
@@ -2809,4 +2941,62 @@ label {
   .bp-step { min-width: 54px; font-size: .65rem; }
   .bp-dot  { width: 28px; height: 28px; font-size: .75rem; }
   .bp-line { min-width: 10px; }
+}
+
+/* --- My Profile page --- */
+.profile-section { padding-bottom: 60px; }
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+  align-items: start;
+}
+
+.profile-panel form { display: grid; gap: 16px; }
+
+.profile-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.profile-panel-head h2 { margin: 0; font-size: 1.15rem; }
+.profile-panel-head .fine-print { margin: 2px 0 0; }
+
+.profile-panel-icon {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: rgba(215, 25, 32, 0.16);
+  border: 1px solid rgba(215, 25, 32, 0.35);
+  color: #ff545f;
+  font-size: 1rem;
+}
+
+.profile-field-note {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
+}
+.profile-field-note i { color: #ff545f; margin-right: 4px; }
+
+.profile-panel input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.profile-grid--single {
+  grid-template-columns: 1fr;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+@media (max-width: 860px) {
+  .profile-grid { grid-template-columns: 1fr; }
 }
