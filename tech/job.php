@@ -124,29 +124,31 @@ $color = $statusColor[$booking['status']] ?? '#6b7280';
 $pageTitle = 'Job #' . $bookingId;
 ?>
 
+<div class="mtx-shell">
+
 <?php if ($flash): ?><div class="alert success"><?= htmlspecialchars($flash) ?></div><?php endif; ?>
 <?php if ($flashErr): ?><div class="alert error"><?= htmlspecialchars($flashErr) ?></div><?php endif; ?>
 
-<div style="display:flex;align-items:center;gap:14px;margin-bottom:22px;">
-  <a href="<?= baseUrl('tech/index.php') ?>" class="btn btn-outline"><i class="fas fa-arrow-left"></i> Back to Queue</a>
-  <h1 style="margin:0;font-size:1.5rem;">Job #<?= $bookingId ?></h1>
-  <span class="status-pill" style="--status-color:<?= $color ?>;">
-    <?= ucfirst(str_replace('_', ' ', $booking['status'])) ?>
-  </span>
-</div>
+<header class="mtx-page-head">
+  <div class="mtx-page-head-copy" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+    <a href="<?= baseUrl('tech/index.php') ?>" class="mtx-btn mtx-btn--ghost mtx-btn--sm"><i class="fas fa-arrow-left"></i> Back to Queue</a>
+    <h1 style="margin:0;">Job #<?= $bookingId ?></h1>
+    <span class="mtx-pill" style="--pill-color:<?= $color ?>;font-size:.82rem;">
+      <?= ucfirst(str_replace('_', ' ', $booking['status'])) ?>
+    </span>
+  </div>
+</header>
 
 <div class="job-detail-grid">
 
   <!-- LEFT: Job Info -->
-  <div style="display:grid;gap:20px;">
+  <div class="mtx-stack">
 
     <!-- Customer & Schedule Card -->
-    <section class="admin-card" style="padding:22px;">
-      <h2 style="margin:0 0 16px;font-size:1.05rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Schedule</h2>
+    <section class="mtx-card">
+      <div class="mtx-card-head"><div><h2><i class="fas fa-calendar"></i> Schedule &amp; Customer</h2></div></div>
       <div class="detail-row"><span>Date</span><strong><?= htmlspecialchars(date('l, F j, Y', strtotime($booking['scheduled_date']))) ?></strong></div>
       <div class="detail-row"><span>Time</span><strong><?= $booking['scheduled_time'] ? htmlspecialchars(date('g:i A', strtotime($booking['scheduled_time']))) : 'Not set' ?></strong></div>
-
-      <h2 style="margin:20px 0 16px;font-size:1.05rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Customer</h2>
       <div class="detail-row"><span>Name</span><strong><?= htmlspecialchars($booking['customer_name']) ?></strong></div>
       <div class="detail-row"><span>Email</span><?= htmlspecialchars($booking['customer_email']) ?></div>
       <?php if ($booking['customer_phone']): ?>
@@ -155,8 +157,8 @@ $pageTitle = 'Job #' . $bookingId;
     </section>
 
     <!-- Motorcycle Card -->
-    <section class="admin-card" style="padding:22px;">
-      <h2 style="margin:0 0 16px;font-size:1.05rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Motorcycle</h2>
+    <section class="mtx-card">
+      <div class="mtx-card-head"><div><h2><i class="fas fa-motorcycle"></i> Motorcycle</h2></div></div>
       <?php if ($booking['vehicle_name']): ?>
         <div class="detail-row"><span>Model</span><strong><?= htmlspecialchars($booking['vehicle_name']) ?></strong></div>
         <div class="detail-row"><span>Type</span><?= htmlspecialchars($booking['type_name'] ?? '—') ?></div>
@@ -173,8 +175,8 @@ $pageTitle = 'Job #' . $bookingId;
     </section>
 
     <!-- Services & Products Card -->
-    <section class="admin-card" style="padding:22px;">
-      <h2 style="margin:0 0 16px;font-size:1.05rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Services & Materials</h2>
+    <section class="mtx-card">
+      <div class="mtx-card-head"><div><h2><i class="fas fa-tools"></i> Services &amp; Materials</h2></div></div>
       <?php if ($services): ?>
         <div style="display:grid;gap:10px;">
           <?php foreach ($services as $svc): ?>
@@ -205,20 +207,20 @@ $pageTitle = 'Job #' . $bookingId;
 
     <?php if ($booking['notes']): ?>
     <!-- Customer Notes -->
-    <section class="admin-card" style="padding:22px;">
-      <h2 style="margin:0 0 10px;font-size:1.05rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Customer Notes</h2>
+    <section class="mtx-card">
+      <div class="mtx-card-head"><div><h2><i class="fas fa-comment"></i> Customer Notes</h2></div></div>
       <p style="margin:0;"><?= nl2br(htmlspecialchars($booking['notes'])) ?></p>
     </section>
     <?php endif; ?>
   </div>
 
   <!-- RIGHT: Actions Panel -->
-  <div style="display:grid;gap:20px;align-content:start;">
+  <div class="mtx-stack">
 
     <!-- Status Update Card -->
     <?php if ($booking['status'] !== 'completed' && $booking['status'] !== 'cancelled'): ?>
-    <section class="admin-card" style="padding:22px;">
-      <h2 style="margin:0 0 16px;font-size:1.05rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Update Status</h2>
+    <section class="mtx-card">
+      <div class="mtx-card-head"><div><h2><i class="fas fa-arrows-rotate"></i> Update Status</h2></div></div>
 
       <!-- Status Timeline -->
       <div class="status-timeline">
@@ -248,7 +250,7 @@ $pageTitle = 'Job #' . $bookingId;
           <?= authContextField() ?>
           <input type="hidden" name="action" value="update_status">
           <input type="hidden" name="status" value="in_progress">
-          <button type="submit" class="btn btn-primary" style="width:100%;">
+          <button type="submit" class="mtx-btn mtx-btn--primary" style="width:100%;">
             <i class="fas fa-play"></i> Start Job (Mark In Progress)
           </button>
         </form>
@@ -257,14 +259,14 @@ $pageTitle = 'Job #' . $bookingId;
           <?= authContextField() ?>
           <input type="hidden" name="action" value="update_status">
           <input type="hidden" name="status" value="completed">
-          <button type="submit" class="btn btn-primary" style="width:100%;background:#15803d;border-color:#15803d;">
+          <button type="submit" class="mtx-btn mtx-btn--primary" style="width:100%;background:#15803d;box-shadow:0 6px 16px rgba(21,128,61,.24);">
             <i class="fas fa-flag-checkered"></i> Complete Job
           </button>
         </form>
       <?php endif; ?>
     </section>
     <?php else: ?>
-    <section class="admin-card" style="padding:22px;text-align:center;">
+    <section class="mtx-card" style="text-align:center;">
       <i class="fas fa-check-circle" style="font-size:2.5rem;color:#15803d;margin-bottom:10px;display:block;"></i>
       <strong>Job Completed</strong>
       <p class="subtext" style="margin:6px 0 0;">This job has been marked as completed.</p>
@@ -272,16 +274,15 @@ $pageTitle = 'Job #' . $bookingId;
     <?php endif; ?>
 
     <!-- Tech Notes Card -->
-    <section class="admin-card" style="padding:22px;">
-      <h2 style="margin:0 0 12px;font-size:1.05rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">
-        <i class="fas fa-sticky-note"></i> Tech Notes
-      </h2>
+    <section class="mtx-card">
+      <div class="mtx-card-head"><div><h2><i class="fas fa-sticky-note"></i> Tech Notes</h2></div></div>
       <form method="post">
         <?= authContextField() ?>
         <input type="hidden" name="action" value="save_notes">
-        <textarea name="tech_notes" rows="6" placeholder="Write your job notes, observations, parts used, issues encountered..."
-                  style="width:100%;border:1px solid var(--line);border-radius:6px;padding:10px 12px;font-size:.9rem;resize:vertical;"><?= htmlspecialchars($booking['tech_notes'] ?? '') ?></textarea>
-        <button type="submit" class="btn btn-primary" style="width:100%;margin-top:10px;">
+        <label class="mtx-field">
+          <textarea name="tech_notes" rows="6" placeholder="Write your job notes, observations, parts used, issues encountered..."><?= htmlspecialchars($booking['tech_notes'] ?? '') ?></textarea>
+        </label>
+        <button type="submit" class="mtx-btn mtx-btn--primary" style="width:100%;margin-top:10px;">
           <i class="fas fa-save"></i> Save Notes
         </button>
       </form>
@@ -289,6 +290,8 @@ $pageTitle = 'Job #' . $bookingId;
 
   </div>
 </div>
+
+</div><!-- /.mtx-shell -->
 
 <?= authContextScriptTag() ?>
 </main></div></div></body></html>

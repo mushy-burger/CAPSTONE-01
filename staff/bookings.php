@@ -220,31 +220,49 @@ $bookingStatCards = [
 require_once __DIR__ . '/../includes/staff-sidebar.php';
 ?>
 
+<div class="mtx-shell">
+
+<header class="mtx-page-head">
+  <div class="mtx-page-head-copy">
+    <span class="eyebrow">Staff Panel</span>
+    <h1>Bookings</h1>
+    <p>Confirm appointments, assign technicians, and track active service visits.</p>
+  </div>
+  <div class="mtx-head-actions">
+    <a href="<?= baseUrl('staff/new-booking.php') ?>" class="mtx-btn mtx-btn--primary"><i class="fas fa-plus"></i> New Booking</a>
+  </div>
+</header>
+
 <!-- Booking status KPI cards -->
-<section class="bk-stats-grid">
+<section class="mtx-kpi-grid mtx-kpi-grid--6" aria-label="Booking status">
   <?php foreach ($bookingStatCards as $card): ?>
-    <article class="bk-stat-card" style="--stat-color: <?= $card['color'] ?>;">
-      <span class="bk-stat-icon"><i class="fas <?= $card['icon'] ?>"></i></span>
-      <span class="bk-stat-label"><?= $card['label'] ?></span>
-      <span class="bk-stat-value"><?= $card['count'] ?></span>
-      <span class="bk-stat-desc">
-        <?= $card['desc'] ?>
-        <?php if ($card['label'] !== 'Total Bookings'): ?>
-          &middot; <strong><?= $statusPct($card['count']) ?>%</strong> of all
-        <?php endif; ?>
+    <article class="mtx-kpi" style="--kpi-color: <?= $card['color'] ?>;">
+      <div class="mtx-kpi-top">
+        <span class="mtx-kpi-label"><?= $card['label'] ?></span>
+        <span class="mtx-kpi-icon"><i class="fas <?= $card['icon'] ?>"></i></span>
+      </div>
+      <span class="mtx-kpi-value"><?= $card['count'] ?></span>
+      <span class="mtx-kpi-sub">
+        <?= $card['desc'] ?><?php if ($card['label'] !== 'Total Bookings'): ?> · <strong><?= $statusPct($card['count']) ?>%</strong><?php endif; ?>
       </span>
     </article>
   <?php endforeach; ?>
 </section>
 
-<section class="admin-card admin-page-stack">
-  <div class="admin-page-head">
+<?php if ($flash): ?><div class="alert success"><?= htmlspecialchars($flash) ?></div><?php endif; ?>
+<?php if ($flashErr): ?><div class="alert error"><?= htmlspecialchars($flashErr) ?></div><?php endif; ?>
+
+<section class="mtx-card mtx-card--flush">
+  <div class="mtx-card-head">
     <div>
-      <h1>Bookings</h1>
-      <p>Confirm appointments, assign technicians, and track active service visits.</p>
+      <h2><i class="fas fa-calendar-check"></i> All Bookings</h2>
+      <p>Pending first, then by schedule date.</p>
     </div>
-    <form method="get" class="admin-inline-form">
-      <input type="search" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search customer or #ID">
+    <form method="get" class="mtx-toolbar">
+      <div class="mtx-field-search">
+        <i class="fas fa-magnifying-glass"></i>
+        <input type="search" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Customer or #ID">
+      </div>
       <select name="status">
         <option value="">All statuses</option>
         <?php foreach ($validStatuses as $s): ?>
@@ -253,26 +271,23 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
           </option>
         <?php endforeach; ?>
       </select>
-      <button type="submit" class="btn btn-outline">Filter</button>
+      <button type="submit" class="mtx-btn mtx-btn--dark">Filter</button>
       <?php if ($search || $statusFilter): ?>
-        <a href="<?= baseUrl('staff/bookings.php') ?>" class="btn btn-outline">Reset</a>
+        <a href="<?= baseUrl('staff/bookings.php') ?>" class="mtx-btn mtx-btn--ghost">Reset</a>
       <?php endif; ?>
     </form>
   </div>
 
-  <?php if ($flash): ?><div class="alert success"><?= htmlspecialchars($flash) ?></div><?php endif; ?>
-  <?php if ($flashErr): ?><div class="alert error"><?= htmlspecialchars($flashErr) ?></div><?php endif; ?>
-
   <?php if ($bookings): ?>
-    <div class="admin-table-wrap">
-      <table class="admin-data-table">
+    <div class="mtx-table-wrap">
+      <table class="mtx-table">
         <thead>
           <tr>
-            <th>Schedule / #ID</th>
+            <th>Schedule</th>
             <th>Customer</th>
             <th>Motorcycle</th>
             <th>Services / Products</th>
-            <th>Total</th>
+            <th class="num">Total</th>
             <th>Status</th>
             <th>Technician</th>
             <th>Actions</th>
@@ -285,36 +300,56 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
             $isPending   = $b['status'] === 'pending';
             $isCancellable = in_array($b['status'], ['pending', 'confirmed'], true);
             $highlightRow = ($preloadConfirmId === $bid) ? 'style="background:#eff6ff;"' : '';
+            $serviceList = $b['services'] ? array_map('trim', explode(',', $b['services'])) : [];
+            $shownServices = array_slice($serviceList, 0, 2);
+            $moreServices = count($serviceList) - count($shownServices);
           ?>
             <tr <?= $highlightRow ?>>
               <td>
-                <strong><?= htmlspecialchars(date('M j, Y', strtotime($b['scheduled_date']))) ?></strong>
-                <div class="subtext"><?= $b['scheduled_time'] ? htmlspecialchars(date('g:i A', strtotime($b['scheduled_time']))) : 'No time set' ?></div>
-                <div class="subtext">#<?= $bid ?></div>
+                <div class="mtx-cell-main">
+                  <strong><?= htmlspecialchars(date('M j, Y', strtotime($b['scheduled_date']))) ?></strong>
+                  <span class="mtx-cell-sub"><?= $b['scheduled_time'] ? htmlspecialchars(date('g:i A', strtotime($b['scheduled_time']))) : 'No time set' ?> · #<?= $bid ?></span>
+                </div>
               </td>
               <td>
-                <strong><?= htmlspecialchars($b['customer_name']) ?></strong>
-                <div class="subtext"><?= htmlspecialchars($b['customer_email']) ?></div>
-                <?php if ($b['customer_phone']): ?>
-                  <div class="subtext"><?= htmlspecialchars($b['customer_phone']) ?></div>
-                <?php endif; ?>
+                <div class="mtx-cell-main">
+                  <strong><?= htmlspecialchars($b['customer_name']) ?></strong>
+                  <span class="mtx-cell-sub"><?= htmlspecialchars($b['customer_email']) ?></span>
+                  <?php if ($b['customer_phone']): ?>
+                    <span class="mtx-cell-sub"><?= htmlspecialchars($b['customer_phone']) ?></span>
+                  <?php endif; ?>
+                </div>
               </td>
               <td>
-                <strong><?= htmlspecialchars($b['vehicle_name'] ?: 'No vehicle') ?></strong>
-                <div class="subtext"><?= $b['type_name'] ? htmlspecialchars($b['type_name']) . ' · ' . (int)$b['cc'] . 'cc' : '' ?></div>
-                <?php if ($b['plate_number']): ?>
-                  <div class="subtext"><?= htmlspecialchars($b['plate_number']) ?></div>
-                <?php endif; ?>
+                <div class="mtx-cell-main">
+                  <strong><?= htmlspecialchars($b['vehicle_name'] ?: 'No vehicle') ?></strong>
+                  <span class="mtx-cell-sub">
+                    <?= $b['type_name'] ? htmlspecialchars($b['type_name']) . ' · ' . (int)$b['cc'] . 'cc' : '' ?><?= $b['plate_number'] ? ' · ' . htmlspecialchars($b['plate_number']) : '' ?>
+                  </span>
+                </div>
               </td>
               <td>
-                <?= htmlspecialchars($b['services'] ?: '—') ?>
-                <?php if ($b['products']): ?>
-                  <div class="subtext"><?= htmlspecialchars($b['products']) ?></div>
-                <?php endif; ?>
+                <div class="mtx-cell-main">
+                  <?php if ($shownServices): ?>
+                    <span style="display:flex;gap:5px;flex-wrap:wrap;">
+                      <?php foreach ($shownServices as $svcName): ?>
+                        <span class="mtx-pill" style="--pill-color:#2563eb;"><?= htmlspecialchars($svcName) ?></span>
+                      <?php endforeach; ?>
+                      <?php if ($moreServices > 0): ?>
+                        <span class="mtx-pill" style="--pill-color:#6b7280;" title="<?= htmlspecialchars(implode(', ', array_slice($serviceList, 2))) ?>">+<?= $moreServices ?> more</span>
+                      <?php endif; ?>
+                    </span>
+                  <?php else: ?>
+                    <span class="mtx-cell-sub">—</span>
+                  <?php endif; ?>
+                  <?php if ($b['products']): ?>
+                    <span class="mtx-cell-sub" title="<?= htmlspecialchars($b['products']) ?>"><i class="fas fa-box" style="color:#d97706;"></i> <?= htmlspecialchars(mb_strlen($b['products']) > 48 ? mb_substr($b['products'], 0, 48) . '…' : $b['products']) ?></span>
+                  <?php endif; ?>
+                </div>
               </td>
-              <td><strong><?= formatPrice((float)$b['total_amount']) ?></strong></td>
+              <td class="num"><span class="mtx-money"><?= formatPrice((float)$b['total_amount']) ?></span></td>
               <td>
-                <span class="status-pill" style="--status-color:<?= $color ?>;">
+                <span class="mtx-pill" style="--pill-color:<?= $color ?>;">
                   <?= ucfirst(str_replace('_', ' ', $b['status'])) ?>
                 </span>
               </td>
@@ -322,29 +357,28 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
               <!-- Technician column -->
               <td>
                 <?php if ($b['technician_name']): ?>
-                  <span class="subtext" style="font-weight:700;color:#15803d;">
-                    <i class="fas fa-user-cog"></i> <?= htmlspecialchars($b['technician_name']) ?>
-                  </span>
+                  <span class="mtx-pill" style="--pill-color:#15803d;"><i class="fas fa-user-cog"></i> <?= htmlspecialchars($b['technician_name']) ?></span>
                 <?php else: ?>
-                  <span class="subtext">Unassigned</span>
+                  <span class="mtx-cell-sub">Unassigned</span>
                 <?php endif; ?>
               </td>
 
               <!-- Actions column -->
               <td>
+                <div style="display:grid;gap:6px;justify-items:stretch;min-width:170px;">
                 <?php if ($isPending): ?>
                   <!-- CONFIRM = AUTO-ASSIGN the fairest ready + qualified technician -->
                   <form method="post" id="confirm-form-<?= $bid ?>">
                     <?= authContextField() ?>
                     <input type="hidden" name="action" value="confirm_auto">
                     <input type="hidden" name="booking_id" value="<?= $bid ?>">
-                    <button type="submit" class="btn btn-primary" style="font-size:.8rem;padding:6px 14px;">
+                    <button type="submit" class="mtx-btn mtx-btn--primary mtx-btn--sm" style="width:100%;">
                       <i class="fas fa-bolt"></i> Confirm (Auto-Assign)
                     </button>
                   </form>
 
                   <!-- MANUAL ASSIGN — staff override, all technicians selectable -->
-                  <form method="post" class="confirm-form" style="margin-top:6px;">
+                  <form method="post" class="confirm-form">
                     <?= authContextField() ?>
                     <input type="hidden" name="action" value="confirm_booking">
                     <input type="hidden" name="booking_id" value="<?= $bid ?>">
@@ -366,41 +400,49 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
                         <option value="<?= $tid ?>"><?= htmlspecialchars($t['name'] . ($marks ? ' (' . implode(', ', $marks) . ')' : '')) ?></option>
                       <?php endforeach; ?>
                     </select>
-                    <button type="submit" class="btn btn-outline" style="font-size:.8rem;padding:6px 14px;margin-top:6px;">
+                    <button type="submit" class="mtx-btn mtx-btn--ghost mtx-btn--sm" style="width:100%;margin-top:6px;">
                       <i class="fas fa-user-cog"></i> Assign
                     </button>
                   </form>
                 <?php endif; ?>
 
                 <?php if ($isCancellable): ?>
-                  <form method="post" style="margin-top:6px;" onsubmit="return confirm('Cancel booking #<?= $bid ?>?');">
+                  <form method="post" onsubmit="return confirm('Cancel booking #<?= $bid ?>?');">
                     <?= authContextField() ?>
                     <input type="hidden" name="action" value="cancel_booking">
                     <input type="hidden" name="booking_id" value="<?= $bid ?>">
-                    <button type="submit" class="btn btn-outline" style="font-size:.8rem;padding:6px 14px;color:#b91c1c;border-color:#b91c1c;">
+                    <button type="submit" class="mtx-btn mtx-btn--ghost mtx-btn--sm" style="width:100%;color:#b91c1c;border-color:#f3c1c1;">
                       <i class="fas fa-times"></i> Cancel
                     </button>
                   </form>
                 <?php endif; ?>
 
-                <?php if (!$isPending && !$isCancellable && $b['status'] !== 'cancelled'): ?>
-                  <span class="subtext">No actions available</span>
-                <?php endif; ?>
                 <!-- Always show View Details -->
-                <a href="<?= baseUrl('staff/booking-detail.php?id=' . $bid) ?>"
-                   class="btn btn-outline" style="font-size:.8rem;padding:6px 14px;margin-top:6px;display:inline-block;">
-                  <i class="fas fa-eye"></i> View
+                <a href="<?= baseUrl('staff/booking-detail.php?id=' . $bid) ?>" class="mtx-btn mtx-btn--ghost mtx-btn--sm" style="width:100%;">
+                  <i class="fas fa-eye"></i> View Details
                 </a>
+                </div>
               </td>
             </tr>
           <?php endforeach; ?>
         </tbody>
       </table>
     </div>
+    <div class="mtx-card-foot">
+      <span>Showing <?= count($bookings) ?> booking<?= count($bookings) !== 1 ? 's' : '' ?><?= ($search || $statusFilter) ? ' (filtered)' : '' ?></span>
+    </div>
   <?php else: ?>
-    <p class="empty-note">No bookings found.</p>
+    <div style="padding:24px;">
+      <div class="mtx-empty">
+        <i class="fas fa-calendar-xmark"></i>
+        <strong>No bookings found.</strong>
+        <span>Try a different search or status filter.</span>
+      </div>
+    </div>
   <?php endif; ?>
 </section>
+
+</div><!-- /.mtx-shell -->
 
 <?php if ($preloadConfirmId > 0): ?>
 <script>

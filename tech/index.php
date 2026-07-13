@@ -125,64 +125,95 @@ $earningsMonth = techEarningsBetween($techId, $monthStart, $today);
 $earningsPerService = techEarningsPerService($techId);
 ?>
 
-<section class="admin-hero" style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap;">
-  <div>
+<div class="mtx-shell">
+
+<header class="mtx-page-head">
+  <div class="mtx-page-head-copy">
     <span class="eyebrow">Technician Panel</span>
     <h1>Work Queue</h1>
     <p>Jobs assigned to you. Complete your active jobs and log any notes.</p>
   </div>
-  <div style="text-align:right;">
-    <span class="status-pill" style="--status-color:<?= $isReady ? '#2563eb' : '#6b7280' ?>;font-size:.9rem;">
-      <?= $isReady ? '🟢 Ready / On Site' : '⚪ Off Duty' ?>
+  <div class="mtx-head-actions" style="align-items:center;">
+    <span class="mtx-pill" style="--pill-color:<?= $isReady ? '#15803d' : '#6b7280' ?>;font-size:.82rem;">
+      <i class="fas fa-circle"></i> <?= $isReady ? 'Ready / On Site' : 'Off Duty' ?>
     </span>
-    <form method="post" class="admin-toggle-form">
+    <form method="post" class="admin-toggle-form" style="margin:0;">
       <?= authContextField() ?>
       <input type="hidden" name="action" value="toggle_availability">
-      <label>
+      <label class="mtx-switch">
         <input type="checkbox" name="is_ready" value="1" <?= $isReady ? 'checked' : '' ?> onchange="this.form.submit()">
+        <span class="mtx-switch-track"></span>
         Available for new jobs
       </label>
     </form>
   </div>
-</section>
+</header>
 
 <?php if ($flash): ?><div class="alert success"><?= htmlspecialchars($flash) ?></div><?php endif; ?>
 <?php if ($flashErr): ?><div class="alert error"><?= htmlspecialchars($flashErr) ?></div><?php endif; ?>
 
 <!-- MY STATS & EARNINGS (visible only to me) -->
-<section class="metric-grid" style="grid-template-columns:repeat(6, minmax(0,1fr));">
-  <article><span>Customers Today</span><strong><?= $customersServicedToday ?></strong><i class="fas fa-user-check"></i></article>
-  <article><span>Pending Jobs</span><strong><?= $pendingJobsCount ?></strong><i class="fas fa-hourglass-half"></i></article>
-  <article><span>Completed Jobs</span><strong><?= $completedJobsCount ?></strong><i class="fas fa-check-double"></i></article>
-  <article><span>Today's Earnings</span><strong style="font-size:1.35rem;"><?= formatPrice($earningsToday) ?></strong><i class="fas fa-peso-sign"></i></article>
-  <article><span>This Week</span><strong style="font-size:1.35rem;"><?= formatPrice($earningsWeek) ?></strong><i class="fas fa-calendar-week"></i></article>
-  <article><span>This Month</span><strong style="font-size:1.35rem;"><?= formatPrice($earningsMonth) ?></strong><i class="fas fa-calendar"></i></article>
+<section class="mtx-kpi-grid mtx-kpi-grid--6" aria-label="My stats and earnings">
+  <article class="mtx-kpi" style="--kpi-color:#0369a1;">
+    <div class="mtx-kpi-top"><span class="mtx-kpi-label">Customers Today</span><span class="mtx-kpi-icon"><i class="fas fa-user-check"></i></span></div>
+    <span class="mtx-kpi-value"><?= $customersServicedToday ?></span>
+  </article>
+  <article class="mtx-kpi" style="--kpi-color:#d97706;">
+    <div class="mtx-kpi-top"><span class="mtx-kpi-label">Pending Jobs</span><span class="mtx-kpi-icon"><i class="fas fa-hourglass-half"></i></span></div>
+    <span class="mtx-kpi-value"><?= $pendingJobsCount ?></span>
+  </article>
+  <article class="mtx-kpi" style="--kpi-color:#15803d;">
+    <div class="mtx-kpi-top"><span class="mtx-kpi-label">Completed Jobs</span><span class="mtx-kpi-icon"><i class="fas fa-check-double"></i></span></div>
+    <span class="mtx-kpi-value"><?= $completedJobsCount ?></span>
+  </article>
+  <article class="mtx-kpi mtx-kpi--featured">
+    <div class="mtx-kpi-top"><span class="mtx-kpi-label">Today's Earnings</span><span class="mtx-kpi-icon"><i class="fas fa-peso-sign"></i></span></div>
+    <span class="mtx-kpi-value"><?= formatPrice($earningsToday) ?></span>
+  </article>
+  <article class="mtx-kpi" style="--kpi-color:#2563eb;">
+    <div class="mtx-kpi-top"><span class="mtx-kpi-label">This Week</span><span class="mtx-kpi-icon"><i class="fas fa-calendar-week"></i></span></div>
+    <span class="mtx-kpi-value" style="font-size:1.3rem;"><?= formatPrice($earningsWeek) ?></span>
+  </article>
+  <article class="mtx-kpi" style="--kpi-color:#7c3aed;">
+    <div class="mtx-kpi-top"><span class="mtx-kpi-label">This Month</span><span class="mtx-kpi-icon"><i class="fas fa-calendar"></i></span></div>
+    <span class="mtx-kpi-value" style="font-size:1.3rem;"><?= formatPrice($earningsMonth) ?></span>
+  </article>
 </section>
 
 <?php if ($earningsPerService): ?>
-<section class="admin-card" style="margin-bottom:28px;padding:24px;">
-  <h2 style="margin-top:0;">My Earnings per Service</h2>
-  <p class="subtext" style="margin:0 0 10px;">Your <?= (int)(TECH_LABOR_SHARE * 100) ?>% share of the labor fee on completed jobs.</p>
-  <?php foreach ($earningsPerService as $eps): ?>
-    <div class="list-row">
-      <span>
-        <?= htmlspecialchars($eps['service_name']) ?>
-        <span class="subtext"><?= $eps['jobs'] ?> job<?= $eps['jobs'] === 1 ? '' : 's' ?></span>
-      </span>
-      <strong><?= formatPrice($eps['earnings']) ?></strong>
+<section class="mtx-card">
+  <div class="mtx-card-head">
+    <div>
+      <h2><i class="fas fa-coins"></i> My Earnings per Service</h2>
+      <p>Your <?= (int)(TECH_LABOR_SHARE * 100) ?>% share of the labor fee on completed jobs.</p>
     </div>
-  <?php endforeach; ?>
+  </div>
+  <div class="mtx-list">
+    <?php foreach ($earningsPerService as $i => $eps): ?>
+      <div class="mtx-list-row">
+        <span class="mtx-list-rank">#<?= $i + 1 ?></span>
+        <span class="mtx-list-main">
+          <strong><?= htmlspecialchars($eps['service_name']) ?></strong>
+          <span><?= $eps['jobs'] ?> job<?= $eps['jobs'] === 1 ? '' : 's' ?></span>
+        </span>
+        <span class="mtx-list-end"><strong class="mtx-money--green"><?= formatPrice($eps['earnings']) ?></strong></span>
+      </div>
+    <?php endforeach; ?>
+  </div>
 </section>
 <?php endif; ?>
 
 <!-- ACTIVE & CONFIRMED JOBS -->
-<section class="admin-card admin-page-stack" style="margin-bottom:28px;">
-  <div class="admin-page-head" style="padding:22px 24px 0;">
-    <h2 style="margin:0;">Active Jobs (<?= count($activeJobs) ?>)</h2>
+<section class="mtx-card mtx-card--flush">
+  <div class="mtx-card-head">
+    <div>
+      <h2><i class="fas fa-wrench"></i> Active Jobs (<?= count($activeJobs) ?>)</h2>
+      <p>Confirmed and in-progress assignments, soonest first.</p>
+    </div>
   </div>
 
   <?php if ($activeJobs): ?>
-    <div style="display:grid;gap:18px;padding:20px 24px;">
+    <div style="display:grid;gap:16px;padding:0 24px 24px;">
       <?php foreach ($activeJobs as $b): ?>
         <?php
           $bid   = (int)$b['id'];
@@ -238,20 +269,20 @@ $earningsPerService = techEarningsPerService($techId);
           </div>
 
           <div class="job-card-footer">
-            <a href="<?= baseUrl('tech/job.php?id=' . $bid) ?>" class="btn btn-outline">
-              <i class="fas fa-eye"></i> View / Add Notes
+            <a href="<?= baseUrl('tech/job.php?id=' . $bid) ?>" class="mtx-btn mtx-btn--ghost mtx-btn--sm">
+              <i class="fas fa-eye"></i> View Details / Notes
             </a>
             <?php if ($isConfirmed): ?>
               <form method="post" style="display:inline;">
                 <?= authContextField() ?>
                 <input type="hidden" name="action" value="start_job">
                 <input type="hidden" name="booking_id" value="<?= $bid ?>">
-                <button type="submit" class="btn btn-primary">
+                <button type="submit" class="mtx-btn mtx-btn--primary mtx-btn--sm">
                   <i class="fas fa-play"></i> Start Job
                 </button>
               </form>
             <?php elseif ($isInProgress): ?>
-              <a href="<?= baseUrl('tech/job.php?id=' . $bid) ?>" class="btn btn-primary">
+              <a href="<?= baseUrl('tech/job.php?id=' . $bid) ?>" class="mtx-btn mtx-btn--primary mtx-btn--sm" style="background:#15803d;box-shadow:0 6px 16px rgba(21,128,61,.24);">
                 <i class="fas fa-flag-checkered"></i> Complete Job
               </a>
             <?php endif; ?>
@@ -260,35 +291,45 @@ $earningsPerService = techEarningsPerService($techId);
       <?php endforeach; ?>
     </div>
   <?php else: ?>
-    <div style="padding:48px;text-align:center;color:var(--muted);">
-      <i class="fas fa-check-double" style="font-size:3rem;color:#15803d;margin-bottom:14px;display:block;"></i>
-      <strong>No active jobs!</strong><br>You have no confirmed or in-progress assignments right now.
+    <div style="padding:0 24px 24px;">
+      <div class="mtx-empty">
+        <i class="fas fa-check-double" style="color:#15803d;"></i>
+        <strong>No active jobs!</strong>
+        <span>You have no confirmed or in-progress assignments right now.</span>
+      </div>
     </div>
   <?php endif; ?>
 </section>
 
 <!-- RECENTLY COMPLETED -->
 <?php if ($completedJobs): ?>
-<section class="admin-card admin-page-stack">
-  <div class="admin-page-head" style="padding:18px 24px 0;">
-    <h2 style="margin:0;">Recently Completed</h2>
+<section class="mtx-card mtx-card--flush">
+  <div class="mtx-card-head">
+    <div>
+      <h2><i class="fas fa-flag-checkered"></i> Recently Completed</h2>
+      <p>Your last <?= count($completedJobs) ?> finished job<?= count($completedJobs) === 1 ? '' : 's' ?>.</p>
+    </div>
+    <a href="<?= baseUrl('tech/history.php') ?>" class="mtx-btn mtx-btn--ghost mtx-btn--sm">Full history</a>
   </div>
-  <div class="admin-table-wrap">
-    <table class="admin-data-table">
+  <div class="mtx-table-wrap">
+    <table class="mtx-table">
       <thead>
-        <tr><th>Date</th><th>Customer</th><th>Motorcycle</th><th>Services</th><th>Status</th></tr>
+        <tr><th>Date</th><th>Customer</th><th>Motorcycle</th><th>Services</th><th>Status</th><th></th></tr>
       </thead>
       <tbody>
         <?php foreach ($completedJobs as $b): ?>
           <tr>
             <td>
-              <strong><?= htmlspecialchars(date('M j, Y', strtotime($b['scheduled_date']))) ?></strong>
-              <div class="subtext">#<?= (int)$b['id'] ?></div>
+              <div class="mtx-cell-main">
+                <strong><?= htmlspecialchars(date('M j, Y', strtotime($b['scheduled_date']))) ?></strong>
+                <span class="mtx-cell-sub">#<?= (int)$b['id'] ?></span>
+              </div>
             </td>
             <td><?= htmlspecialchars($b['customer_name']) ?></td>
             <td><?= htmlspecialchars($b['vehicle_name'] ?: '—') ?></td>
-            <td><?= htmlspecialchars($b['services'] ?: '—') ?></td>
-            <td><span class="status-pill" style="--status-color:#15803d;">Completed</span></td>
+            <td><span style="font-size:.84rem;"><?= htmlspecialchars($b['services'] ?: '—') ?></span></td>
+            <td><span class="mtx-pill" style="--pill-color:#15803d;">Completed</span></td>
+            <td class="num"><a href="<?= baseUrl('tech/job.php?id=' . (int)$b['id']) ?>" class="mtx-btn mtx-btn--ghost mtx-btn--sm"><i class="fas fa-eye"></i> View Details</a></td>
           </tr>
         <?php endforeach; ?>
       </tbody>
@@ -296,6 +337,8 @@ $earningsPerService = techEarningsPerService($techId);
   </div>
 </section>
 <?php endif; ?>
+
+</div><!-- /.mtx-shell -->
 
 <?= authContextScriptTag() ?>
 </main></div></div></body></html>

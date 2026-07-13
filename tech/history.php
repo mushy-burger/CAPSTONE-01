@@ -84,78 +84,94 @@ $statusColors = [
 ];
 ?>
 
-<section class="admin-hero">
-  <div>
-    <span class="eyebrow">Technician</span>
+<div class="mtx-shell">
+
+<header class="mtx-page-head">
+  <div class="mtx-page-head-copy">
+    <span class="eyebrow">Technician Panel</span>
     <h1>Job History</h1>
     <p>Search and review all your past and current job assignments.</p>
   </div>
-</section>
-
-<!-- Filters -->
-<section class="admin-card" style="margin-bottom:18px;padding:16px 24px;">
-  <form method="get" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
-    <input type="search" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Customer name, phone or #ID" style="min-width:180px;flex:1;">
-    <select name="status">
-      <option value="">All statuses</option>
-      <?php foreach ($validStatuses as $s): ?>
-        <option value="<?= $s ?>" <?= $status===$s?'selected':'' ?>><?= ucfirst(str_replace('_',' ',$s)) ?></option>
-      <?php endforeach; ?>
-    </select>
-    <input type="date" name="date_from" value="<?= htmlspecialchars($dateFrom) ?>" title="From date">
-    <input type="date" name="date_to"   value="<?= htmlspecialchars($dateTo) ?>"   title="To date">
-    <button type="submit" class="btn btn-outline">Search</button>
-    <?php if ($search||$status||$dateFrom||$dateTo): ?>
-      <a href="<?= baseUrl('tech/history.php') ?>" class="btn btn-outline">Reset</a>
-    <?php endif; ?>
-  </form>
-</section>
-
-<!-- Stats bar -->
-<section class="metric-grid" style="margin-bottom:18px;">
-  <article><span>Results</span><strong><?= $totalCount ?></strong><i class="fas fa-list"></i></article>
-  <article><span>This Page</span><strong><?= count($jobs) ?></strong><i class="fas fa-file"></i></article>
-  <article><span>Page</span><strong><?= $page ?> / <?= $totalPages ?></strong><i class="fas fa-book-open"></i></article>
-</section>
+  <div class="mtx-page-head-meta">
+    <i class="fas fa-list"></i> <?= $totalCount ?> result<?= $totalCount === 1 ? '' : 's' ?> · Page <?= $page ?> of <?= $totalPages ?>
+  </div>
+</header>
 
 <!-- Results -->
-<section class="admin-card admin-page-stack">
+<section class="mtx-card mtx-card--flush">
+  <div class="mtx-card-head">
+    <div>
+      <h2><i class="fas fa-history"></i> All Assignments</h2>
+      <p>Newest first. Click a row action to open the full job detail.</p>
+    </div>
+    <form method="get" class="mtx-toolbar">
+      <div class="mtx-field-search">
+        <i class="fas fa-magnifying-glass"></i>
+        <input type="search" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Customer, phone or #ID">
+      </div>
+      <select name="status">
+        <option value="">All statuses</option>
+        <?php foreach ($validStatuses as $s): ?>
+          <option value="<?= $s ?>" <?= $status===$s?'selected':'' ?>><?= ucfirst(str_replace('_',' ',$s)) ?></option>
+        <?php endforeach; ?>
+      </select>
+      <input type="date" name="date_from" value="<?= htmlspecialchars($dateFrom) ?>" title="From date">
+      <input type="date" name="date_to"   value="<?= htmlspecialchars($dateTo) ?>"   title="To date">
+      <button type="submit" class="mtx-btn mtx-btn--dark">Search</button>
+      <?php if ($search||$status||$dateFrom||$dateTo): ?>
+        <a href="<?= baseUrl('tech/history.php') ?>" class="mtx-btn mtx-btn--ghost">Reset</a>
+      <?php endif; ?>
+    </form>
+  </div>
+
   <?php if ($jobs): ?>
-    <div class="admin-table-wrap">
-      <table class="admin-data-table">
+    <div class="mtx-table-wrap">
+      <table class="mtx-table">
         <thead>
           <tr>
-            <th>#</th><th>Customer</th><th>Vehicle</th><th>Services</th><th>Date</th><th>Total</th><th>Status</th><th>Notes</th>
+            <th>Job</th><th>Customer</th><th>Vehicle</th><th>Services</th><th class="num">Total</th><th>Status</th><th>Notes</th><th></th>
           </tr>
         </thead>
         <tbody>
           <?php foreach ($jobs as $job): ?>
             <?php $sc = $statusColors[$job['status']] ?? $statusColors['pending']; ?>
             <tr>
-              <td><strong>#<?= (int)$job['id'] ?></strong></td>
               <td>
-                <strong><?= htmlspecialchars($job['customer_name']) ?></strong>
-                <?php if ($job['customer_phone']): ?>
-                  <div class="subtext"><?= htmlspecialchars($job['customer_phone']) ?></div>
-                <?php endif; ?>
+                <div class="mtx-cell-main">
+                  <strong>#<?= (int)$job['id'] ?></strong>
+                  <span class="mtx-cell-sub">
+                    <?= htmlspecialchars($job['scheduled_date'] ? date('M j, Y', strtotime($job['scheduled_date'])) : '—') ?><?= $job['scheduled_time'] ? ' · ' . htmlspecialchars(date('g:i A', strtotime($job['scheduled_time']))) : '' ?>
+                  </span>
+                </div>
               </td>
               <td>
-                <?= htmlspecialchars($job['bike_label'] ?? '—') ?>
-                <?php if ($job['engine_cc']): ?><div class="subtext"><?= (int)$job['engine_cc'] ?>cc</div><?php endif; ?>
+                <div class="mtx-cell-main">
+                  <strong><?= htmlspecialchars($job['customer_name']) ?></strong>
+                  <?php if ($job['customer_phone']): ?>
+                    <span class="mtx-cell-sub"><?= htmlspecialchars($job['customer_phone']) ?></span>
+                  <?php endif; ?>
+                </div>
               </td>
-              <td style="max-width:180px;font-size:.83rem;"><?= htmlspecialchars($job['services'] ?? '—') ?></td>
               <td>
-                <?= htmlspecialchars($job['scheduled_date'] ? date('M j, Y', strtotime($job['scheduled_date'])) : '—') ?>
-                <?php if ($job['scheduled_time']): ?><div class="subtext"><?= htmlspecialchars(date('g:i A', strtotime($job['scheduled_time']))) ?></div><?php endif; ?>
+                <div class="mtx-cell-main">
+                  <strong style="font-weight:600;"><?= htmlspecialchars($job['bike_label'] ?? '—') ?></strong>
+                  <?php if ($job['engine_cc']): ?><span class="mtx-cell-sub"><?= (int)$job['engine_cc'] ?>cc</span><?php endif; ?>
+                </div>
               </td>
-              <td><strong><?= formatPrice((float)$job['total_amount']) ?></strong></td>
+              <td style="max-width:200px;"><span style="font-size:.83rem;"><?= htmlspecialchars($job['services'] ?? '—') ?></span></td>
+              <td class="num"><span class="mtx-money"><?= formatPrice((float)$job['total_amount']) ?></span></td>
               <td>
-                <span style="padding:3px 10px;border-radius:20px;font-size:.75rem;font-weight:900;background:<?= $sc['bg'] ?>;color:<?= $sc['color'] ?>;">
-                  <?= strtoupper(str_replace('_',' ',$job['status'])) ?>
+                <span class="mtx-pill" style="--pill-color:<?= $sc['color'] ?>;">
+                  <?= ucfirst(str_replace('_',' ',$job['status'])) ?>
                 </span>
               </td>
-              <td style="max-width:140px;font-size:.82rem;color:#6b7280;">
-                <?= $job['tech_notes'] ? htmlspecialchars(mb_substr($job['tech_notes'],0,60)).(mb_strlen($job['tech_notes'])>60?'…':'') : '—' ?>
+              <td style="max-width:150px;">
+                <span class="mtx-cell-sub" <?= $job['tech_notes'] ? 'title="' . htmlspecialchars($job['tech_notes'], ENT_QUOTES) . '"' : '' ?>>
+                  <?= $job['tech_notes'] ? htmlspecialchars(mb_substr($job['tech_notes'],0,60)).(mb_strlen($job['tech_notes'])>60?'…':'') : '—' ?>
+                </span>
+              </td>
+              <td class="num">
+                <a href="<?= baseUrl('tech/job.php?id=' . (int)$job['id']) ?>" class="mtx-btn mtx-btn--ghost mtx-btn--sm"><i class="fas fa-eye"></i> View Details</a>
               </td>
             </tr>
           <?php endforeach; ?>
@@ -164,23 +180,34 @@ $statusColors = [
     </div>
 
     <!-- Pagination -->
-    <?php if ($totalPages > 1): ?>
-      <div style="display:flex;gap:8px;align-items:center;padding:14px 24px;border-top:1px solid var(--line);flex-wrap:wrap;">
-        <?php
-          $q = http_build_query(array_filter(['q'=>$search,'status'=>$status,'date_from'=>$dateFrom,'date_to'=>$dateTo]));
-          $base = baseUrl('tech/history.php') . ($q?"?$q&":'?');
-        ?>
-        <a href="<?= $base ?>page=1" class="btn btn-outline" style="font-size:.82rem;" <?= $page===1?'aria-disabled="true"':'' ?>>«</a>
-        <a href="<?= $base ?>page=<?= max(1,$page-1) ?>" class="btn btn-outline" style="font-size:.82rem;">‹ Prev</a>
-        <span style="font-size:.85rem;color:var(--muted);">Page <?= $page ?> of <?= $totalPages ?></span>
-        <a href="<?= $base ?>page=<?= min($totalPages,$page+1) ?>" class="btn btn-outline" style="font-size:.82rem;">Next ›</a>
-        <a href="<?= $base ?>page=<?= $totalPages ?>" class="btn btn-outline" style="font-size:.82rem;" <?= $page===$totalPages?'aria-disabled="true"':'' ?>>»</a>
-      </div>
-    <?php endif; ?>
+    <div class="mtx-card-foot">
+      <span>Showing <?= count($jobs) ?> of <?= $totalCount ?> job<?= $totalCount === 1 ? '' : 's' ?></span>
+      <?php if ($totalPages > 1): ?>
+        <span style="display:flex;gap:6px;align-items:center;">
+          <?php
+            $q = http_build_query(array_filter(['q'=>$search,'status'=>$status,'date_from'=>$dateFrom,'date_to'=>$dateTo]));
+            $base = baseUrl('tech/history.php') . ($q?"?$q&":'?');
+          ?>
+          <a href="<?= $base ?>page=1" class="mtx-btn mtx-btn--ghost mtx-btn--sm" <?= $page===1?'aria-disabled="true"':'' ?>>«</a>
+          <a href="<?= $base ?>page=<?= max(1,$page-1) ?>" class="mtx-btn mtx-btn--ghost mtx-btn--sm">‹ Prev</a>
+          <span style="font-size:.82rem;color:var(--muted);padding:0 6px;">Page <?= $page ?> of <?= $totalPages ?></span>
+          <a href="<?= $base ?>page=<?= min($totalPages,$page+1) ?>" class="mtx-btn mtx-btn--ghost mtx-btn--sm">Next ›</a>
+          <a href="<?= $base ?>page=<?= $totalPages ?>" class="mtx-btn mtx-btn--ghost mtx-btn--sm" <?= $page===$totalPages?'aria-disabled="true"':'' ?>>»</a>
+        </span>
+      <?php endif; ?>
+    </div>
   <?php else: ?>
-    <p class="empty-note">No jobs match your search.</p>
+    <div style="padding:24px;">
+      <div class="mtx-empty">
+        <i class="fas fa-clipboard-list"></i>
+        <strong>No jobs match your search.</strong>
+        <span>Try widening the date range or clearing filters.</span>
+      </div>
+    </div>
   <?php endif; ?>
 </section>
+
+</div><!-- /.mtx-shell -->
 
 <?= authContextScriptTag() ?>
 </main></div></div></body></html>

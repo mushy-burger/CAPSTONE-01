@@ -134,25 +134,29 @@ $color = $statusColor[$booking['status']] ?? '#6b7280';
 $pageTitle = 'Booking #' . $bookingId;
 ?>
 
+<div class="mtx-shell">
+
 <?php if ($flash): ?><div class="alert success"><?= htmlspecialchars($flash) ?></div><?php endif; ?>
 <?php if ($flashErr): ?><div class="alert error"><?= htmlspecialchars($flashErr) ?></div><?php endif; ?>
 
-<div style="display:flex;align-items:center;gap:14px;margin-bottom:22px;flex-wrap:wrap;">
-  <a href="<?= baseUrl('staff/bookings.php') ?>" class="btn btn-outline"><i class="fas fa-arrow-left"></i> Back to Bookings</a>
-  <h1 style="margin:0;font-size:1.5rem;">Booking #<?= $bookingId ?></h1>
-  <span class="status-pill" style="--status-color:<?= $color ?>;">
-    <?= ucfirst(str_replace('_', ' ', $booking['status'])) ?>
-  </span>
-</div>
+<header class="mtx-page-head">
+  <div class="mtx-page-head-copy" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+    <a href="<?= baseUrl('staff/bookings.php') ?>" class="mtx-btn mtx-btn--ghost mtx-btn--sm"><i class="fas fa-arrow-left"></i> Back to Bookings</a>
+    <h1 style="margin:0;">Booking #<?= $bookingId ?></h1>
+    <span class="mtx-pill" style="--pill-color:<?= $color ?>;font-size:.82rem;">
+      <?= ucfirst(str_replace('_', ' ', $booking['status'])) ?>
+    </span>
+  </div>
+</header>
 
 <div class="job-detail-grid">
 
   <!-- LEFT COLUMN: Info cards -->
-  <div style="display:grid;gap:20px;">
+  <div class="mtx-stack">
 
     <!-- Customer -->
-    <section class="admin-card" style="padding:22px;">
-      <h2 style="margin:0 0 16px;font-size:1rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Customer</h2>
+    <section class="mtx-card">
+      <div class="mtx-card-head"><div><h2><i class="fas fa-user"></i> Customer</h2></div></div>
       <div class="detail-row"><span>Name</span><strong><?= htmlspecialchars($booking['customer_name']) ?></strong></div>
       <div class="detail-row"><span>Email</span><?= htmlspecialchars($booking['customer_email']) ?></div>
       <?php if ($booking['customer_phone']): ?>

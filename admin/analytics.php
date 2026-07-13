@@ -2,67 +2,45 @@
 $pageTitle = 'Analytics';
 require_once __DIR__ . '/../includes/admin-sidebar.php';
 require_once __DIR__ . '/../includes/db.php';
-require_once __DIR__ . '/../includes/TechnicianService.php';
+require_once __DIR__ . '/../includes/BusinessMetrics.php';
 
-// Date range filter
+$shopPct = (int)round(SHOP_LABOR_SHARE * 100);
+$techPct = (int)round(TECH_LABOR_SHARE * 100);
+
+// --- Date range filter (period presets or custom range) ---
 $dateFrom = trim($_GET['date_from'] ?? '');
 $dateTo   = trim($_GET['date_to']   ?? '');
-$period   = trim($_GET['period']    ?? '7');
+$period   = trim($_GET['period']    ?? '30');
 $validPeriods = ['7'=>'Last 7 Days','30'=>'Last 30 Days','90'=>'Last 90 Days','365'=>'Last Year'];
 
-// Build date clause
 if ($dateFrom && $dateTo) {
-    $dateClause  = "DATE(created_at) BETWEEN ? AND ?";
-    $dateParams  = [$dateFrom, $dateTo];
-    $labelPeriod = date('M j',strtotime($dateFrom)).' – '.date('M j, Y',strtotime($dateTo));
+    $rangeFrom   = $dateFrom;
+    $rangeTo     = $dateTo;
+    $labelPeriod = date('M j', strtotime($dateFrom)) . ' – ' . date('M j, Y', strtotime($dateTo));
 } else {
-    $days        = in_array($period, array_keys($validPeriods)) ? (int)$period : 7;
-    $dateClause  = "created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)";
-    $dateParams  = [$days];
+    $days        = array_key_exists($period, $validPeriods) ? (int)$period : 30;
+    $rangeFrom   = date('Y-m-d', strtotime('-' . ($days - 1) . ' days'));
+    $rangeTo     = date('Y-m-d');
     $labelPeriod = $validPeriods[(string)$days] ?? "Last $days Days";
 }
 
-// Summary metrics
-$salesTotal      = (float)(fetchOne("SELECT COALESCE(SUM(total),0) AS n FROM orders WHERE status!='cancelled'")['n'] ?? 0);
-$orderCount      = (int)(fetchOne("SELECT COUNT(*) AS n FROM orders")['n'] ?? 0);
-$completedOrders = (int)(fetchOne("SELECT COUNT(*) AS n FROM orders WHERE status='completed'")['n'] ?? 0);
-$pendingBookings = (int)(fetchOne("SELECT COUNT(*) AS n FROM bookings WHERE status IN ('pending','confirmed','in_progress')")['n'] ?? 0);
+// --- Executive totals: all-time (matches Dashboard) + selected period ---
+$biz       = bizTotals();
+$bizPeriod = bizTotals($rangeFrom, $rangeTo);
 
-// Period-scoped revenue
-$periodRevenue = (float)(fetchOne(
-    "SELECT COALESCE(SUM(total),0) AS n FROM orders WHERE status!='cancelled' AND $dateClause",
-    $dateParams
-)['n'] ?? 0);
+// --- Trend chart datasets (switchable granularity) ---
+$trendSeries = [
+    'daily'   => bizRevenueSeries('daily',   date('Y-m-d', strtotime('-29 days')), date('Y-m-d')),
+    'weekly'  => bizRevenueSeries('weekly',  date('Y-m-d', strtotime('-83 days')), date('Y-m-d')),
+    'monthly' => bizRevenueSeries('monthly', date('Y-m-d', strtotime('-11 months', strtotime(date('Y-m-01')))), date('Y-m-d')),
+    'yearly'  => bizRevenueSeries('yearly',  null, null),
+];
 
-$periodOrders = (int)(fetchOne(
-    "SELECT COUNT(*) AS n FROM orders WHERE $dateClause",
-    $dateParams
-)['n'] ?? 0);
+// --- Period-scoped insights ---
+$topProducts = bizTopProducts(8, $rangeFrom, $rangeTo);
+$topServices = bizTopServices(8, $rangeFrom, $rangeTo);
+$topTechs    = bizTechPerformance(8, $rangeFrom, $rangeTo);
 
-// By status
-$ordersByStatus  = fetchAllRows("SELECT status, COUNT(*) AS total, COALESCE(SUM(total),0) AS sales FROM orders GROUP BY status ORDER BY FIELD(status,'pending','processing','completed','cancelled')");
-$servicesByStatus = fetchAllRows("SELECT status, COUNT(*) AS total, COALESCE(SUM(total_amount),0) AS value FROM bookings GROUP BY status ORDER BY FIELD(status,'pending','confirmed','in_progress','completed','cancelled')");
-$topProducts     = fetchAllRows("SELECT COALESCE(p.name,CONCAT('Product #',oi.product_id)) AS product_name, SUM(oi.quantity) AS units, SUM(oi.quantity*oi.price) AS sales FROM order_items oi LEFT JOIN products p ON p.id=oi.product_id GROUP BY oi.product_id, p.name ORDER BY units DESC LIMIT 8");
-$topServices     = fetchAllRows("SELECT COALESCE(bs.service_name,CONCAT('Service #',bs.service_id)) AS service_name, COUNT(*) AS requests, SUM(bs.labor_fee) AS labor FROM booking_services bs GROUP BY bs.service_id, bs.service_name ORDER BY requests DESC LIMIT 8");
-
-// Daily/Period chart data
-$dailySales = fetchAllRows(
-    "SELECT DATE(created_at) AS sales_date, COALESCE(SUM(total),0) AS sales, COUNT(*) AS orders
-     FROM orders
-     WHERE $dateClause AND status!='cancelled'
-     GROUP BY DATE(created_at)
-     ORDER BY sales_date ASC",
-    $dateParams
-);
-
-// Labor income + 60/40 split (labor fees only — product sales excluded)
-$totalLaborIncome = (float)(fetchOne(
-    "SELECT COALESCE(SUM(bs.labor_fee),0) AS n
-     FROM bookings b JOIN booking_services bs ON bs.booking_id = b.id
-     WHERE b.status = 'completed'"
-)['n'] ?? 0);
-$technicianPayouts = $totalLaborIncome * TECH_LABOR_SHARE;
-$shopLaborEarnings = $totalLaborIncome - $technicianPayouts;
 $customersServiced = (int)(fetchOne(
     "SELECT COUNT(DISTINCT user_id) AS n FROM bookings WHERE status = 'completed'"
 )['n'] ?? 0);
@@ -71,162 +49,431 @@ $completedServicesCount = (int)(fetchOne(
      FROM booking_services bs JOIN bookings b ON b.id = bs.booking_id
      WHERE b.status = 'completed'"
 )['n'] ?? 0);
+$paidOrdersCount = (int)(fetchOne("SELECT COUNT(*) AS n FROM orders WHERE payment_status='paid'")['n'] ?? 0);
 
-// Technician performance & earnings (labor-only: total_amount would wrongly include product costs)
-$techPerformance = fetchAllRows(
-    "SELECT u.name AS tech_name,
-            COUNT(DISTINCT b.id) AS jobs_done,
-            COUNT(DISTINCT b.user_id) AS customers_serviced,
-            COALESCE(SUM(bs.labor_fee),0) AS labor
-     FROM bookings b
-     JOIN users u ON u.id = b.technician_id
-     LEFT JOIN booking_services bs ON bs.booking_id = b.id
-     WHERE b.status = 'completed'
-     GROUP BY b.technician_id, u.name
-     ORDER BY labor DESC
-     LIMIT 8"
-);
+// --- Status distributions (all-time snapshot) ---
+$ordersByStatus   = fetchAllRows("SELECT status, COUNT(*) AS total, COALESCE(SUM(total),0) AS sales FROM orders GROUP BY status ORDER BY FIELD(status,'pending','processing','completed','cancelled')");
+$servicesByStatus = fetchAllRows("SELECT status, COUNT(*) AS total, COALESCE(SUM(total_amount),0) AS value FROM bookings GROUP BY status ORDER BY FIELD(status,'pending','confirmed','in_progress','completed','cancelled')");
 
+// --- Inventory risk ---
 $lowStockCount = (int)(fetchOne("SELECT COUNT(*) AS n FROM products WHERE stock <= min_stock")['n'] ?? 0);
-$lowStock      = fetchAllRows("SELECT p.name, p.stock, p.status, c.name AS category_name FROM products p JOIN categories c ON c.id=p.category_id WHERE p.stock <= p.min_stock ORDER BY p.stock ASC, p.name LIMIT 10");
+$lowStock      = fetchAllRows("SELECT p.name, p.stock, p.min_stock, c.name AS category_name FROM products p JOIN categories c ON c.id=p.category_id WHERE p.stock <= p.min_stock ORDER BY p.stock ASC, p.name LIMIT 10");
+
+$orderStatusColor   = ['pending'=>'#6b7280','processing'=>'#d97706','completed'=>'#15803d','cancelled'=>'#b91c1c'];
+$bookingStatusColor = ['pending'=>'#6b7280','confirmed'=>'#2563eb','in_progress'=>'#d97706','completed'=>'#15803d','cancelled'=>'#b91c1c'];
 ?>
 
-<section class="admin-hero">
-  <div>
-    <span class="eyebrow">Reporting</span>
-    <h1>Sales, service, and inventory overview</h1>
-    <p>Use these summaries to spot fulfillment load, best sellers, and inventory risk.</p>
-  </div>
-</section>
+<div class="mtx-shell">
 
-<!-- Date range filter -->
-<section class="admin-card" style="margin-bottom:18px;padding:18px 24px;">
-  <form method="get" style="display:flex;align-items:center;flex-wrap:wrap;gap:10px;">
-    <strong style="font-size:.88rem;">Period:</strong>
-    <?php foreach ($validPeriods as $k=>$label): ?>
-      <a href="<?= baseUrl('admin/analytics.php?period='.$k) ?>"
-         class="btn btn-outline" style="font-size:.82rem;<?= (!$dateFrom && $period==$k?'background:var(--accent);color:#fff;':'') ?>">
-        <?= $label ?>
-      </a>
-    <?php endforeach; ?>
-    <span style="color:var(--muted);font-size:.82rem;">or custom:</span>
-    <input type="date" name="date_from" value="<?= htmlspecialchars($dateFrom) ?>" style="font-size:.85rem;">
-    <span style="color:var(--muted);">to</span>
-    <input type="date" name="date_to"   value="<?= htmlspecialchars($dateTo) ?>"   style="font-size:.85rem;">
-    <button type="submit" class="btn btn-primary" style="font-size:.85rem;">Apply</button>
-    <?php if ($dateFrom||$dateTo): ?>
-      <a href="<?= baseUrl('admin/analytics.php') ?>" class="btn btn-outline" style="font-size:.82rem;">Reset</a>
-    <?php endif; ?>
-  </form>
-</section>
+  <!-- Header -->
+  <header class="mtx-page-head">
+    <div class="mtx-page-head-copy">
+      <span class="eyebrow">Business Intelligence</span>
+      <h1>Analytics</h1>
+      <p>Revenue, labor, product and technician performance — across the shop and service bookings.</p>
+    </div>
+    <div class="mtx-page-head-meta">
+      <i class="fas fa-filter"></i> Insights scoped to: <strong style="color:var(--ink);"><?= htmlspecialchars($labelPeriod) ?></strong>
+    </div>
+  </header>
 
-<section class="metric-grid">
-  <article><span>Total Sales (All Time)</span><strong><?= formatPrice($salesTotal) ?></strong><i class="fas fa-peso-sign"></i></article>
-  <article><span><?= htmlspecialchars($labelPeriod) ?> Revenue</span><strong><?= formatPrice($periodRevenue) ?></strong><i class="fas fa-chart-line"></i></article>
-  <article><span><?= htmlspecialchars($labelPeriod) ?> Orders</span><strong><?= $periodOrders ?></strong><i class="fas fa-shopping-bag"></i></article>
-  <article><span>Active Services</span><strong><?= $pendingBookings ?></strong><i class="fas fa-tools"></i></article>
-</section>
-
-<!-- Labor income & 60/40 split (completed services, labor fees only) -->
-<section class="metric-grid" style="grid-template-columns:repeat(5, minmax(0,1fr));">
-  <article><span>Total Labor Income</span><strong style="font-size:1.5rem;"><?= formatPrice($totalLaborIncome) ?></strong><i class="fas fa-hand-holding-usd"></i></article>
-  <article><span>Shop Earnings (<?= (int)((1 - TECH_LABOR_SHARE) * 100) ?>%)</span><strong style="font-size:1.5rem;color:#15803d;"><?= formatPrice($shopLaborEarnings) ?></strong><i class="fas fa-store"></i></article>
-  <article><span>Technician Payouts (<?= (int)(TECH_LABOR_SHARE * 100) ?>%)</span><strong style="font-size:1.5rem;color:#2563eb;"><?= formatPrice($technicianPayouts) ?></strong><i class="fas fa-user-cog"></i></article>
-  <article><span>Customers Serviced</span><strong style="font-size:1.5rem;"><?= $customersServiced ?></strong><i class="fas fa-user-check"></i></article>
-  <article><span>Completed Services</span><strong style="font-size:1.5rem;"><?= $completedServicesCount ?></strong><i class="fas fa-check-double"></i></article>
-</section>
-
-<section class="admin-grid analytics-grid">
-  <div class="admin-card">
-    <h2>Orders by Status</h2>
-    <?php foreach ($ordersByStatus as $row): ?>
-      <div class="list-row">
-        <span><?= htmlspecialchars(ucfirst($row['status'])) ?></span>
-        <strong><?= (int)$row['total'] ?> / <?= formatPrice((float)$row['sales']) ?></strong>
+  <!-- Executive KPIs (all-time — matches Dashboard) -->
+  <section class="mtx-kpi-grid" aria-label="Business metrics (all time)">
+    <article class="mtx-kpi mtx-kpi--featured">
+      <div class="mtx-kpi-top">
+        <span class="mtx-kpi-label">Total Revenue</span>
+        <span class="mtx-kpi-icon"><i class="fas fa-sack-dollar"></i></span>
       </div>
-    <?php endforeach; ?>
-    <?php if (!$ordersByStatus): ?><p>No orders yet.</p><?php endif; ?>
-  </div>
-
-  <div class="admin-card">
-    <h2>Services by Status</h2>
-    <?php foreach ($servicesByStatus as $row): ?>
-      <div class="list-row">
-        <span><?= htmlspecialchars(ucfirst(str_replace('_',' ',$row['status']))) ?></span>
-        <strong><?= (int)$row['total'] ?> / <?= formatPrice((float)$row['value']) ?></strong>
+      <span class="mtx-kpi-value"><?= formatPrice($biz['total_revenue']) ?></span>
+      <span class="mtx-kpi-sub"><?= htmlspecialchars($labelPeriod) ?>: <strong><?= formatPrice($bizPeriod['total_revenue']) ?></strong></span>
+    </article>
+    <article class="mtx-kpi" style="--kpi-color:#2563eb;">
+      <div class="mtx-kpi-top">
+        <span class="mtx-kpi-label">Total Product Sales</span>
+        <span class="mtx-kpi-icon"><i class="fas fa-box-open"></i></span>
       </div>
-    <?php endforeach; ?>
-    <?php if (!$servicesByStatus): ?><p>No bookings yet.</p><?php endif; ?>
-  </div>
-
-  <div class="admin-card">
-    <h2>Top Products Sold</h2>
-    <?php foreach ($topProducts as $row): ?>
-      <div class="list-row">
-        <span><?= htmlspecialchars($row['product_name']) ?></span>
-        <strong><?= (int)$row['units'] ?> sold &mdash; <?= formatPrice((float)$row['sales']) ?></strong>
+      <span class="mtx-kpi-value"><?= formatPrice($biz['product_sales']) ?></span>
+      <span class="mtx-kpi-sub"><?= htmlspecialchars($labelPeriod) ?>: <strong><?= formatPrice($bizPeriod['product_sales']) ?></strong></span>
+    </article>
+    <a class="mtx-kpi" href="<?= baseUrl('admin/bookings.php') ?>" style="--kpi-color:#d71920;">
+      <div class="mtx-kpi-top">
+        <span class="mtx-kpi-label">Total Labor Sales</span>
+        <span class="mtx-kpi-icon"><i class="fas fa-wrench"></i></span>
       </div>
-    <?php endforeach; ?>
-    <?php if (!$topProducts): ?><p>No product sales yet.</p><?php endif; ?>
-  </div>
-
-  <div class="admin-card">
-    <h2>Top Services Requested</h2>
-    <?php foreach ($topServices as $row): ?>
-      <div class="list-row">
-        <span><?= htmlspecialchars($row['service_name']) ?></span>
-        <strong><?= (int)$row['requests'] ?> request<?= (int)$row['requests']===1?'':'s' ?></strong>
+      <span class="mtx-kpi-value"><?= formatPrice($biz['labor_sales']) ?></span>
+      <span class="mtx-kpi-sub"><?= htmlspecialchars($labelPeriod) ?>: <strong><?= formatPrice($bizPeriod['labor_sales']) ?></strong></span>
+      <span class="mtx-kpi-link">View breakdown <i class="fas fa-arrow-right"></i></span>
+    </a>
+    <article class="mtx-kpi" style="--kpi-color:#15803d;">
+      <div class="mtx-kpi-top">
+        <span class="mtx-kpi-label">Shop Labor Earnings</span>
+        <span class="mtx-kpi-icon"><i class="fas fa-store"></i></span>
       </div>
-    <?php endforeach; ?>
-    <?php if (!$topServices): ?><p>No service requests yet.</p><?php endif; ?>
-  </div>
-</section>
+      <span class="mtx-kpi-value" style="color:#15803d;"><?= formatPrice($biz['shop_labor']) ?></span>
+      <span class="mtx-kpi-sub"><?= $shopPct ?>% of Total Labor Sales</span>
+    </article>
+    <article class="mtx-kpi" style="--kpi-color:#2563eb;">
+      <div class="mtx-kpi-top">
+        <span class="mtx-kpi-label">Technician Labor Earnings</span>
+        <span class="mtx-kpi-icon"><i class="fas fa-user-cog"></i></span>
+      </div>
+      <span class="mtx-kpi-value" style="color:#2563eb;"><?= formatPrice($biz['tech_labor']) ?></span>
+      <span class="mtx-kpi-sub"><?= $techPct ?>% of Total Labor Sales</span>
+    </article>
+  </section>
 
-<section class="admin-grid analytics-grid">
-  <div class="admin-card">
-    <h2><?= htmlspecialchars($labelPeriod) ?> — Daily Sales</h2>
-    <?php if ($dailySales): ?>
-      <?php foreach ($dailySales as $row): ?>
-        <div class="list-row">
-          <span><?= htmlspecialchars(date('M j, Y', strtotime($row['sales_date']))) ?> &middot; <?= (int)$row['orders'] ?> order<?= (int)$row['orders']===1?'':'s' ?></span>
-          <strong><?= formatPrice((float)$row['sales']) ?></strong>
+  <!-- Revenue trend chart with granularity switch -->
+  <section class="mtx-card">
+    <div class="mtx-card-head">
+      <div>
+        <h2><i class="fas fa-chart-column"></i> Revenue Trends</h2>
+        <p>Product sales vs labor sales over time.</p>
+      </div>
+      <div class="mtx-card-head-actions">
+        <div class="mtx-legend" aria-hidden="true">
+          <span><i style="--swatch:#2563eb;"></i> Product Sales</span>
+          <span><i style="--swatch:#d71920;"></i> Labor Sales</span>
         </div>
-      <?php endforeach; ?>
-    <?php else: ?>
-      <p>No sales in this period.</p>
-    <?php endif; ?>
-  </div>
-
-  <div class="admin-card">
-    <h2>Technician Performance &amp; Earnings</h2>
-    <p class="subtext" style="margin:0 0 8px;">Labor fees only &mdash; each technician earns <?= (int)(TECH_LABOR_SHARE * 100) ?>% of their completed jobs' labor.</p>
-    <?php foreach ($techPerformance as $row): ?>
-      <div class="list-row">
-        <span>
-          <?= htmlspecialchars($row['tech_name']) ?>
-          <span class="subtext"><?= (int)$row['jobs_done'] ?> job<?= (int)$row['jobs_done']===1?'':'s' ?> &middot; <?= (int)$row['customers_serviced'] ?> customer<?= (int)$row['customers_serviced']===1?'':'s' ?></span>
-        </span>
-        <strong>
-          <?= formatPrice((float)$row['labor'] * TECH_LABOR_SHARE) ?>
-          <span class="subtext" style="font-weight:400;">of <?= formatPrice((float)$row['labor']) ?> labor</span>
-        </strong>
+        <div class="mtx-seg" role="tablist" aria-label="Chart granularity">
+          <button type="button" class="active" data-granularity="daily">Daily</button>
+          <button type="button" data-granularity="weekly">Weekly</button>
+          <button type="button" data-granularity="monthly">Monthly</button>
+          <button type="button" data-granularity="yearly">Yearly</button>
+        </div>
       </div>
-    <?php endforeach; ?>
-    <?php if (!$techPerformance): ?><p>No completed jobs yet.</p><?php endif; ?>
-  </div>
+    </div>
+    <div class="mtx-chart"><canvas id="trendChart" aria-label="Revenue trend chart, product versus labor sales"></canvas></div>
+    <div class="mtx-empty" id="trendEmpty" style="display:none;">
+      <i class="fas fa-chart-line"></i>
+      <strong>No revenue in this range yet.</strong>
+      <span>Paid orders and completed bookings will appear here.</span>
+    </div>
+  </section>
 
-  <div class="admin-card">
-    <h2>Low-Stock Risk</h2>
-    <p><?= $lowStockCount ?> product<?= $lowStockCount===1?'':'s' ?> at or below their minimum stock level.</p>
-    <?php foreach ($lowStock as $row): ?>
-      <div class="list-row">
-        <span><?= htmlspecialchars($row['name']) ?><span class="subtext"><?= htmlspecialchars($row['category_name']) ?></span></span>
-        <strong style="color:<?= (int)$row['stock']===0?'#b91c1c':'#d97706' ?>"><?= (int)$row['stock']===0?'OUT':((int)$row['stock'].' left') ?></strong>
+  <!-- Period filter -->
+  <section class="mtx-card">
+    <form method="get" class="mtx-toolbar">
+      <div class="mtx-seg" aria-label="Preset periods">
+        <?php foreach ($validPeriods as $k => $label): ?>
+          <a href="<?= baseUrl('admin/analytics.php?period=' . $k) ?>" class="<?= (!$dateFrom && $period == $k) ? 'active' : '' ?>"><?= $label ?></a>
+        <?php endforeach; ?>
       </div>
-    <?php endforeach; ?>
-    <?php if (!$lowStock): ?><p>No low-stock products.</p><?php endif; ?>
-  </div>
-</section>
+      <span class="mtx-toolbar-sep">or custom:</span>
+      <input type="date" name="date_from" value="<?= htmlspecialchars($dateFrom) ?>">
+      <span class="mtx-toolbar-sep">to</span>
+      <input type="date" name="date_to" value="<?= htmlspecialchars($dateTo) ?>">
+      <button type="submit" class="mtx-btn mtx-btn--dark">Apply</button>
+      <?php if ($dateFrom || $dateTo): ?>
+        <a href="<?= baseUrl('admin/analytics.php') ?>" class="mtx-btn mtx-btn--ghost">Reset</a>
+      <?php endif; ?>
+    </form>
+  </section>
+
+  <!-- Period-scoped revenue summary -->
+  <section class="mtx-kpi-grid mtx-kpi-grid--6" aria-label="Selected period summary">
+    <article class="mtx-kpi" style="--kpi-color:#111317;">
+      <div class="mtx-kpi-top"><span class="mtx-kpi-label"><?= htmlspecialchars($labelPeriod) ?> Revenue</span><span class="mtx-kpi-icon"><i class="fas fa-coins"></i></span></div>
+      <span class="mtx-kpi-value"><?= formatPrice($bizPeriod['total_revenue']) ?></span>
+    </article>
+    <article class="mtx-kpi" style="--kpi-color:#2563eb;">
+      <div class="mtx-kpi-top"><span class="mtx-kpi-label">Product Sales</span><span class="mtx-kpi-icon"><i class="fas fa-box"></i></span></div>
+      <span class="mtx-kpi-value"><?= formatPrice($bizPeriod['product_sales']) ?></span>
+      <span class="mtx-kpi-sub">Shop <strong><?= formatPrice($bizPeriod['shop_product_sales']) ?></strong> · Bookings <strong><?= formatPrice($bizPeriod['booking_product_sales']) ?></strong></span>
+    </article>
+    <article class="mtx-kpi" style="--kpi-color:#d71920;">
+      <div class="mtx-kpi-top"><span class="mtx-kpi-label">Labor Sales</span><span class="mtx-kpi-icon"><i class="fas fa-wrench"></i></span></div>
+      <span class="mtx-kpi-value"><?= formatPrice($bizPeriod['labor_sales']) ?></span>
+      <span class="mtx-kpi-sub">Shop <strong style="color:#15803d;"><?= formatPrice($bizPeriod['shop_labor']) ?></strong> · Tech <strong style="color:#2563eb;"><?= formatPrice($bizPeriod['tech_labor']) ?></strong></span>
+    </article>
+    <article class="mtx-kpi" style="--kpi-color:#7c3aed;">
+      <div class="mtx-kpi-top"><span class="mtx-kpi-label">Paid Orders</span><span class="mtx-kpi-icon"><i class="fas fa-receipt"></i></span></div>
+      <span class="mtx-kpi-value"><?= $paidOrdersCount ?></span>
+      <span class="mtx-kpi-sub">All time</span>
+    </article>
+    <article class="mtx-kpi" style="--kpi-color:#0f766e;">
+      <div class="mtx-kpi-top"><span class="mtx-kpi-label">Completed Services</span><span class="mtx-kpi-icon"><i class="fas fa-check-double"></i></span></div>
+      <span class="mtx-kpi-value"><?= $completedServicesCount ?></span>
+      <span class="mtx-kpi-sub">All time</span>
+    </article>
+    <article class="mtx-kpi" style="--kpi-color:#0369a1;">
+      <div class="mtx-kpi-top"><span class="mtx-kpi-label">Customers Serviced</span><span class="mtx-kpi-icon"><i class="fas fa-user-check"></i></span></div>
+      <span class="mtx-kpi-value"><?= $customersServiced ?></span>
+      <span class="mtx-kpi-sub">All time</span>
+    </article>
+  </section>
+
+  <!-- Top performers -->
+  <section class="mtx-grid mtx-grid--thirds">
+    <div class="mtx-card">
+      <div class="mtx-card-head">
+        <div>
+          <h2><i class="fas fa-box-open"></i> Top-Selling Products</h2>
+          <p><?= htmlspecialchars($labelPeriod) ?> · shop + booking sales combined.</p>
+        </div>
+      </div>
+      <?php if ($topProducts): ?>
+        <div class="mtx-list">
+          <?php foreach ($topProducts as $i => $row): ?>
+            <div class="mtx-list-row">
+              <span class="mtx-list-rank">#<?= $i + 1 ?></span>
+              <span class="mtx-list-main">
+                <strong><?= htmlspecialchars($row['product_name']) ?></strong>
+                <span><?= $row['units'] ?> unit<?= $row['units'] === 1 ? '' : 's' ?> sold</span>
+              </span>
+              <span class="mtx-list-end"><strong class="mtx-money--accent"><?= formatPrice($row['revenue']) ?></strong></span>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      <?php else: ?>
+        <div class="mtx-empty"><i class="fas fa-box"></i><strong>No product sales in this period.</strong></div>
+      <?php endif; ?>
+    </div>
+
+    <div class="mtx-card">
+      <div class="mtx-card-head">
+        <div>
+          <h2><i class="fas fa-tools"></i> Most Requested Services</h2>
+          <p><?= htmlspecialchars($labelPeriod) ?> · completed bookings.</p>
+        </div>
+      </div>
+      <?php if ($topServices): ?>
+        <div class="mtx-list">
+          <?php foreach ($topServices as $i => $row): ?>
+            <div class="mtx-list-row">
+              <span class="mtx-list-rank">#<?= $i + 1 ?></span>
+              <span class="mtx-list-main">
+                <strong><?= htmlspecialchars($row['service_name']) ?></strong>
+                <span><?= $row['requests'] ?> request<?= $row['requests'] === 1 ? '' : 's' ?></span>
+              </span>
+              <span class="mtx-list-end">
+                <strong class="mtx-money--accent"><?= formatPrice($row['labor']) ?></strong>
+                <span>labor revenue</span>
+              </span>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      <?php else: ?>
+        <div class="mtx-empty"><i class="fas fa-tools"></i><strong>No completed services in this period.</strong></div>
+      <?php endif; ?>
+    </div>
+
+    <div class="mtx-card">
+      <div class="mtx-card-head">
+        <div>
+          <h2><i class="fas fa-trophy"></i> Top Technicians</h2>
+          <p><?= htmlspecialchars($labelPeriod) ?> · each earns <?= $techPct ?>% of their labor.</p>
+        </div>
+      </div>
+      <?php if ($topTechs): ?>
+        <div class="mtx-list">
+          <?php foreach ($topTechs as $i => $row): ?>
+            <div class="mtx-list-row">
+              <span class="mtx-list-rank">#<?= $i + 1 ?></span>
+              <span class="mtx-list-main">
+                <strong><?= htmlspecialchars($row['tech_name']) ?></strong>
+                <span><?= $row['jobs_done'] ?> job<?= $row['jobs_done'] === 1 ? '' : 's' ?> · <?= $row['customers'] ?> customer<?= $row['customers'] === 1 ? '' : 's' ?></span>
+              </span>
+              <span class="mtx-list-end">
+                <strong class="mtx-money--blue"><?= formatPrice($row['tech_share']) ?></strong>
+                <span>of <?= formatPrice($row['labor']) ?> labor</span>
+              </span>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      <?php else: ?>
+        <div class="mtx-empty"><i class="fas fa-user-cog"></i><strong>No completed jobs in this period.</strong></div>
+      <?php endif; ?>
+    </div>
+  </section>
+
+  <!-- Status distributions + inventory -->
+  <section class="mtx-grid mtx-grid--thirds">
+    <div class="mtx-card">
+      <div class="mtx-card-head">
+        <div><h2><i class="fas fa-shopping-bag"></i> Orders by Status</h2><p>All time.</p></div>
+      </div>
+      <?php if ($ordersByStatus): ?>
+        <div class="mtx-list">
+          <?php foreach ($ordersByStatus as $row): ?>
+            <div class="mtx-list-row">
+              <span class="mtx-pill" style="--pill-color:<?= $orderStatusColor[$row['status']] ?? '#6b7280' ?>;"><?= ucfirst($row['status']) ?></span>
+              <span class="mtx-list-main"></span>
+              <span class="mtx-list-end">
+                <strong><?= (int)$row['total'] ?> order<?= (int)$row['total'] === 1 ? '' : 's' ?></strong>
+                <span><?= formatPrice((float)$row['sales']) ?></span>
+              </span>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      <?php else: ?>
+        <div class="mtx-empty"><i class="fas fa-shopping-bag"></i><strong>No orders yet.</strong></div>
+      <?php endif; ?>
+    </div>
+
+    <div class="mtx-card">
+      <div class="mtx-card-head">
+        <div><h2><i class="fas fa-calendar-check"></i> Bookings by Status</h2><p>All time.</p></div>
+      </div>
+      <?php if ($servicesByStatus): ?>
+        <div class="mtx-list">
+          <?php foreach ($servicesByStatus as $row): ?>
+            <div class="mtx-list-row">
+              <span class="mtx-pill" style="--pill-color:<?= $bookingStatusColor[$row['status']] ?? '#6b7280' ?>;"><?= ucfirst(str_replace('_',' ',$row['status'])) ?></span>
+              <span class="mtx-list-main"></span>
+              <span class="mtx-list-end">
+                <strong><?= (int)$row['total'] ?> booking<?= (int)$row['total'] === 1 ? '' : 's' ?></strong>
+                <span><?= formatPrice((float)$row['value']) ?></span>
+              </span>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      <?php else: ?>
+        <div class="mtx-empty"><i class="fas fa-calendar"></i><strong>No bookings yet.</strong></div>
+      <?php endif; ?>
+    </div>
+
+    <div class="mtx-card">
+      <div class="mtx-card-head">
+        <div>
+          <h2><i class="fas fa-triangle-exclamation"></i> Low-Stock Risk</h2>
+          <p><?= $lowStockCount ?> product<?= $lowStockCount === 1 ? '' : 's' ?> at or below minimum stock.</p>
+        </div>
+      </div>
+      <?php if ($lowStock): ?>
+        <div class="mtx-list">
+          <?php foreach ($lowStock as $row): ?>
+            <div class="mtx-list-row">
+              <span class="mtx-list-main">
+                <strong><?= htmlspecialchars($row['name']) ?></strong>
+                <span><?= htmlspecialchars($row['category_name']) ?> · min <?= (int)$row['min_stock'] ?></span>
+              </span>
+              <span class="mtx-pill" style="--pill-color:<?= (int)$row['stock'] === 0 ? '#b91c1c' : '#d97706' ?>;">
+                <?= (int)$row['stock'] === 0 ? 'OUT' : (int)$row['stock'] . ' left' ?>
+              </span>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      <?php else: ?>
+        <div class="mtx-empty"><i class="fas fa-box-open"></i><strong>No low-stock products.</strong></div>
+      <?php endif; ?>
+    </div>
+  </section>
+
+</div><!-- /.mtx-shell -->
+
+<script type="application/json" id="trendSeriesData"><?= json_encode($trendSeries, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?></script>
 
 <?= authContextScriptTag() ?>
+<script>
+(function () {
+  var series = {};
+  try {
+    series = JSON.parse(document.getElementById('trendSeriesData').textContent || '{}');
+  } catch (e) { series = {}; }
+
+  var canvas = document.getElementById('trendChart');
+  var emptyEl = document.getElementById('trendEmpty');
+  if (!canvas || !window.Chart) return;
+
+  var MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  function php(n) { return 'PHP ' + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+  function label(bucket, granularity) {
+    if (granularity === 'daily') {
+      var d = new Date(bucket + 'T00:00:00');
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+    if (granularity === 'weekly') {
+      var parts = bucket.split('-W');
+      return 'W' + parts[1] + ' ’' + parts[0].slice(2);
+    }
+    if (granularity === 'monthly') {
+      var p = bucket.split('-');
+      return MONTHS[parseInt(p[1], 10) - 1] + ' ' + p[0];
+    }
+    return bucket;
+  }
+
+  var chart = null;
+
+  function render(granularity) {
+    var rows = series[granularity] || [];
+    var hasData = rows.length > 0;
+    canvas.parentElement.style.display = hasData ? '' : 'none';
+    emptyEl.style.display = hasData ? 'none' : '';
+    if (!hasData) { if (chart) { chart.destroy(); chart = null; } return; }
+
+    var labels = rows.map(function (r) { return label(r.bucket, granularity); });
+    var product = rows.map(function (r) { return parseFloat(r.product_sales); });
+    var labor = rows.map(function (r) { return parseFloat(r.labor_sales); });
+
+    if (chart) chart.destroy();
+    chart = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: 'Product Sales',
+            data: product,
+            backgroundColor: '#2563eb',
+            borderColor: '#ffffff',
+            borderWidth: 1,
+            borderRadius: 4,
+            maxBarThickness: 34,
+            stack: 'revenue'
+          },
+          {
+            label: 'Labor Sales',
+            data: labor,
+            backgroundColor: '#d71920',
+            borderColor: '#ffffff',
+            borderWidth: 1,
+            borderRadius: 4,
+            maxBarThickness: 34,
+            stack: 'revenue'
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function (ctx) { return ctx.dataset.label + ': ' + php(ctx.parsed.y); },
+              footer: function (items) {
+                var total = items.reduce(function (sum, it) { return sum + it.parsed.y; }, 0);
+                return 'Total: ' + php(total);
+              }
+            }
+          }
+        },
+        scales: {
+          x: { stacked: true, grid: { display: false } },
+          y: {
+            stacked: true,
+            beginAtZero: true,
+            grid: { color: '#eef0f3' },
+            ticks: { callback: function (v) { return v.toLocaleString(); } }
+          }
+        }
+      }
+    });
+  }
+
+  document.querySelectorAll('[data-granularity]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('[data-granularity]').forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      render(btn.getAttribute('data-granularity'));
+    });
+  });
+
+  render('daily');
+})();
+</script>
 </main></div></div></body></html>
