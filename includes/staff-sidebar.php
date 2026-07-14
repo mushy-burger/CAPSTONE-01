@@ -34,6 +34,9 @@ $unreadCount = getUnreadNotificationCount((int)$currentUser['id']);
           <span class="notif-badge"><?= $unreadCount > 99 ? '99+' : $unreadCount ?></span>
         <?php endif; ?>
       </a>
+      <a href="<?= baseUrl('staff/pos.php') ?>" class="<?= $staffPage === 'pos' ? 'active' : '' ?>">
+        <i class="fas fa-cash-register"></i> POS
+      </a>
       <a href="<?= baseUrl('staff/products.php') ?>" class="<?= $staffPage === 'products' ? 'active' : '' ?>">
         <i class="fas fa-box"></i> Products
       </a>

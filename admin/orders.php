@@ -2,6 +2,7 @@
 $pageTitle = 'Orders';
 require_once __DIR__ . '/../includes/admin-sidebar.php';
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/PosService.php';
 
 $validStatuses = ['pending', 'processing', 'completed', 'cancelled'];
 
@@ -38,10 +39,16 @@ if ($statusFilter !== '') {
     $params[] = $statusFilter;
 }
 if ($search !== '') {
-    $where[]  = '(u.name LIKE ? OR u.email LIKE ? OR o.id = ?)';
+    $walkInSearch = posColumnExists('orders', 'walk_in_customer_name') ? ' OR o.walk_in_customer_name LIKE ? OR o.walk_in_customer_phone LIKE ? OR o.walk_in_customer_email LIKE ?' : '';
+    $where[]  = '(u.name LIKE ? OR u.email LIKE ? OR o.id = ?' . $walkInSearch . ')';
     $params[] = "%$search%";
     $params[] = "%$search%";
     $params[] = (int)$search;
+    if ($walkInSearch !== '') {
+        $params[] = "%$search%";
+        $params[] = "%$search%";
+        $params[] = "%$search%";
+    }
 }
 if ($dateFrom !== '') {
     $where[]  = 'DATE(o.created_at) >= ?';
@@ -52,11 +59,18 @@ if ($dateTo !== '') {
     $params[] = $dateTo;
 }
 
+$customerNameExpression = posColumnExists('orders', 'walk_in_customer_name')
+    ? "COALESCE(NULLIF(o.walk_in_customer_name, ''), u.name, 'Guest')"
+    : "COALESCE(u.name, 'Guest')";
+$customerEmailExpression = posColumnExists('orders', 'walk_in_customer_email')
+    ? "COALESCE(NULLIF(o.walk_in_customer_email, ''), u.email, '')"
+    : "COALESCE(u.email, '')";
+
 $orders = fetchAllRows(
     "SELECT
         o.*,
-        COALESCE(u.name, 'Guest') AS customer_name,
-        COALESCE(u.email, '') AS customer_email,
+        $customerNameExpression AS customer_name,
+        $customerEmailExpression AS customer_email,
         COALESCE(ic.item_count, 0) AS item_count
      FROM orders o
      LEFT JOIN users u ON u.id = o.user_id
