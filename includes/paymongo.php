@@ -14,6 +14,12 @@ function paymongoIsConfigured(): bool {
     return !empty($config['secret_key']) && !empty($config['public_key']);
 }
 
+/** True while running on PayMongo TEST keys — gates sandbox-only features. */
+function paymongoIsTestMode(): bool {
+    $config = paymongoConfig();
+    return str_starts_with((string)($config['secret_key'] ?? ''), 'sk_test_');
+}
+
 function appUrl(string $path = ''): string {
     $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
     $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
@@ -100,7 +106,8 @@ function paymongoCreateCheckoutSession(array $order, array $items, array $custom
             'amount' => (int)round(((float)$item['price']) * 100),
             'name' => $item['name'],
             'quantity' => (int)$item['quantity'],
-            'description' => implode(' - ', $descriptionParts),
+            // PayMongo rejects blank descriptions — fall back to the product name.
+            'description' => implode(' - ', $descriptionParts) ?: (string)$item['name'],
         ];
     }
 
@@ -131,7 +138,7 @@ function paymongoCreateCheckoutSession(array $order, array $items, array $custom
         ],
     ];
 
-    return paymongoApiRequest('POST', '/v2/checkout_sessions', $payload);
+    return paymongoApiRequest('POST', '/v1/checkout_sessions', $payload);
 }
 
 function paymongoRetrieveCheckoutSession(string $checkoutSessionId): array {

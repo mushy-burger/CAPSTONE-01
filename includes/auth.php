@@ -1,4 +1,11 @@
 <?php
+// Buffer all page output so redirects issued after partial rendering
+// (e.g. POST handlers on pages that print the sidebar first) can still
+// send headers. redirect() discards the buffer before redirecting.
+// Note: php.ini's output_buffering=4096 buffer auto-flushes when full,
+// so an explicit UNLIMITED buffer is stacked on top of it here.
+ob_start();
+
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }

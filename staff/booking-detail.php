@@ -170,8 +170,8 @@ $pageTitle = 'Booking #' . $bookingId;
     </section>
 
     <!-- Motorcycle -->
-    <section class="admin-card" style="padding:22px;">
-      <h2 style="margin:0 0 16px;font-size:1rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Motorcycle</h2>
+    <section class="mtx-card">
+      <div class="mtx-card-head"><div><h2><i class="fas fa-motorcycle"></i> Motorcycle</h2></div></div>
       <?php if ($booking['vehicle_name']): ?>
         <div class="detail-row"><span>Model</span><strong><?= htmlspecialchars($booking['vehicle_name']) ?></strong></div>
         <div class="detail-row"><span>Type</span><?= htmlspecialchars($booking['type_name'] ?? '—') ?></div>
@@ -188,8 +188,8 @@ $pageTitle = 'Booking #' . $bookingId;
     </section>
 
     <!-- Services & Products -->
-    <section class="admin-card" style="padding:22px;">
-      <h2 style="margin:0 0 16px;font-size:1rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Services & Products</h2>
+    <section class="mtx-card">
+      <div class="mtx-card-head"><div><h2><i class="fas fa-tools"></i> Services &amp; Products</h2></div></div>
       <?php if ($services): ?>
         <?php foreach ($services as $svc): ?>
           <div class="detail-service-row">
@@ -213,39 +213,35 @@ $pageTitle = 'Booking #' . $bookingId;
       <div style="display:flex;justify-content:space-between;">
         <span>Products</span><strong><?= formatPrice((float)$booking['products_total']) ?></strong>
       </div>
-      <div style="display:flex;justify-content:space-between;font-size:1.05rem;margin-top:6px;">
-        <strong>Total</strong><strong style="color:#d71920;"><?= formatPrice((float)$booking['total_amount']) ?></strong>
-      </div>
+      <div class="mtx-total-row"><span>Booking Total</span><span><?= formatPrice((float)$booking['total_amount']) ?></span></div>
     </section>
 
     <!-- Tech Notes (read-only) -->
     <?php if ($booking['tech_notes']): ?>
-    <section class="admin-card" style="padding:22px;border-left:4px solid #15803d;">
-      <h2 style="margin:0 0 12px;font-size:1rem;color:#15803d;text-transform:uppercase;letter-spacing:.05em;">
-        <i class="fas fa-sticky-note"></i> Technician Notes
-      </h2>
+    <section class="mtx-card" style="border-left:4px solid #15803d;">
+      <div class="mtx-card-head"><div><h2><i class="fas fa-sticky-note" style="color:#15803d;"></i> Technician Notes</h2></div></div>
       <p style="margin:0;white-space:pre-line;line-height:1.7;"><?= nl2br(htmlspecialchars($booking['tech_notes'])) ?></p>
     </section>
     <?php elseif (in_array($booking['status'], ['in_progress', 'completed'], true)): ?>
-    <section class="admin-card" style="padding:22px;opacity:.6;">
-      <h2 style="margin:0 0 8px;font-size:1rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Technician Notes</h2>
+    <section class="mtx-card" style="opacity:.65;">
+      <div class="mtx-card-head"><div><h2><i class="fas fa-sticky-note"></i> Technician Notes</h2></div></div>
       <p class="subtext" style="margin:0;">No notes written by the technician yet.</p>
     </section>
     <?php endif; ?>
   </div>
 
   <!-- RIGHT COLUMN: Actions -->
-  <div style="display:grid;gap:20px;align-content:start;">
+  <div class="mtx-stack">
 
     <!-- Technician assignment card -->
-    <section class="admin-card" style="padding:22px;">
-      <h2 style="margin:0 0 16px;font-size:1rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Technician</h2>
+    <section class="mtx-card">
+      <div class="mtx-card-head"><div><h2><i class="fas fa-user-cog"></i> Technician</h2></div></div>
 
       <?php if ($booking['technician_name']): ?>
-        <div style="display:flex;align-items:center;gap:10px;padding:12px;background:#f0fdf4;border-radius:8px;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:10px;padding:12px;background:#f0fdf4;border-radius:10px;margin-bottom:14px;">
           <i class="fas fa-user-cog" style="color:#15803d;font-size:1.4rem;"></i>
           <div>
-            <div style="font-weight:900;"><?= htmlspecialchars($booking['technician_name']) ?></div>
+            <div style="font-weight:800;"><?= htmlspecialchars($booking['technician_name']) ?></div>
             <div class="subtext"><?= htmlspecialchars($booking['technician_email'] ?? '') ?></div>
           </div>
         </div>
@@ -257,9 +253,9 @@ $pageTitle = 'Booking #' . $bookingId;
         <form method="post">
           <?= authContextField() ?>
           <input type="hidden" name="action" value="<?= $booking['status'] === 'pending' ? 'confirm_booking' : 'reassign_tech' ?>">
-          <label style="display:flex;flex-direction:column;gap:6px;font-weight:700;font-size:.88rem;margin-bottom:10px;">
-            <?= $booking['status'] === 'pending' ? 'Assign & Confirm' : 'Reassign Technician' ?>
-            <select name="technician_id" required class="tech-select">
+          <label class="mtx-field" style="margin-bottom:10px;">
+            <span><?= $booking['status'] === 'pending' ? 'Assign & Confirm' : 'Reassign Technician' ?></span>
+            <select name="technician_id" required>
               <option value="">— Select Technician —</option>
               <?php foreach ($technicians as $t): ?>
                 <option value="<?= (int)$t['id'] ?>" <?= (int)($booking['technician_id'] ?? 0) === (int)$t['id'] ? 'selected' : '' ?>>
@@ -268,7 +264,7 @@ $pageTitle = 'Booking #' . $bookingId;
               <?php endforeach; ?>
             </select>
           </label>
-          <button type="submit" class="btn btn-primary" style="width:100%;">
+          <button type="submit" class="mtx-btn mtx-btn--primary" style="width:100%;">
             <?php if ($booking['status'] === 'pending'): ?>
               <i class="fas fa-check"></i> Confirm & Assign
             <?php else: ?>
@@ -280,8 +276,8 @@ $pageTitle = 'Booking #' . $bookingId;
     </section>
 
     <!-- Status card -->
-    <section class="admin-card" style="padding:22px;">
-      <h2 style="margin:0 0 14px;font-size:1rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">Status Timeline</h2>
+    <section class="mtx-card">
+      <div class="mtx-card-head"><div><h2><i class="fas fa-timeline"></i> Status Timeline</h2></div></div>
       <?php
         $timelineSteps = [
           ['label' => 'Pending',     'icon' => 'fa-clock',             'key' => 'pending',     'color' => '#6b7280'],
@@ -329,7 +325,7 @@ $pageTitle = 'Booking #' . $bookingId;
         <form method="post" onsubmit="return confirm('Cancel booking #<?= $bookingId ?>? This cannot be undone.');">
           <?= authContextField() ?>
           <input type="hidden" name="action" value="cancel_booking">
-          <button type="submit" class="btn btn-outline" style="width:100%;color:#b91c1c;border-color:#b91c1c;">
+          <button type="submit" class="mtx-btn mtx-btn--ghost" style="width:100%;color:#b91c1c;border-color:#f3c1c1;">
             <i class="fas fa-times"></i> Cancel This Booking
           </button>
         </form>
@@ -338,6 +334,8 @@ $pageTitle = 'Booking #' . $bookingId;
 
   </div>
 </div>
+
+</div><!-- /.mtx-shell -->
 
 <?= authContextScriptTag() ?>
 </main></div></div></body></html>

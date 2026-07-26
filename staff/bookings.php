@@ -9,9 +9,8 @@ $currentUser = getCurrentUser();
 
 $validStatuses = ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled'];
 
-// Mark notifications as read when visiting bookings
-getDB()->prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0")
-       ->execute([(int)$currentUser['id']]);
+// Notifications stay unread until explicitly marked via the bell's
+// "Mark all read" — keeps the unread-count badge meaningful.
 
 // ---------- POST HANDLER ----------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

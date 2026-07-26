@@ -85,14 +85,37 @@ $pageTitle = 'My Profile - MotoTrack';
 require_once __DIR__ . '/includes/header.php';
 ?>
 
-<section class="container page-hero">
-  <h1>My Profile</h1>
-  <p>Manage your account details and keep your login secure.</p>
+<section class="page-hero">
+  <div class="container">
+    <span class="eyebrow">My Account</span>
+    <h1>My Profile</h1>
+    <p>Manage your account details and keep your login secure.</p>
+  </div>
 </section>
 
 <section class="container profile-section">
   <?php if ($flash): ?><div class="alert success"><?= htmlspecialchars($flash) ?></div><?php endif; ?>
   <?php if ($flashErr): ?><div class="alert error"><?= htmlspecialchars($flashErr) ?></div><?php endif; ?>
+
+  <!-- Account overview -->
+  <div class="profile-overview">
+    <div class="profile-overview-avatar"><?= htmlspecialchars(strtoupper(substr(trim($account['name']), 0, 1))) ?></div>
+    <div class="profile-overview-copy">
+      <strong><?= htmlspecialchars($account['name']) ?></strong>
+      <span><?= htmlspecialchars($account['email']) ?></span>
+    </div>
+    <div class="profile-overview-tags">
+      <span class="profile-tag"><i class="fas fa-calendar"></i> Member since <?= htmlspecialchars(date('F Y', strtotime($account['created_at']))) ?></span>
+      <?php if ($isGoogleAccount): ?>
+        <span class="profile-tag"><i class="fab fa-google"></i> Google sign-in</span>
+      <?php else: ?>
+        <span class="profile-tag"><i class="fas fa-lock"></i> Password sign-in</span>
+      <?php endif; ?>
+      <?php if ($account['phone']): ?>
+        <span class="profile-tag"><i class="fas fa-phone"></i> <?= htmlspecialchars($account['phone']) ?></span>
+      <?php endif; ?>
+    </div>
+  </div>
 
   <div class="profile-grid <?= $isGoogleAccount ? 'profile-grid--single' : '' ?>">
     <!-- Account information -->
@@ -100,8 +123,8 @@ require_once __DIR__ . '/includes/header.php';
       <div class="profile-panel-head">
         <span class="profile-panel-icon"><i class="fas fa-user"></i></span>
         <div>
-          <h2>Account Information</h2>
-          <p class="fine-print">Member since <?= htmlspecialchars(date('F Y', strtotime($account['created_at']))) ?></p>
+          <h2>Personal Information</h2>
+          <p class="fine-print">Your name, email, and contact number.</p>
         </div>
       </div>
 
@@ -136,8 +159,8 @@ require_once __DIR__ . '/includes/header.php';
       <div class="profile-panel-head">
         <span class="profile-panel-icon"><i class="fas fa-lock"></i></span>
         <div>
-          <h2>Change Password</h2>
-          <p class="fine-print">Use at least 6 characters. You'll stay logged in after changing it.</p>
+          <h2>Security</h2>
+          <p class="fine-print">Change your password — at least 6 characters. You'll stay logged in.</p>
         </div>
       </div>
 

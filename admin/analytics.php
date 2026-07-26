@@ -51,16 +51,9 @@ $completedServicesCount = (int)(fetchOne(
 )['n'] ?? 0);
 $paidOrdersCount = (int)(fetchOne("SELECT COUNT(*) AS n FROM orders WHERE payment_status='paid'")['n'] ?? 0);
 
-// --- Status distributions (all-time snapshot) ---
-$ordersByStatus   = fetchAllRows("SELECT status, COUNT(*) AS total, COALESCE(SUM(total),0) AS sales FROM orders GROUP BY status ORDER BY FIELD(status,'pending','processing','completed','cancelled')");
-$servicesByStatus = fetchAllRows("SELECT status, COUNT(*) AS total, COALESCE(SUM(total_amount),0) AS value FROM bookings GROUP BY status ORDER BY FIELD(status,'pending','confirmed','in_progress','completed','cancelled')");
-
 // --- Inventory risk ---
 $lowStockCount = (int)(fetchOne("SELECT COUNT(*) AS n FROM products WHERE stock <= min_stock")['n'] ?? 0);
 $lowStock      = fetchAllRows("SELECT p.name, p.stock, p.min_stock, c.name AS category_name FROM products p JOIN categories c ON c.id=p.category_id WHERE p.stock <= p.min_stock ORDER BY p.stock ASC, p.name LIMIT 10");
-
-$orderStatusColor   = ['pending'=>'#6b7280','processing'=>'#d97706','completed'=>'#15803d','cancelled'=>'#b91c1c'];
-$bookingStatusColor = ['pending'=>'#6b7280','confirmed'=>'#2563eb','in_progress'=>'#d97706','completed'=>'#15803d','cancelled'=>'#b91c1c'];
 ?>
 
 <div class="mtx-shell">
@@ -208,7 +201,7 @@ $bookingStatusColor = ['pending'=>'#6b7280','confirmed'=>'#2563eb','in_progress'
       <div class="mtx-card-head">
         <div>
           <h2><i class="fas fa-box-open"></i> Top-Selling Products</h2>
-          <p><?= htmlspecialchars($labelPeriod) ?> · shop + booking sales combined.</p>
+          <p><?= htmlspecialchars($labelPeriod) ?> · ranked by units sold, both channels.</p>
         </div>
       </div>
       <?php if ($topProducts): ?>
@@ -233,7 +226,7 @@ $bookingStatusColor = ['pending'=>'#6b7280','confirmed'=>'#2563eb','in_progress'
       <div class="mtx-card-head">
         <div>
           <h2><i class="fas fa-tools"></i> Most Requested Services</h2>
-          <p><?= htmlspecialchars($labelPeriod) ?> · completed bookings.</p>
+          <p><?= htmlspecialchars($labelPeriod) ?> · ranked by number of requests.</p>
         </div>
       </div>
       <?php if ($topServices): ?>
@@ -261,7 +254,7 @@ $bookingStatusColor = ['pending'=>'#6b7280','confirmed'=>'#2563eb','in_progress'
       <div class="mtx-card-head">
         <div>
           <h2><i class="fas fa-trophy"></i> Top Technicians</h2>
-          <p><?= htmlspecialchars($labelPeriod) ?> · each earns <?= $techPct ?>% of their labor.</p>
+          <p><?= htmlspecialchars($labelPeriod) ?> · ranked by completed jobs (<?= $techPct ?>% labor share shown).</p>
         </div>
       </div>
       <?php if ($topTechs): ?>
@@ -286,77 +279,31 @@ $bookingStatusColor = ['pending'=>'#6b7280','confirmed'=>'#2563eb','in_progress'
     </div>
   </section>
 
-  <!-- Status distributions + inventory -->
-  <section class="mtx-grid mtx-grid--thirds">
-    <div class="mtx-card">
-      <div class="mtx-card-head">
-        <div><h2><i class="fas fa-shopping-bag"></i> Orders by Status</h2><p>All time.</p></div>
+  <!-- Inventory risk -->
+  <section class="mtx-card">
+    <div class="mtx-card-head">
+      <div>
+        <h2><i class="fas fa-triangle-exclamation"></i> Low-Stock Risk</h2>
+        <p><?= $lowStockCount ?> product<?= $lowStockCount === 1 ? '' : 's' ?> at or below minimum stock.</p>
       </div>
-      <?php if ($ordersByStatus): ?>
-        <div class="mtx-list">
-          <?php foreach ($ordersByStatus as $row): ?>
-            <div class="mtx-list-row">
-              <span class="mtx-pill" style="--pill-color:<?= $orderStatusColor[$row['status']] ?? '#6b7280' ?>;"><?= ucfirst($row['status']) ?></span>
-              <span class="mtx-list-main"></span>
-              <span class="mtx-list-end">
-                <strong><?= (int)$row['total'] ?> order<?= (int)$row['total'] === 1 ? '' : 's' ?></strong>
-                <span><?= formatPrice((float)$row['sales']) ?></span>
-              </span>
-            </div>
-          <?php endforeach; ?>
-        </div>
-      <?php else: ?>
-        <div class="mtx-empty"><i class="fas fa-shopping-bag"></i><strong>No orders yet.</strong></div>
-      <?php endif; ?>
     </div>
-
-    <div class="mtx-card">
-      <div class="mtx-card-head">
-        <div><h2><i class="fas fa-calendar-check"></i> Bookings by Status</h2><p>All time.</p></div>
+    <?php if ($lowStock): ?>
+      <div class="mtx-list" style="grid-template-columns:repeat(auto-fill, minmax(320px, 1fr));">
+        <?php foreach ($lowStock as $row): ?>
+          <div class="mtx-list-row">
+            <span class="mtx-list-main">
+              <strong><?= htmlspecialchars($row['name']) ?></strong>
+              <span><?= htmlspecialchars($row['category_name']) ?> · min <?= (int)$row['min_stock'] ?></span>
+            </span>
+            <span class="mtx-pill" style="--pill-color:<?= (int)$row['stock'] === 0 ? '#b91c1c' : '#d97706' ?>;">
+              <?= (int)$row['stock'] === 0 ? 'OUT' : (int)$row['stock'] . ' left' ?>
+            </span>
+          </div>
+        <?php endforeach; ?>
       </div>
-      <?php if ($servicesByStatus): ?>
-        <div class="mtx-list">
-          <?php foreach ($servicesByStatus as $row): ?>
-            <div class="mtx-list-row">
-              <span class="mtx-pill" style="--pill-color:<?= $bookingStatusColor[$row['status']] ?? '#6b7280' ?>;"><?= ucfirst(str_replace('_',' ',$row['status'])) ?></span>
-              <span class="mtx-list-main"></span>
-              <span class="mtx-list-end">
-                <strong><?= (int)$row['total'] ?> booking<?= (int)$row['total'] === 1 ? '' : 's' ?></strong>
-                <span><?= formatPrice((float)$row['value']) ?></span>
-              </span>
-            </div>
-          <?php endforeach; ?>
-        </div>
-      <?php else: ?>
-        <div class="mtx-empty"><i class="fas fa-calendar"></i><strong>No bookings yet.</strong></div>
-      <?php endif; ?>
-    </div>
-
-    <div class="mtx-card">
-      <div class="mtx-card-head">
-        <div>
-          <h2><i class="fas fa-triangle-exclamation"></i> Low-Stock Risk</h2>
-          <p><?= $lowStockCount ?> product<?= $lowStockCount === 1 ? '' : 's' ?> at or below minimum stock.</p>
-        </div>
-      </div>
-      <?php if ($lowStock): ?>
-        <div class="mtx-list">
-          <?php foreach ($lowStock as $row): ?>
-            <div class="mtx-list-row">
-              <span class="mtx-list-main">
-                <strong><?= htmlspecialchars($row['name']) ?></strong>
-                <span><?= htmlspecialchars($row['category_name']) ?> · min <?= (int)$row['min_stock'] ?></span>
-              </span>
-              <span class="mtx-pill" style="--pill-color:<?= (int)$row['stock'] === 0 ? '#b91c1c' : '#d97706' ?>;">
-                <?= (int)$row['stock'] === 0 ? 'OUT' : (int)$row['stock'] . ' left' ?>
-              </span>
-            </div>
-          <?php endforeach; ?>
-        </div>
-      <?php else: ?>
-        <div class="mtx-empty"><i class="fas fa-box-open"></i><strong>No low-stock products.</strong></div>
-      <?php endif; ?>
-    </div>
+    <?php else: ?>
+      <div class="mtx-empty"><i class="fas fa-box-open"></i><strong>No low-stock products.</strong></div>
+    <?php endif; ?>
   </section>
 
 </div><!-- /.mtx-shell -->

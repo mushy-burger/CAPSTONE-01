@@ -23,13 +23,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'update_role' && $userId > 0) {
         $role = $_POST['role'] ?? '';
-        if (in_array($role, $roleOptions, true)) {
+        $targetUser = fetchOne("SELECT role FROM users WHERE id = ?", [$userId]);
+        if (($targetUser['role'] ?? '') === 'customer') {
+            // Customer accounts are read-only: their role can never be changed from the admin panel.
+            flashMessage('users_error', 'Customer accounts cannot have their role changed.');
+        } elseif (in_array($role, $roleOptions, true)) {
             getDB()->prepare("UPDATE users SET role = ? WHERE id = ?")->execute([$role, $userId]);
             flashMessage('users_success', 'User role updated.');
         } else {
             flashMessage('users_error', 'Invalid user role.');
         }
-        redirect(baseUrl('admin/users.php'));
+        redirect(baseUrl('admin/users.php?view=team'));
     }
 
     if ($action === 'toggle_status' && $userId > 0) {
@@ -92,12 +96,81 @@ $roleFilter = $_GET['role'] ?? '';
 $roleFilter = in_array($roleFilter, $roleOptions, true) ? $roleFilter : '';
 $search = trim($_GET['q'] ?? '');
 
+// View tabs: customers vs internal team (staff, technicians, admins)
+$view = $_GET['view'] ?? 'customers';
+$view = in_array($view, ['customers', 'team'], true) ? $view : 'customers';
+if ($view === 'customers') {
+    $roleFilter = '';
+}
+
+// Customer-view filters (display-level list filtering)
+$statusFilter   = $_GET['status'] ?? '';
+$statusFilter   = in_array($statusFilter, ['active', 'disabled'], true) ? $statusFilter : '';
+$authFilter     = $_GET['auth'] ?? '';
+$authFilter     = in_array($authFilter, ['local', 'google'], true) ? $authFilter : '';
+$ordersFilter   = $_GET['orders'] ?? '';
+$ordersFilter   = in_array($ordersFilter, ['with', 'without'], true) ? $ordersFilter : '';
+$bookingsFilter = $_GET['bookings'] ?? '';
+$bookingsFilter = in_array($bookingsFilter, ['with', 'without'], true) ? $bookingsFilter : '';
+$joinedFrom     = trim($_GET['joined_from'] ?? '');
+$joinedTo       = trim($_GET['joined_to'] ?? '');
+$sortOption     = $_GET['sort'] ?? 'newest';
+$sortOption     = in_array($sortOption, ['newest', 'oldest', 'name_az', 'name_za'], true) ? $sortOption : 'newest';
+
+$activeFilterCount =
+    ($statusFilter !== '' ? 1 : 0) +
+    ($authFilter !== '' ? 1 : 0) +
+    ($ordersFilter !== '' ? 1 : 0) +
+    ($bookingsFilter !== '' ? 1 : 0) +
+    ($joinedFrom !== '' ? 1 : 0) +
+    ($joinedTo !== '' ? 1 : 0) +
+    ($sortOption !== 'newest' ? 1 : 0);
+
 $where = [];
 $params = [];
-if ($roleFilter !== '') {
+if ($view === 'customers') {
+    $where[] = "u.role = 'customer'";
+
+    if ($statusFilter !== '') {
+        $where[] = 'u.is_active = ?';
+        $params[] = $statusFilter === 'active' ? 1 : 0;
+    }
+    if ($authFilter !== '') {
+        $where[] = 'u.auth_provider = ?';
+        $params[] = $authFilter;
+    }
+    if ($ordersFilter === 'with') {
+        $where[] = 'EXISTS (SELECT 1 FROM orders fo WHERE fo.user_id = u.id)';
+    } elseif ($ordersFilter === 'without') {
+        $where[] = 'NOT EXISTS (SELECT 1 FROM orders fo WHERE fo.user_id = u.id)';
+    }
+    if ($bookingsFilter === 'with') {
+        $where[] = 'EXISTS (SELECT 1 FROM bookings fb WHERE fb.user_id = u.id)';
+    } elseif ($bookingsFilter === 'without') {
+        $where[] = 'NOT EXISTS (SELECT 1 FROM bookings fb WHERE fb.user_id = u.id)';
+    }
+    if ($joinedFrom !== '') {
+        $where[] = 'DATE(u.created_at) >= ?';
+        $params[] = $joinedFrom;
+    }
+    if ($joinedTo !== '') {
+        $where[] = 'DATE(u.created_at) <= ?';
+        $params[] = $joinedTo;
+    }
+} else {
+    $where[] = "u.role != 'customer'";
+}
+if ($roleFilter !== '' && $view === 'team' && $roleFilter !== 'customer') {
     $where[] = 'u.role = ?';
     $params[] = $roleFilter;
 }
+
+$orderBy = match ($sortOption) {
+    'oldest'  => 'u.created_at ASC, u.id ASC',
+    'name_az' => 'u.name ASC',
+    'name_za' => 'u.name DESC',
+    default   => 'u.created_at DESC, u.id DESC',
+};
 if ($search !== '') {
     $where[] = '(u.name LIKE ? OR u.email LIKE ? OR u.phone LIKE ?)';
     $params[] = "%$search%";
@@ -121,12 +194,14 @@ $users = fetchAllRows(
     "SELECT
         u.*,
         COALESCE(oc.order_count, 0) AS order_count,
-        COALESCE(bc.booking_count, 0) AS booking_count
+        COALESCE(bc.booking_count, 0) AS booking_count,
+        COALESCE(tj.jobs_done, 0) AS jobs_done
      FROM users u
      LEFT JOIN (SELECT user_id, COUNT(*) AS order_count FROM orders GROUP BY user_id) oc ON oc.user_id = u.id
      LEFT JOIN (SELECT user_id, COUNT(*) AS booking_count FROM bookings GROUP BY user_id) bc ON bc.user_id = u.id
+     LEFT JOIN (SELECT technician_id, COUNT(*) AS jobs_done FROM bookings WHERE status = 'completed' AND technician_id IS NOT NULL GROUP BY technician_id) tj ON tj.technician_id = u.id
      " . ($where ? 'WHERE ' . implode(' AND ', $where) : '') . "
-     ORDER BY u.created_at DESC, u.id DESC
+     ORDER BY $orderBy
      LIMIT $perPage OFFSET $offset",
     $params
 );
@@ -161,27 +236,96 @@ function userInitials(string $name): string {
         <p>Manage customer, staff, and technician accounts, roles, access, and skills.</p>
       </div>
     </div>
-    <form method="get" class="usrx-toolbar">
+    <form method="get" class="usrx-toolbar" style="flex-wrap:wrap;">
+      <input type="hidden" name="view" value="<?= htmlspecialchars($view) ?>">
       <label class="usrx-filter usrx-filter--search">
         <i class="fas fa-magnifying-glass"></i>
         <input type="search" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search users">
       </label>
-      <label class="usrx-filter">
-        <i class="fas fa-user-shield"></i>
-        <select name="role">
-          <option value="">All roles</option>
-          <?php foreach ($roleOptions as $role): ?>
-            <option value="<?= htmlspecialchars($role) ?>" <?= $roleFilter === $role ? 'selected' : '' ?>>
-              <?= htmlspecialchars(ucfirst($role)) ?>
-            </option>
-          <?php endforeach; ?>
-        </select>
-      </label>
-      <button type="submit" class="usrx-btn usrx-btn--dark"><i class="fas fa-sliders"></i> Filter</button>
-      <?php if ($search || $roleFilter): ?><a href="<?= baseUrl('admin/users.php') ?>" class="usrx-btn usrx-btn--ghost"><i class="fas fa-rotate-left"></i> Reset</a><?php endif; ?>
+      <?php if ($view === 'team'): ?>
+        <label class="usrx-filter">
+          <i class="fas fa-user-shield"></i>
+          <select name="role">
+            <option value="">All team roles</option>
+            <?php foreach (['admin', 'staff', 'technician'] as $role): ?>
+              <option value="<?= htmlspecialchars($role) ?>" <?= $roleFilter === $role ? 'selected' : '' ?>>
+                <?= htmlspecialchars(ucfirst($role)) ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </label>
+        <button type="submit" class="usrx-btn usrx-btn--dark"><i class="fas fa-sliders"></i> Filter</button>
+        <?php if ($search || $roleFilter): ?><a href="<?= baseUrl('admin/users.php?view=team') ?>" class="usrx-btn usrx-btn--ghost"><i class="fas fa-rotate-left"></i> Reset</a><?php endif; ?>
+      <?php else: ?>
+        <label class="usrx-filter" title="Account status">
+          <i class="fas fa-toggle-on"></i>
+          <select name="status">
+            <option value="">Any status</option>
+            <option value="active" <?= $statusFilter === 'active' ? 'selected' : '' ?>>Active</option>
+            <option value="disabled" <?= $statusFilter === 'disabled' ? 'selected' : '' ?>>Disabled</option>
+          </select>
+        </label>
+        <label class="usrx-filter" title="Sign-in method">
+          <i class="fas fa-key"></i>
+          <select name="auth">
+            <option value="">Any sign-in</option>
+            <option value="local" <?= $authFilter === 'local' ? 'selected' : '' ?>>Password</option>
+            <option value="google" <?= $authFilter === 'google' ? 'selected' : '' ?>>Google</option>
+          </select>
+        </label>
+        <label class="usrx-filter" title="Shop orders">
+          <i class="fas fa-bag-shopping"></i>
+          <select name="orders">
+            <option value="">Orders: any</option>
+            <option value="with" <?= $ordersFilter === 'with' ? 'selected' : '' ?>>Has orders</option>
+            <option value="without" <?= $ordersFilter === 'without' ? 'selected' : '' ?>>No orders</option>
+          </select>
+        </label>
+        <label class="usrx-filter" title="Service bookings">
+          <i class="fas fa-clipboard-list"></i>
+          <select name="bookings">
+            <option value="">Bookings: any</option>
+            <option value="with" <?= $bookingsFilter === 'with' ? 'selected' : '' ?>>Has bookings</option>
+            <option value="without" <?= $bookingsFilter === 'without' ? 'selected' : '' ?>>No bookings</option>
+          </select>
+        </label>
+        <label class="usrx-filter" title="Joined from">
+          <i class="fas fa-calendar-day"></i>
+          <input type="date" name="joined_from" value="<?= htmlspecialchars($joinedFrom) ?>">
+        </label>
+        <label class="usrx-filter" title="Joined until">
+          <i class="fas fa-calendar-check"></i>
+          <input type="date" name="joined_to" value="<?= htmlspecialchars($joinedTo) ?>">
+        </label>
+        <label class="usrx-filter" title="Sort by">
+          <i class="fas fa-arrow-down-wide-short"></i>
+          <select name="sort">
+            <option value="newest" <?= $sortOption === 'newest' ? 'selected' : '' ?>>Newest first</option>
+            <option value="oldest" <?= $sortOption === 'oldest' ? 'selected' : '' ?>>Oldest first</option>
+            <option value="name_az" <?= $sortOption === 'name_az' ? 'selected' : '' ?>>Name A–Z</option>
+            <option value="name_za" <?= $sortOption === 'name_za' ? 'selected' : '' ?>>Name Z–A</option>
+          </select>
+        </label>
+        <button type="submit" class="usrx-btn usrx-btn--dark">
+          <i class="fas fa-sliders"></i> Apply Filters
+          <?php if ($activeFilterCount > 0): ?>
+            <span style="margin-left:6px;min-width:20px;height:20px;display:inline-grid;place-items:center;border-radius:999px;background:var(--accent);color:#fff;font-size:.7rem;font-weight:900;"><?= $activeFilterCount ?></span>
+          <?php endif; ?>
+        </button>
+        <?php if ($search || $activeFilterCount > 0): ?>
+          <a href="<?= baseUrl('admin/users.php?view=customers') ?>" class="usrx-btn usrx-btn--ghost"><i class="fas fa-rotate-left"></i> Clear Filters</a>
+        <?php endif; ?>
+      <?php endif; ?>
     </form>
   </div>
 
+  <!-- Customers / Team tabs -->
+  <div class="mtx-seg" role="tablist" aria-label="User views" style="background:#fff;border:1px solid var(--line);">
+    <a href="<?= baseUrl('admin/users.php?view=customers') ?>" class="<?= $view === 'customers' ? 'active' : '' ?>" role="tab"><i class="fas fa-users" style="margin-right:7px;"></i>Customers</a>
+    <a href="<?= baseUrl('admin/users.php?view=team') ?>" class="<?= $view === 'team' ? 'active' : '' ?>" role="tab"><i class="fas fa-user-gear" style="margin-right:7px;"></i>Staff &amp; Team</a>
+  </div>
+
+  <?php if ($view === 'team'): ?>
   <section class="usrx-card usrx-create-card">
     <div class="usrx-card-head">
       <div>
@@ -238,6 +382,7 @@ function userInitials(string $name): string {
       </div>
     </form>
   </section>
+  <?php endif; ?>
 
   <?php if ($editSkillsUser): ?>
   <section class="usrx-card usrx-skills-card">
@@ -284,9 +429,11 @@ function userInitials(string $name): string {
   <section class="usrx-card usrx-list-card">
     <div class="usrx-card-head">
       <div>
-        <span class="usrx-kicker">Account directory</span>
-        <h2>Users List</h2>
-        <p><?= $totalCount ?> account<?= $totalCount === 1 ? '' : 's' ?><?= $roleFilter ? ' filtered by ' . htmlspecialchars($roleFilter) : '' ?></p>
+        <span class="usrx-kicker"><?= $view === 'customers' ? 'Customer directory' : 'Internal team' ?></span>
+        <h2><?= $view === 'customers' ? 'Customers' : 'Staff, Technicians & Admins' ?></h2>
+        <p>
+          <?= $totalCount ?> account<?= $totalCount === 1 ? '' : 's' ?><?= $roleFilter ? ' filtered by ' . htmlspecialchars($roleFilter) : '' ?><?= $activeFilterCount > 0 ? ' · ' . $activeFilterCount . ' filter' . ($activeFilterCount === 1 ? '' : 's') . ' active' : '' ?><?= $search !== '' ? ' · searching "' . htmlspecialchars($search) . '"' : '' ?>
+        </p>
       </div>
     </div>
 
@@ -323,7 +470,7 @@ function userInitials(string $name): string {
                   </div>
                 </td>
                 <td>
-                  <?php if ($canManageUsers && !$isSelf): ?>
+                  <?php if ($canManageUsers && !$isSelf && $user['role'] !== 'customer'): ?>
                     <form method="post" class="usrx-role-form">
                       <?= authContextField() ?>
                       <input type="hidden" name="action" value="update_role">
@@ -368,8 +515,15 @@ function userInitials(string $name): string {
                 </td>
                 <td>
                   <div class="usrx-activity">
-                    <span><i class="fas fa-bag-shopping"></i><?= (int)$user['order_count'] ?> order<?= (int)$user['order_count'] === 1 ? '' : 's' ?></span>
-                    <span><i class="fas fa-clipboard-list"></i><?= (int)$user['booking_count'] ?> service request<?= (int)$user['booking_count'] === 1 ? '' : 's' ?></span>
+                    <?php if ($user['role'] === 'customer'): ?>
+                      <span><i class="fas fa-bag-shopping"></i><?= (int)$user['order_count'] ?> order<?= (int)$user['order_count'] === 1 ? '' : 's' ?></span>
+                      <span><i class="fas fa-clipboard-list"></i><?= (int)$user['booking_count'] ?> service request<?= (int)$user['booking_count'] === 1 ? '' : 's' ?></span>
+                    <?php elseif ($user['role'] === 'technician'): ?>
+                      <span><i class="fas fa-flag-checkered"></i><?= (int)$user['jobs_done'] ?> completed job<?= (int)$user['jobs_done'] === 1 ? '' : 's' ?></span>
+                      <span><i class="fas fa-screwdriver-wrench"></i><?= count($techQualifications[(int)$user['id']] ?? []) ?> qualified service<?= count($techQualifications[(int)$user['id']] ?? []) === 1 ? '' : 's' ?></span>
+                    <?php else: ?>
+                      <span><i class="fas fa-id-badge"></i>Internal account</span>
+                    <?php endif; ?>
                   </div>
                 </td>
                 <td><span class="usrx-date"><?= htmlspecialchars(date('M j, Y', strtotime($user['created_at']))) ?></span></td>
@@ -385,7 +539,7 @@ function userInitials(string $name): string {
                       </form>
                       <?php if ($user['role'] === 'technician'): ?>
                         <?php $skillCount = count($techQualifications[(int)$user['id']] ?? []); ?>
-                        <a href="<?= baseUrl('admin/users.php?edit_skills=' . (int)$user['id']) ?>" class="usrx-skill-link">
+                        <a href="<?= baseUrl('admin/users.php?view=team&edit_skills=' . (int)$user['id']) ?>" class="usrx-skill-link">
                           <i class="fas fa-screwdriver-wrench"></i> Manage Skills <strong><?= $skillCount ?></strong>
                         </a>
                       <?php endif; ?>
@@ -403,7 +557,18 @@ function userInitials(string $name): string {
       <?php if ($totalPages > 1): ?>
         <div class="usrx-pagination">
           <?php
-            $q = http_build_query(array_filter(['q'=>$search,'role'=>$roleFilter], static fn($value): bool => $value !== ''));
+            $q = http_build_query(array_filter([
+                'view' => $view,
+                'q' => $search,
+                'role' => $roleFilter,
+                'status' => $statusFilter,
+                'auth' => $authFilter,
+                'orders' => $ordersFilter,
+                'bookings' => $bookingsFilter,
+                'joined_from' => $joinedFrom,
+                'joined_to' => $joinedTo,
+                'sort' => $sortOption !== 'newest' ? $sortOption : '',
+            ], static fn($value): bool => $value !== ''));
             $base = baseUrl('admin/users.php') . ($q ? "?$q&" : '?');
           ?>
           <a href="<?= $base ?>page=1" class="usrx-btn usrx-btn--ghost"><i class="fas fa-angles-left"></i></a>
@@ -421,8 +586,10 @@ function userInitials(string $name): string {
       <div class="usrx-empty">
         <div class="usrx-empty-icon"><i class="fas fa-user-magnifying-glass"></i></div>
         <h3>No users found</h3>
-        <p>Try a different search term or role filter.</p>
-        <?php if ($search || $roleFilter): ?><a href="<?= baseUrl('admin/users.php') ?>" class="usrx-btn usrx-btn--ghost">Clear filters</a><?php endif; ?>
+        <p>No accounts match the current search and filters.</p>
+        <?php if ($search || $roleFilter || $activeFilterCount > 0): ?>
+          <a href="<?= baseUrl('admin/users.php?view=' . $view) ?>" class="usrx-btn usrx-btn--ghost"><i class="fas fa-rotate-left"></i> Clear Filters</a>
+        <?php endif; ?>
       </div>
     <?php endif; ?>
   </section>

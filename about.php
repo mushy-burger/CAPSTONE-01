@@ -18,20 +18,18 @@ $totalProducts   = (int)(fetchOne("SELECT COUNT(*) AS n FROM products WHERE stat
 </section>
 
 <!-- Stats Bar -->
-<section style="background:var(--surface-alt,#f9fafb);border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:32px 0;">
-  <div class="container" style="display:grid;grid-template-columns:repeat(3,1fr);gap:24px;text-align:center;">
-    <div>
-      <strong style="font-size:2.2rem;font-weight:900;color:#d71920;"><?= number_format($totalCustomers) ?>+</strong>
-      <div style="color:var(--muted);font-size:.9rem;margin-top:4px;">Registered Customers</div>
-    </div>
-    <div>
-      <strong style="font-size:2.2rem;font-weight:900;color:#d71920;"><?= number_format($totalBookings) ?>+</strong>
-      <div style="color:var(--muted);font-size:.9rem;margin-top:4px;">Completed Services</div>
-    </div>
-    <div>
-      <strong style="font-size:2.2rem;font-weight:900;color:#d71920;"><?= number_format($totalProducts) ?>+</strong>
-      <div style="color:var(--muted);font-size:.9rem;margin-top:4px;">Products Available</div>
-    </div>
+<section class="container about-stats" aria-label="MotoTrack in numbers">
+  <div class="about-stat">
+    <strong><?= number_format($totalCustomers) ?>+</strong>
+    <span>Registered Customers</span>
+  </div>
+  <div class="about-stat">
+    <strong><?= number_format($totalBookings) ?>+</strong>
+    <span>Completed Services</span>
+  </div>
+  <div class="about-stat">
+    <strong><?= number_format($totalProducts) ?>+</strong>
+    <span>Products Available</span>
   </div>
 </section>
 
@@ -39,7 +37,7 @@ $totalProducts   = (int)(fetchOne("SELECT COUNT(*) AS n FROM products WHERE stat
 <section class="section container about-intro">
   <div class="about-copy">
     <span class="eyebrow">What We Do</span>
-    <h2>Clear parts, clear services, clear estimates.</h2>
+    <h2 style="color:#fff;margin:14px 0 0;">Clear parts, clear services, clear estimates.</h2>
     <p>Customers can browse available parts and accessories, then book maintenance matched to their motorcycle type. Staff confirm requests, assign certified technicians, and track inventory aligned with sales and service usage.</p>
     <p>Technicians receive their job queue digitally — no paperwork — and can add notes directly to each job as they work.</p>
     <div class="about-actions" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;">
@@ -58,43 +56,66 @@ $totalProducts   = (int)(fetchOne("SELECT COUNT(*) AS n FROM products WHERE stat
 </section>
 
 <!-- How It Works -->
-<section style="background:var(--surface-alt,#f9fafb);border-top:1px solid var(--line);padding:60px 0;">
-  <div class="container">
-    <div class="section-heading" style="margin-bottom:36px;">
-      <span class="eyebrow">How It Works</span>
-      <h2>From booking to completion in 4 steps.</h2>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:24px;">
-      <?php
-        $steps = [
-          ['icon'=>'fa-calendar-plus',    'color'=>'#2563eb', 'step'=>'1', 'title'=>'Customer Books',   'desc'=>'Choose your motorcycle, select services, pick a date and time online.'],
-          ['icon'=>'fa-user-check',       'color'=>'#d97706', 'step'=>'2', 'title'=>'Staff Confirms',   'desc'=>'Staff reviews the request and assigns a certified technician.'],
-          ['icon'=>'fa-tools',            'color'=>'#7c3aed', 'step'=>'3', 'title'=>'Tech Services',    'desc'=>'Technician receives the job, starts work, and logs progress notes.'],
-          ['icon'=>'fa-flag-checkered',   'color'=>'#15803d', 'step'=>'4', 'title'=>'Job Complete',     'desc'=>'Customer is notified, stock is updated, service record is saved.'],
-        ];
-        foreach ($steps as $s):
-      ?>
-        <div style="background:#fff;border-radius:14px;padding:24px;box-shadow:0 1px 4px rgba(0,0,0,.06);text-align:center;border-top:4px solid <?= $s['color'] ?>;">
-          <div style="width:48px;height:48px;border-radius:50%;background:<?= $s['color'] ?>;display:grid;place-items:center;margin:0 auto 12px;color:#fff;font-size:1.2rem;">
-            <i class="fas <?= $s['icon'] ?>"></i>
-          </div>
-          <div style="font-size:.75rem;font-weight:900;color:<?= $s['color'] ?>;letter-spacing:.08em;margin-bottom:4px;">STEP <?= $s['step'] ?></div>
-          <strong style="display:block;margin-bottom:8px;"><?= $s['title'] ?></strong>
-          <p style="font-size:.87rem;color:var(--muted);margin:0;"><?= $s['desc'] ?></p>
-        </div>
-      <?php endforeach; ?>
-    </div>
+<section class="container about-band">
+  <div class="section-heading" style="margin-bottom:28px;">
+    <span class="eyebrow">How It Works</span>
+    <h2>From booking to completion in 4 steps.</h2>
+  </div>
+  <div class="about-steps">
+    <?php
+      $steps = [
+        ['icon'=>'fa-calendar-plus',  'color'=>'#4f8df9', 'step'=>'1', 'title'=>'Customer Books', 'desc'=>'Choose your motorcycle, select services, pick a date and time online.'],
+        ['icon'=>'fa-user-check',     'color'=>'#e8b93c', 'step'=>'2', 'title'=>'Staff Confirms', 'desc'=>'Staff reviews the request and assigns a certified technician.'],
+        ['icon'=>'fa-tools',          'color'=>'#b18cff', 'step'=>'3', 'title'=>'Tech Services',  'desc'=>'Technician receives the job, starts work, and logs progress notes.'],
+        ['icon'=>'fa-flag-checkered', 'color'=>'#2fbf71', 'step'=>'4', 'title'=>'Job Complete',   'desc'=>'Customer is notified, stock is updated, service record is saved.'],
+      ];
+      foreach ($steps as $s):
+    ?>
+      <div class="about-step" style="--step-color:<?= $s['color'] ?>;">
+        <div class="about-step-icon"><i class="fas <?= $s['icon'] ?>"></i></div>
+        <div class="about-step-num">STEP <?= $s['step'] ?></div>
+        <strong><?= $s['title'] ?></strong>
+        <p><?= $s['desc'] ?></p>
+      </div>
+    <?php endforeach; ?>
   </div>
 </section>
 
-<!-- CTA -->
-<section class="section container" style="text-align:center;">
-  <span class="eyebrow">Ready to Start?</span>
-  <h2 style="margin:8px 0 16px;">Your motorcycle deserves the best care.</h2>
-  <p style="color:var(--muted);max-width:480px;margin:0 auto 24px;">Register for free, add your motorcycle profile, and book your first service in minutes.</p>
-  <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
-    <a class="btn btn-primary" href="<?= baseUrl('register.php') ?>">Create Free Account</a>
-    <a class="btn btn-outline" href="<?= baseUrl('contact.php') ?>">Contact the Shop</a>
+<!-- CTA (auth-aware) -->
+<section class="section container" style="padding-top:24px;">
+  <div class="about-cta">
+    <?php if (!$currentUser): ?>
+      <span class="eyebrow">Ready to Start?</span>
+      <h2>Your motorcycle deserves the best care.</h2>
+      <p>Register for free, add your motorcycle profile, and book your first service in minutes.</p>
+      <div class="about-cta-actions">
+        <a class="btn btn-primary" href="<?= baseUrl('register.php') ?>">Create Free Account</a>
+        <a class="btn btn-outline" href="<?= baseUrl('contact.php') ?>">Contact the Shop</a>
+      </div>
+    <?php elseif (in_array($currentUser['role'], ['admin', 'staff'], true)): ?>
+      <span class="eyebrow">Welcome back, <?= htmlspecialchars(explode(' ', $currentUser['name'])[0]) ?></span>
+      <h2>Keep the shop running smoothly.</h2>
+      <p>Jump back into the panel to manage bookings, inventory, and reports.</p>
+      <div class="about-cta-actions">
+        <a class="btn btn-primary" href="<?= baseUrl($currentUser['role'] === 'admin' ? 'admin/index.php' : 'staff/index.php') ?>">Open <?= $currentUser['role'] === 'admin' ? 'Admin' : 'Staff' ?> Panel</a>
+        <a class="btn btn-outline" href="<?= baseUrl('shop.php') ?>">Browse the Shop</a>
+      </div>
+    <?php elseif ($currentUser['role'] === 'technician'): ?>
+      <span class="eyebrow">Welcome back, <?= htmlspecialchars(explode(' ', $currentUser['name'])[0]) ?></span>
+      <h2>Your work queue is waiting.</h2>
+      <p>Check your assigned jobs and today's schedule.</p>
+      <div class="about-cta-actions">
+        <a class="btn btn-primary" href="<?= baseUrl('tech/index.php') ?>">Open Work Queue</a>
+      </div>
+    <?php else: ?>
+      <span class="eyebrow">Welcome back, <?= htmlspecialchars(explode(' ', $currentUser['name'])[0]) ?></span>
+      <h2>Your motorcycle deserves the best care.</h2>
+      <p>Book your next service or browse parts matched to your motorcycle profile.</p>
+      <div class="about-cta-actions">
+        <a class="btn btn-primary" href="<?= baseUrl('book-service.php') ?>">Book a Service</a>
+        <a class="btn btn-outline" href="<?= baseUrl('my-vehicle.php') ?>">My Vehicle</a>
+      </div>
+    <?php endif; ?>
   </div>
 </section>
 

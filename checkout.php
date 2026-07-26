@@ -58,13 +58,45 @@ $subtotal = array_reduce($items, fn($sum, $item) => $sum + ((float)$item['price'
 $message = '';
 $error = '';
 $paymongoReady = paymongoIsConfigured();
+$paymongoTestMode = $paymongoReady && paymongoIsTestMode();
 $action = $_POST['action'] ?? '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'create_checkout' && $items) {
     $payment = sanitize($_POST['payment_method'] ?? 'paymongo');
     $paymongoMethod = paymongoNormalizePaymentMethod($payment);
 
-    if (!in_array($paymongoMethod, ['paymongo', 'gcash', 'paymaya'], true)) {
+    if ($payment === 'test_sandbox' && $paymongoTestMode) {
+        // Sandbox payment (TEST keys only): completes the order through the
+        // exact fulfillment path the PayMongo webhook uses — stock deduction,
+        // paid status, cart cleanup — without contacting PayMongo's hosted
+        // checkout. Unavailable on live keys.
+        try {
+            getDB()->beginTransaction();
+            $stmt = getDB()->prepare(
+                "INSERT INTO orders (user_id, subtotal, total, payment_method, payment_reference, checkout_session_id, payment_status, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')"
+            );
+            $stmt->execute([$userId, $subtotal, $subtotal, 'paymongo', '', 'SANDBOX-TEST', 'awaiting_payment']);
+            $orderId = (int)getDB()->lastInsertId();
+            getDB()->prepare("UPDATE orders SET payment_reference = ? WHERE id = ?")
+                ->execute(['MT-' . $orderId . '-TEST', $orderId]);
+
+            $itemStmt = getDB()->prepare("INSERT INTO order_items (order_id, cart_item_id, product_id, quantity, price) VALUES (?, ?, ?, ?, ?)");
+            foreach ($items as $item) {
+                $itemStmt->execute([$orderId, $item['cart_id'], $item['id'], $item['quantity'], $item['price']]);
+            }
+            getDB()->commit();
+
+            fulfillPaidOrder($orderId, 'SANDBOX-TEST');
+            $_SESSION['checkout_cart_ids'][currentAuthContext()] = [];
+            redirect(baseUrl('payment-success.php?order_id=' . $orderId));
+        } catch (Throwable $e) {
+            if (getDB()->inTransaction()) {
+                getDB()->rollBack();
+            }
+            $error = $e->getMessage();
+        }
+    } elseif (!in_array($paymongoMethod, ['paymongo', 'gcash', 'paymaya'], true)) {
         $error = 'Please use the PayMongo payment option.';
     } elseif (!$paymongoReady) {
         $error = 'PayMongo is not configured yet. Add your PayMongo keys in the local .env file first.';
@@ -152,6 +184,12 @@ require_once __DIR__ . '/includes/header.php';
     <p class="fine-print">
       Pay securely using the PayMongo hosted checkout page. Available methods depend on your PayMongo account setup and may include Card, GCash, Maya, and QRPh.
     </p>
+    <?php if ($paymongoTestMode): ?>
+      <label><input type="radio" name="payment_method" value="test_sandbox"> Sandbox Test Payment <span style="color:#f4b740;font-weight:800;">(test mode only)</span></label>
+      <p class="fine-print">
+        Instantly marks this order as paid without contacting PayMongo — for development and demos while running on test keys. No real charge is made. This option disappears automatically on live keys.
+      </p>
+    <?php endif; ?>
     <?php if (!$paymongoReady): ?>
       <div class="alert error">PayMongo keys are missing. Add them in your local <code>.env</code> file first.</div>
     <?php endif; ?>

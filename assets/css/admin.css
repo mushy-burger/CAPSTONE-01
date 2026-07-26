@@ -4968,3 +4968,339 @@ a.mtx-feed-row:hover, .mtx-feed-row[role="button"]:hover { background: #f8f9fb; 
   .pos-line-total { grid-column: 2; }
   .pos-remove { grid-column: 3; grid-row: 2; }
 }
+
+/* ============================================================
+   MTX v3 — settings page: segmented tabs on cards, media upload
+   ============================================================ */
+.mtx-seg--card {
+  background: #fff;
+  border: 1px solid var(--line);
+  box-shadow: 0 1px 2px rgba(17, 19, 23, 0.04);
+}
+.mtx-seg--card a, .mtx-seg--card button { height: 38px; padding: 0 18px; }
+.mtx-seg i { margin-right: 7px; font-size: .8em; }
+
+.mtx-help {
+  font-size: .78rem;
+  font-weight: 500;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* Media upload component */
+.mtx-media-preview {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--line);
+  background: #f4f6f8;
+  box-shadow: 0 10px 26px rgba(17, 19, 23, 0.1);
+}
+.mtx-media-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.mtx-media-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(13, 15, 20, 0.55);
+  color: #fff;
+  font-size: .88rem;
+  font-weight: 800;
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity .18s ease;
+}
+.mtx-media-preview:hover .mtx-media-overlay,
+.mtx-media-preview:focus-within .mtx-media-overlay { opacity: 1; }
+
+.mtx-media-drop {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  aspect-ratio: 16 / 9;
+  padding: 20px;
+  border: 2px dashed #d9dde4;
+  border-radius: 14px;
+  background: #fafbfc;
+  text-align: center;
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color .16s ease, background .16s ease;
+}
+.mtx-media-drop:hover, .mtx-media-drop.is-dragover {
+  border-color: var(--accent);
+  background: #fdf5f5;
+}
+.mtx-media-drop i { font-size: 1.9rem; color: #cfd4dc; }
+.mtx-media-drop.is-dragover i { color: var(--accent); }
+.mtx-media-drop strong { color: var(--ink); font-size: .92rem; }
+.mtx-media-drop span { font-size: .8rem; }
+
+.mtx-media-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.mtx-media-filename {
+  flex: 1;
+  min-width: 0;
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mtx-media-filename i { color: #15803d; margin-right: 6px; }
+
+/* Save bar */
+.mtx-form-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(17, 19, 23, 0.04);
+}
+.mtx-form-footer .mtx-help { margin: 0; }
+.mtx-btn--lg { height: 46px; padding: 0 24px; font-size: .92rem; }
+.mtx-btn.is-loading { opacity: .75; pointer-events: none; }
+
+@media (max-width: 900px) {
+  .mtx-form-footer { flex-direction: column-reverse; align-items: stretch; text-align: center; }
+  .mtx-form-footer .mtx-btn { width: 100%; }
+}
+
+/* hidden attribute must win over component display */
+.mtx-media-drop[hidden], .mtx-media-preview[hidden] { display: none !important; }
+
+/* ============================================================
+   MTX v4 — issue-fix batch
+   1) Ranked-list overflow (analytics cards overlapping)
+   2) Sticky sidebar on desktop
+   4) Wider shell + quick-action strip
+   ============================================================ */
+
+/* --- Issue 1: never let list/grid children force tracks wider than their card --- */
+.mtx-grid > *,
+.mtx-list > *,
+.mtx-list-row,
+.mtx-feed-row { min-width: 0; }
+.mtx-list { grid-template-columns: minmax(0, 1fr); }
+.mtx-list-main strong {
+  white-space: normal;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.mtx-list-end { flex: 0 0 auto; max-width: 46%; }
+.mtx-list-end strong { white-space: nowrap; }
+.mtx-list-end span { overflow-wrap: anywhere; }
+
+/* --- Issue 2: sidebar stays fixed while content scrolls (desktop) --- */
+@media (min-width: 901px) {
+  .admin-sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  }
+  .admin-sidebar::-webkit-scrollbar { width: 6px; }
+  .admin-sidebar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); border-radius: 999px; }
+}
+
+/* --- Issue 4: use more of the screen --- */
+.mtx-shell { max-width: 1800px; }
+
+/* Quick-action strip (dashboard, right under the greeting) */
+.mtx-qa-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+.mtx-qa {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  font-weight: 700;
+  font-size: .87rem;
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(17, 19, 23, 0.04);
+  transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+}
+.mtx-qa i {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--qa-color, var(--accent)) 11%, white);
+  color: var(--qa-color, var(--accent));
+  font-size: .85rem;
+}
+.mtx-qa:hover {
+  border-color: var(--qa-color, var(--accent));
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(17, 19, 23, 0.09);
+}
+
+/* --- Issue 3: live clock chip --- */
+.mtx-live-clock { white-space: nowrap; }
+.mtx-live-clock strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* 3-up KPI grid (desktop; collapses via the shared .mtx-kpi-grid breakpoints) */
+@media (min-width: 1421px) {
+  .mtx-kpi-grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* ============================================================
+   MTX v5 — searchable combo selector + live slot picker
+   ============================================================ */
+
+/* --- Searchable combo (customer / vehicle pickers) --- */
+.mtx-combo { position: relative; }
+.mtx-combo-input-wrap { position: relative; }
+.mtx-combo-input-wrap > i {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #9aa1ac;
+  font-size: .8rem;
+  pointer-events: none;
+}
+.mtx-combo input[type="text"] { padding-left: 34px; }
+.mtx-combo-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 70;
+  max-height: 280px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #d9dde4;
+  border-radius: 12px;
+  box-shadow: 0 18px 40px rgba(17, 19, 23, 0.16);
+  padding: 5px;
+}
+.mtx-combo-list[hidden] { display: none; }
+.mtx-combo-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 400;
+}
+.mtx-combo-item strong { font-size: .87rem; font-weight: 700; }
+.mtx-combo-item span { font-size: .77rem; color: var(--muted); }
+.mtx-combo-item:hover,
+.mtx-combo-item.is-active { background: #fdf0f0; }
+.mtx-combo-item.is-active strong { color: #b2121a; }
+.mtx-combo-empty {
+  padding: 14px 12px;
+  text-align: center;
+  color: var(--muted);
+  font-size: .84rem;
+  font-weight: 600;
+}
+.mtx-combo-selected {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid #bfe3cd;
+  border-radius: 10px;
+  background: #f0fdf4;
+}
+.mtx-combo-selected[hidden] { display: none; }
+.mtx-combo-selected i.mtx-combo-selected-icon { color: #15803d; }
+.mtx-combo-selected-copy { flex: 1; min-width: 0; display: grid; line-height: 1.3; }
+.mtx-combo-selected-copy strong { font-size: .86rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mtx-combo-selected-copy span { font-size: .76rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mtx-combo-clear {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 999px;
+  background: #e2e6ec;
+  color: #343941;
+  font-size: .8rem;
+  cursor: pointer;
+  transition: background .14s ease;
+}
+.mtx-combo-clear:hover { background: #f3c1c1; color: #b2121a; }
+
+/* --- Live time-slot picker (staff booking) --- */
+.mtx-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+  gap: 10px;
+}
+.mtx-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 11px 8px;
+  border: 1px solid #d9dde4;
+  border-radius: 12px;
+  background: #fff;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color .14s ease, background .14s ease, box-shadow .14s ease, transform .14s ease;
+}
+.mtx-slot strong { font-size: .9rem; }
+.mtx-slot small { font-size: .72rem; font-weight: 700; color: var(--muted); }
+.mtx-slot:hover:not(:disabled) { border-color: var(--accent); transform: translateY(-1px); }
+.mtx-slot.is-selected {
+  border-color: var(--accent);
+  background: #fdf0f0;
+  box-shadow: 0 0 0 3px rgba(215, 25, 32, 0.12);
+}
+.mtx-slot.is-selected strong { color: #b2121a; }
+.mtx-slot:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+  background: #f4f6f8;
+}
+.mtx-slot:disabled small { color: #b91c1c; }
+.mtx-slot-note { font-size: .8rem; color: var(--muted); font-weight: 600; }
+
+/* The hidden attribute must always win over component display rules */
+[hidden] { display: none !important; }
+
+/* Combo dropdowns must escape the step card (overflow was clipping them) */
+.mtx-step { overflow: visible; }
+.mtx-step-head { border-radius: 13px 13px 0 0; }

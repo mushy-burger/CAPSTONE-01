@@ -104,5 +104,23 @@ $unreadCount = getUnreadNotificationCount((int)$currentUser['id']);
   });
   document.addEventListener('click', function(){ drop.hidden = true; });
   drop.addEventListener('click', function(e){ e.stopPropagation(); });
+
+  // "Mark all read" stays on the page: call the API in the background,
+  // then clear the unread badges and highlights in place.
+  var markAll = drop.querySelector('.notif-mark-all');
+  if (markAll) {
+    markAll.addEventListener('click', function(e){
+      e.preventDefault();
+      markAll.textContent = 'Marking…';
+      fetch(markAll.href)
+        .then(function(r){ return r.json(); })
+        .then(function(){
+          document.querySelectorAll('.notif-badge, .notif-badge-sm').forEach(function(el){ el.remove(); });
+          list.querySelectorAll('.notif-item.unread').forEach(function(el){ el.classList.remove('unread'); });
+          markAll.remove();
+        })
+        .catch(function(){ markAll.textContent = 'Mark all read'; });
+    });
+  }
 })();
 </script>

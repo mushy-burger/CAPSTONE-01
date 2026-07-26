@@ -54,22 +54,62 @@ sort($categoryNames);
 $customerExpression = posColumnExists('orders', 'walk_in_customer_name')
     ? "COALESCE(NULLIF(o.walk_in_customer_name, ''), u.name, 'Walk-in Customer')"
     : "COALESCE(u.name, 'Walk-in Customer')";
+$servedByJoin = posColumnExists('orders', 'served_by_staff_id')
+    ? "LEFT JOIN users sb ON sb.id = o.served_by_staff_id"
+    : "";
+$servedBySelect = posColumnExists('orders', 'served_by_staff_id')
+    ? "sb.name AS served_by_name,"
+    : "NULL AS served_by_name,";
 
 $recentOrders = fetchAllRows(
     "SELECT o.id, o.total, o.payment_method, o.created_at,
-            $customerExpression AS customer_name,
-            COALESCE(cnt.item_count, 0) AS item_count
+            $servedBySelect
+            $customerExpression AS customer_name
      FROM orders o
      LEFT JOIN users u ON u.id = o.user_id
-     LEFT JOIN (
-       SELECT order_id, COUNT(*) AS item_count
-       FROM order_items
-       GROUP BY order_id
-     ) cnt ON cnt.order_id = o.id
+     $servedByJoin
      WHERE o.payment_method = 'cash'
      ORDER BY o.created_at DESC
      LIMIT 8"
 );
+
+// Line items for the recent POS orders (drives the itemized rows + receipt modal)
+$recentOrderIds = array_map('intval', array_column($recentOrders, 'id'));
+$itemsByOrder = [];
+if ($recentOrderIds) {
+    $ph = implode(',', array_fill(0, count($recentOrderIds), '?'));
+    foreach (fetchAllRows(
+        "SELECT oi.order_id, oi.quantity, oi.price,
+                COALESCE(p.name, CONCAT('Product #', oi.product_id)) AS product_name
+         FROM order_items oi
+         LEFT JOIN products p ON p.id = oi.product_id
+         WHERE oi.order_id IN ($ph)
+         ORDER BY oi.id",
+        $recentOrderIds
+    ) as $item) {
+        $itemsByOrder[(int)$item['order_id']][] = $item;
+    }
+}
+
+// Receipt modal payload
+$posReceipts = [];
+foreach ($recentOrders as $order) {
+    $oid = (int)$order['id'];
+    $posReceipts[$oid] = [
+        'id'       => $oid,
+        'date'     => date('M j, Y g:i A', strtotime($order['created_at'])),
+        'customer' => $order['customer_name'],
+        'payment'  => strtoupper(str_replace('_', ' ', (string)$order['payment_method'])),
+        'servedBy' => $order['served_by_name'] ?: '—',
+        'total'    => formatPrice((float)$order['total']),
+        'items'    => array_map(static fn(array $it) => [
+            'name'     => $it['product_name'],
+            'qty'      => (int)$it['quantity'],
+            'price'    => formatPrice((float)$it['price']),
+            'subtotal' => formatPrice((float)$it['price'] * (int)$it['quantity']),
+        ], $itemsByOrder[$oid] ?? []),
+    ];
+}
 
 require_once __DIR__ . '/../includes/staff-sidebar.php';
 ?>
@@ -101,7 +141,6 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
       <div class="mtx-card-head">
         <div>
           <h2><i class="fas fa-barcode"></i> Products</h2>
-          <p class="pos-product-count-copy"><?= count($products) ?> sellable products / <?= $totalUnits ?> units available</p>
           <p><?= count($products) ?> sellable products · <?= $totalUnits ?> units available</p>
         </div>
         <div class="mtx-field-search pos-search">
@@ -276,23 +315,47 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
               <th>Order</th>
               <th>Customer</th>
               <th>Payment</th>
-              <th>Items</th>
+              <th>Purchased Items</th>
               <th class="num">Total</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
             <?php foreach ($recentOrders as $order): ?>
-              <tr>
+              <?php
+                $oid = (int)$order['id'];
+                $lineItems = $itemsByOrder[$oid] ?? [];
+                $shownItems = array_slice($lineItems, 0, 2);
+                $moreItems = count($lineItems) - count($shownItems);
+              ?>
+              <tr data-pos-receipt="<?= $oid ?>" role="button" tabindex="0" aria-haspopup="dialog">
                 <td>
                   <div class="mtx-cell-main">
-                    <strong>#<?= (int)$order['id'] ?></strong>
+                    <strong>#<?= $oid ?></strong>
                     <span class="mtx-cell-sub"><?= htmlspecialchars(date('M j, Y g:i A', strtotime($order['created_at']))) ?></span>
                   </div>
                 </td>
                 <td><?= htmlspecialchars($order['customer_name']) ?></td>
                 <td><?= htmlspecialchars(strtoupper(str_replace('_', ' ', (string)$order['payment_method']))) ?></td>
-                <td><?= (int)$order['item_count'] ?></td>
+                <td>
+                  <div class="mtx-cell-main">
+                    <?php if ($shownItems): ?>
+                      <?php foreach ($shownItems as $item): ?>
+                        <span style="font-size:.82rem;">
+                          <?= htmlspecialchars($item['product_name']) ?>
+                          <span class="mtx-cell-sub">&times;<?= (int)$item['quantity'] ?> @ <?= formatPrice((float)$item['price']) ?></span>
+                        </span>
+                      <?php endforeach; ?>
+                      <?php if ($moreItems > 0): ?>
+                        <span class="mtx-cell-sub">+<?= $moreItems ?> more product<?= $moreItems === 1 ? '' : 's' ?> — view details</span>
+                      <?php endif; ?>
+                    <?php else: ?>
+                      <span class="mtx-cell-sub">No items recorded</span>
+                    <?php endif; ?>
+                  </div>
+                </td>
                 <td class="num"><span class="mtx-money"><?= formatPrice((float)$order['total']) ?></span></td>
+                <td class="num"><button type="button" class="mtx-btn mtx-btn--ghost mtx-btn--sm" data-pos-receipt-btn="<?= $oid ?>"><i class="fas fa-eye"></i> View Details</button></td>
               </tr>
             <?php endforeach; ?>
           </tbody>
@@ -309,6 +372,96 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
     <?php endif; ?>
   </section>
 </div>
+
+<!-- POS receipt modal -->
+<div class="mtx-modal" id="posReceiptModal" aria-hidden="true">
+  <div class="mtx-modal__backdrop" data-close-modal></div>
+  <div class="mtx-modal__dialog">
+    <button type="button" class="mtx-modal__close" data-close-modal aria-label="Close">&times;</button>
+    <h2 class="mtx-modal__title" id="rcTitle">POS Order</h2>
+    <p class="mtx-modal__meta" id="rcMeta"></p>
+
+    <div class="mtx-modal-section">
+      <h3>Transaction</h3>
+      <div class="mtx-kv-grid">
+        <div class="mtx-kv"><span>Customer</span><strong id="rcCustomer"></strong></div>
+        <div class="mtx-kv"><span>Payment Method</span><strong id="rcPayment"></strong></div>
+        <div class="mtx-kv"><span>Date &amp; Time</span><strong id="rcDate"></strong></div>
+        <div class="mtx-kv"><span>Processed By</span><strong id="rcServedBy"></strong></div>
+      </div>
+    </div>
+
+    <div class="mtx-modal-section">
+      <h3>Purchased Items</h3>
+      <div class="mtx-line-rows" id="rcItems"></div>
+      <div class="mtx-total-row"><span>Grand Total</span><span id="rcTotal"></span></div>
+    </div>
+  </div>
+</div>
+
+<script type="application/json" id="posReceiptsData"><?= json_encode($posReceipts, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?></script>
+
+<script>
+(function () {
+  var receipts = {};
+  try { receipts = JSON.parse(document.getElementById('posReceiptsData').textContent || '{}'); } catch (e) { receipts = {}; }
+  var modal = document.getElementById('posReceiptModal');
+
+  function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s == null ? '' : String(s);
+    return d.innerHTML;
+  }
+  function setText(id, v) { document.getElementById(id).textContent = v || '—'; }
+
+  function openReceipt(id) {
+    var r = receipts[id];
+    if (!r) return;
+    setText('rcTitle', 'POS Order #' + r.id);
+    document.getElementById('rcMeta').textContent = r.date + ' · ' + r.payment;
+    setText('rcCustomer', r.customer);
+    setText('rcPayment', r.payment);
+    setText('rcDate', r.date);
+    setText('rcServedBy', r.servedBy);
+    setText('rcTotal', r.total);
+
+    var wrap = document.getElementById('rcItems');
+    wrap.innerHTML = '';
+    if (!r.items.length) {
+      wrap.innerHTML = '<div class="mtx-line-row"><span class="mtx-cell-sub">No items recorded for this order.</span></div>';
+    } else {
+      r.items.forEach(function (it) {
+        var row = document.createElement('div');
+        row.className = 'mtx-line-row';
+        row.innerHTML = '<span><i class="fas fa-box" style="color:#d97706;"></i>' + esc(it.name) +
+          ' <span class="mtx-cell-sub">&times;' + it.qty + ' @ ' + esc(it.price) + '</span></span>' +
+          '<strong class="mtx-money">' + esc(it.subtotal) + '</strong>';
+        wrap.appendChild(row);
+      });
+    }
+    modal.classList.add('is-open');
+  }
+
+  document.querySelectorAll('[data-pos-receipt-btn]').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      openReceipt(btn.getAttribute('data-pos-receipt-btn'));
+    });
+  });
+  document.querySelectorAll('[data-pos-receipt]').forEach(function (row) {
+    row.addEventListener('click', function () { openReceipt(row.getAttribute('data-pos-receipt')); });
+    row.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openReceipt(row.getAttribute('data-pos-receipt')); }
+    });
+  });
+  modal.querySelectorAll('[data-close-modal]').forEach(function (el) {
+    el.addEventListener('click', function () { modal.classList.remove('is-open'); });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') modal.classList.remove('is-open');
+  });
+})();
+</script>
 
 <script>
 (function(){

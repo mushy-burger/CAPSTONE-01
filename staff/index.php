@@ -3,9 +3,8 @@ $pageTitle = 'Staff Dashboard';
 require_once __DIR__ . '/../includes/staff-sidebar.php';
 require_once __DIR__ . '/../includes/db.php';
 
-// Mark all notifications as read when visiting dashboard
-getDB()->prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0")
-       ->execute([(int)$currentUser['id']]);
+// Notifications stay unread until explicitly marked via the bell's
+// "Mark all read" — keeps the unread-count badge meaningful.
 
 $pendingCount    = fetchOne("SELECT COUNT(*) AS n FROM bookings WHERE status = 'pending'")['n'] ?? 0;
 $confirmedToday  = fetchOne("SELECT COUNT(*) AS n FROM bookings WHERE status = 'confirmed' AND scheduled_date = CURDATE()")['n'] ?? 0;
@@ -37,7 +36,8 @@ $pendingBookings = fetchAllRows(
      LIMIT 10"
 );
 
-$hour = (int)date('G');
+$manilaNow = new DateTime('now', new DateTimeZone('Asia/Manila'));
+$hour = (int)$manilaNow->format('G');
 $greeting = $hour < 12 ? 'Good Morning' : ($hour < 18 ? 'Good Afternoon' : 'Good Evening');
 ?>
 
@@ -46,10 +46,11 @@ $greeting = $hour < 12 ? 'Good Morning' : ($hour < 18 ? 'Good Afternoon' : 'Good
   <header class="mtx-page-head">
     <div class="mtx-page-head-copy">
       <span class="eyebrow">Staff Panel</span>
-      <h1><?= $greeting ?>, <?= htmlspecialchars($currentUser['name']) ?></h1>
+      <h1><span data-greeting><?= $greeting ?></span>, <?= htmlspecialchars($currentUser['name']) ?></h1>
       <p>Manage bookings, products, services, and vehicle options from here.</p>
     </div>
-    <div class="mtx-head-actions">
+    <div class="mtx-head-actions" style="align-items:center;">
+      <?php require __DIR__ . '/../includes/mtx-clock.php'; ?>
       <a href="<?= baseUrl('staff/new-booking.php') ?>" class="mtx-btn mtx-btn--primary"><i class="fas fa-plus"></i> New Booking</a>
       <a href="<?= baseUrl('staff/bookings.php') ?>" class="mtx-btn mtx-btn--ghost"><i class="fas fa-list-check"></i> All Bookings</a>
     </div>

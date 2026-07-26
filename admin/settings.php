@@ -616,168 +616,252 @@ if ($editMotorcycleId && $tab === 'vehicle-options') {
 }
 ?>
 
-<section class="admin-card settings-admin-shell <?= $tab === 'vehicle-options' ? 'settings-shell--flat' : '' ?>">
-  <div class="admin-page-head">
-    <div>
+<div class="mtx-shell">
+
+  <header class="mtx-page-head">
+    <div class="mtx-page-head-copy">
+      <span class="eyebrow">Configuration</span>
       <h1>Settings</h1>
       <p>Manage homepage content, compatible services, and motorcycle catalog options.</p>
     </div>
-  </div>
+  </header>
 
-  <div class="admin-tabs settings-tabs">
-    <a href="<?= baseUrl('admin/settings.php?tab=homepage') ?>" class="admin-tab <?= $tab === 'homepage' ? 'active' : '' ?>">Homepage</a>
-    <a href="<?= baseUrl('admin/settings.php?tab=services') ?>" class="admin-tab <?= $tab === 'services' ? 'active' : '' ?>">Compatible Services</a>
-    <a href="<?= baseUrl('admin/settings.php?tab=vehicle-options') ?>" class="admin-tab <?= $tab === 'vehicle-options' ? 'active' : '' ?>">Vehicle Options</a>
+  <div class="mtx-seg mtx-seg--card" role="tablist" aria-label="Settings sections">
+    <a href="<?= baseUrl('admin/settings.php?tab=homepage') ?>" class="<?= $tab === 'homepage' ? 'active' : '' ?>" role="tab"><i class="fas fa-house"></i>Homepage</a>
+    <a href="<?= baseUrl('admin/settings.php?tab=services') ?>" class="<?= $tab === 'services' ? 'active' : '' ?>" role="tab"><i class="fas fa-tools"></i>Compatible Services</a>
+    <a href="<?= baseUrl('admin/settings.php?tab=vehicle-options') ?>" class="<?= $tab === 'vehicle-options' ? 'active' : '' ?>" role="tab"><i class="fas fa-motorcycle"></i>Vehicle Options</a>
   </div>
 
   <?php if ($flash): ?>
-    <div class="alert success" style="margin-bottom:1rem;"><?= htmlspecialchars($flash) ?></div>
+    <div class="alert success"><?= htmlspecialchars($flash) ?></div>
   <?php endif; ?>
   <?php if ($flashErr): ?>
-    <div class="alert error" style="margin-bottom:1rem;"><?= htmlspecialchars($flashErr) ?></div>
+    <div class="alert error"><?= htmlspecialchars($flashErr) ?></div>
   <?php endif; ?>
 
   <?php if ($tab === 'homepage'): ?>
-    <h2 style="font-size:.9rem;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.06em;margin-bottom:1rem;">Hero Section</h2>
-
-    <form method="post" enctype="multipart/form-data" style="max-width:600px;">
+    <form method="post" enctype="multipart/form-data" id="homepageSettingsForm" class="mtx-stack">
       <?= authContextField() ?>
       <input type="hidden" name="action" value="save_homepage">
 
-      <label style="display:block;margin-bottom:1rem;">
-        <span style="display:block;font-weight:600;margin-bottom:.3rem;">Eyebrow text</span>
-        <input type="text" name="hero_eyebrow" value="<?= htmlspecialchars($homepageSettings['hero_eyebrow']) ?>" style="width:100%;padding:.5rem .75rem;border:1px solid #ddd;border-radius:6px;">
-      </label>
+      <div class="mtx-grid mtx-grid--half">
+        <!-- Hero content -->
+        <section class="mtx-card">
+          <div class="mtx-card-head">
+            <div>
+              <h2><i class="fas fa-pen-to-square"></i> Hero Content</h2>
+              <p>The headline copy shown on the public homepage banner.</p>
+            </div>
+          </div>
+          <div class="mtx-stack" style="gap:16px;">
+            <label class="mtx-field">
+              <span>Eyebrow text</span>
+              <input type="text" name="hero_eyebrow" value="<?= htmlspecialchars($homepageSettings['hero_eyebrow']) ?>" placeholder="Parts, accessories, and maintenance">
+              <span class="mtx-help">Short kicker line displayed above the main heading.</span>
+            </label>
 
-      <label style="display:block;margin-bottom:1rem;">
-        <span style="display:block;font-weight:600;margin-bottom:.3rem;">Heading</span>
-        <input type="text" name="hero_heading" value="<?= htmlspecialchars($homepageSettings['hero_heading']) ?>" style="width:100%;padding:.5rem .75rem;border:1px solid #ddd;border-radius:6px;">
-      </label>
+            <label class="mtx-field">
+              <span>Heading</span>
+              <input type="text" name="hero_heading" value="<?= htmlspecialchars($homepageSettings['hero_heading']) ?>" placeholder="Keep your motorcycle ready for every ride.">
+              <span class="mtx-help">The main hero headline. The second half is automatically highlighted in red.</span>
+            </label>
 
-      <label style="display:block;margin-bottom:1rem;">
-        <span style="display:block;font-weight:600;margin-bottom:.3rem;">Subtext</span>
-        <textarea name="hero_subtext" rows="3" style="width:100%;padding:.5rem .75rem;border:1px solid #ddd;border-radius:6px;resize:vertical;"><?= htmlspecialchars($homepageSettings['hero_subtext']) ?></textarea>
-      </label>
+            <label class="mtx-field">
+              <span>Subtext</span>
+              <textarea name="hero_subtext" rows="4" placeholder="A short supporting sentence under the heading."><?= htmlspecialchars($homepageSettings['hero_subtext']) ?></textarea>
+              <span class="mtx-help">Supporting copy under the heading — keep it to one or two sentences.</span>
+            </label>
+          </div>
+        </section>
 
-      <label style="display:block;margin-bottom:1.5rem;">
-        <span style="display:block;font-weight:600;margin-bottom:.5rem;">Hero background image</span>
-        <?php
-        $bgFile = $homepageSettings['hero_background_image'];
-        $bgExists = $bgFile && file_exists(__DIR__ . '/../uploads/' . $bgFile);
-        ?>
-        <?php if ($bgExists): ?>
-          <img id="heroBackgroundPreview" src="<?= baseUrl('uploads/' . rawurlencode($bgFile) . '?v=' . filemtime(__DIR__ . '/../uploads/' . $bgFile)) ?>" alt="Hero background" style="display:block;max-width:320px;width:100%;margin-bottom:.6rem;border-radius:12px;border:1px solid #eee;object-fit:cover;aspect-ratio:16/9;">
-        <?php else: ?>
-          <img id="heroBackgroundPreview" src="" alt="Hero background" style="display:none;max-width:320px;width:100%;margin-bottom:.6rem;border-radius:12px;border:1px solid #eee;object-fit:cover;aspect-ratio:16/9;">
-        <?php endif; ?>
-        <input type="file" name="hero_background_image" id="heroBackgroundInput" accept="image/*">
-        <small style="display:block;color:#777;margin-top:.45rem;">Recommended: 1920x1080 workshop background image for the full hero banner.</small>
-      </label>
+        <!-- Hero image -->
+        <section class="mtx-card">
+          <div class="mtx-card-head">
+            <div>
+              <h2><i class="fas fa-image"></i> Hero Background Image</h2>
+              <p>Full-width banner image behind the hero content.</p>
+            </div>
+            <span class="mtx-pill" style="--pill-color:#2563eb;"><i class="fas fa-expand"></i> 1920 &times; 1080</span>
+          </div>
 
-      <button type="submit" class="btn btn-primary">Save homepage settings</button>
+          <?php
+          $bgFile = $homepageSettings['hero_background_image'];
+          $bgExists = $bgFile && file_exists(__DIR__ . '/../uploads/' . $bgFile);
+          ?>
+          <div class="mtx-media-preview" id="heroPreviewWrap" <?= $bgExists ? '' : 'hidden' ?>>
+            <img id="heroBackgroundPreview"
+                 src="<?= $bgExists ? baseUrl('uploads/' . rawurlencode($bgFile) . '?v=' . filemtime(__DIR__ . '/../uploads/' . $bgFile)) : '' ?>"
+                 alt="Hero background preview">
+            <label class="mtx-media-overlay" for="heroBackgroundInput">
+              <i class="fas fa-arrows-rotate"></i> Replace image
+            </label>
+          </div>
+
+          <label class="mtx-media-drop" id="heroDropZone" for="heroBackgroundInput" <?= $bgExists ? 'hidden' : '' ?>>
+            <i class="fas fa-cloud-arrow-up"></i>
+            <strong>Click to upload or drag &amp; drop</strong>
+            <span>JPG, PNG, WebP or GIF · up to 6 MB</span>
+          </label>
+
+          <input type="file" name="hero_background_image" id="heroBackgroundInput" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;">
+
+          <div class="mtx-media-meta">
+            <span class="mtx-media-filename" id="heroFileName">
+              <?= $bgExists ? '<i class="fas fa-circle-check"></i>' . htmlspecialchars($bgFile) : 'No new file selected' ?>
+            </span>
+            <label for="heroBackgroundInput" class="mtx-btn mtx-btn--ghost mtx-btn--sm" style="cursor:pointer;">
+              <i class="fas fa-upload"></i> <?= $bgExists ? 'Replace Image' : 'Upload Image' ?>
+            </label>
+          </div>
+          <p class="mtx-help" style="margin:10px 0 0;">Recommended: 1920&times;1080 workshop background image for the full hero banner. Uploads are optimized automatically.</p>
+        </section>
+      </div>
+
+      <!-- Save bar -->
+      <div class="mtx-form-footer">
+        <span class="mtx-help"><i class="fas fa-circle-info" style="color:#2563eb;margin-right:6px;"></i>Changes go live on the homepage immediately after saving.</span>
+        <button type="submit" class="mtx-btn mtx-btn--primary mtx-btn--lg" id="homepageSaveBtn">
+          <i class="fas fa-floppy-disk" id="homepageSaveIcon"></i> Save Homepage Settings
+        </button>
+      </div>
     </form>
+
     <script>
       (() => {
-        const bindPreview = (inputId, previewId) => {
-          const input = document.getElementById(inputId);
-          const preview = document.getElementById(previewId);
-          if (!input || !preview) return;
+        const input = document.getElementById('heroBackgroundInput');
+        const preview = document.getElementById('heroBackgroundPreview');
+        const previewWrap = document.getElementById('heroPreviewWrap');
+        const dropZone = document.getElementById('heroDropZone');
+        const fileName = document.getElementById('heroFileName');
 
-          input.addEventListener('change', () => {
-            const [file] = input.files || [];
-            if (!file) return;
-
-            const objectUrl = URL.createObjectURL(file);
-            preview.src = objectUrl;
-            preview.style.display = 'block';
-          });
+        const showFile = (file) => {
+          if (!file) return;
+          preview.src = URL.createObjectURL(file);
+          previewWrap.hidden = false;
+          if (dropZone) dropZone.hidden = true;
+          fileName.innerHTML = '<i class="fas fa-circle-check"></i>' +
+            file.name.replace(/&/g, '&amp;').replace(/</g, '&lt;');
         };
 
-        bindPreview('heroBackgroundInput', 'heroBackgroundPreview');
+        if (input && preview) {
+          input.addEventListener('change', () => {
+            const [file] = input.files || [];
+            showFile(file);
+          });
+        }
+
+        // Drag & drop onto the dropzone or the preview
+        [dropZone, previewWrap].forEach((zone) => {
+          if (!zone) return;
+          ['dragenter', 'dragover'].forEach((evt) => zone.addEventListener(evt, (e) => {
+            e.preventDefault();
+            zone.classList.add('is-dragover');
+          }));
+          ['dragleave', 'drop'].forEach((evt) => zone.addEventListener(evt, (e) => {
+            e.preventDefault();
+            zone.classList.remove('is-dragover');
+          }));
+          zone.addEventListener('drop', (e) => {
+            const files = e.dataTransfer && e.dataTransfer.files;
+            if (files && files.length && input) {
+              input.files = files;
+              showFile(files[0]);
+            }
+          });
+        });
+
+        // Loading state (UI only)
+        const form = document.getElementById('homepageSettingsForm');
+        const saveBtn = document.getElementById('homepageSaveBtn');
+        const saveIcon = document.getElementById('homepageSaveIcon');
+        if (form && saveBtn) {
+          form.addEventListener('submit', () => {
+            saveBtn.classList.add('is-loading');
+            if (saveIcon) saveIcon.className = 'fas fa-spinner fa-spin';
+          });
+        }
       })();
     </script>
   <?php elseif ($tab === 'services'): ?>
-    <section class="admin-page-stack settings-services-panel">
-      <div class="admin-page-head">
+    <section class="mtx-card">
+      <div class="mtx-card-head">
         <div>
-          <h1>Compatible Services</h1>
+          <h2><i class="fas fa-screwdriver-wrench"></i> <?= $editSvc ? 'Edit Service' : 'New Service' ?></h2>
           <p>Define service types, labor fees, required product categories, and supported motorcycle types.</p>
         </div>
-        <a href="<?= baseUrl('admin/settings.php?tab=services') ?>" class="btn btn-primary"><i class="fas fa-plus"></i> Add Service</a>
       </div>
+      <form method="post" class="mtx-stack" style="gap:16px;max-width:960px;">
+        <?= authContextField() ?>
+        <input type="hidden" name="action" value="save_service">
+        <?php if ($editSvc): ?>
+          <input type="hidden" name="service_id" value="<?= (int)$editSvc['id'] ?>">
+        <?php endif; ?>
 
-      <div class="admin-form-box settings-service-form">
-        <h3><?= $editSvc ? 'Edit Service' : 'New Service' ?></h3>
-        <form method="post">
-          <?= authContextField() ?>
-          <input type="hidden" name="action" value="save_service">
+        <div class="mtx-form-grid">
+          <label class="mtx-field"><span>Service name <em>*</em></span>
+            <input type="text" name="svc_name" value="<?= htmlspecialchars($editSvc['name'] ?? '') ?>" required>
+          </label>
+          <label class="mtx-field"><span>Labor fee (PHP)</span>
+            <input type="number" name="svc_labor_fee" min="0" step="0.01" value="<?= isset($editSvc) ? (float)$editSvc['labor_fee'] : '0' ?>">
+          </label>
+        </div>
+
+        <label class="mtx-field"><span>Description</span>
+          <textarea name="svc_description" rows="3"><?= htmlspecialchars($editSvc['description'] ?? '') ?></textarea>
+        </label>
+
+        <label class="mtx-field"><span>Required product category</span>
+          <select name="svc_required_category_id">
+            <option value="">No category required</option>
+            <?php foreach ($productCategories as $category): ?>
+              <option
+                value="<?= (int)$category['id'] ?>"
+                <?= (int)($editSvc['required_category_id'] ?? 0) === (int)$category['id'] ? 'selected' : '' ?>
+              >
+                <?= htmlspecialchars($category['name']) ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+          <span class="mtx-help">Customers must pick a product from this category when booking the service.</span>
+        </label>
+
+        <div class="mtx-field">
+          <span>Applies to motorcycle types</span>
+          <?php
+          $allTypeIds = array_map('intval', array_column($motoTypes, 'id'));
+          $checkedIds = $editSvc ? parseAppliesTo($editSvc['applies_to'], $allTypeIds) : $allTypeIds;
+          ?>
+          <div class="mtx-chip-group">
+            <?php foreach ($motoTypes as $type): ?>
+              <label class="mtx-chip">
+                <input type="checkbox" name="svc_type_ids[]" value="<?= (int)$type['id'] ?>" <?= in_array((int)$type['id'], $checkedIds, true) ? 'checked' : '' ?>>
+                <i class="fas fa-check"></i><?= htmlspecialchars($type['name']) ?>
+              </label>
+            <?php endforeach; ?>
+          </div>
+          <span class="mtx-help">Selecting all types (or none) makes the service available to every motorcycle.</span>
+        </div>
+
+        <div class="form-actions" style="margin-top:2px;">
+          <button type="submit" class="mtx-btn mtx-btn--primary"><i class="fas fa-floppy-disk"></i> <?= $editSvc ? 'Update Service' : 'Add Service' ?></button>
           <?php if ($editSvc): ?>
-            <input type="hidden" name="service_id" value="<?= (int)$editSvc['id'] ?>">
+            <a href="<?= baseUrl('admin/settings.php?tab=services') ?>" class="mtx-btn mtx-btn--ghost">Cancel</a>
           <?php endif; ?>
-
-          <div class="form-grid-2">
-            <label>Service name
-              <input type="text" name="svc_name" value="<?= htmlspecialchars($editSvc['name'] ?? '') ?>" required>
-            </label>
-            <label>Labor fee (PHP)
-              <input type="number" name="svc_labor_fee" min="0" step="0.01" value="<?= isset($editSvc) ? (float)$editSvc['labor_fee'] : '0' ?>">
-            </label>
-          </div>
-
-          <label>Description
-            <textarea name="svc_description" rows="3"><?= htmlspecialchars($editSvc['description'] ?? '') ?></textarea>
-          </label>
-
-          <label>Required product category
-            <select name="svc_required_category_id">
-              <option value="">No category required</option>
-              <?php foreach ($productCategories as $category): ?>
-                <option
-                  value="<?= (int)$category['id'] ?>"
-                  <?= (int)($editSvc['required_category_id'] ?? 0) === (int)$category['id'] ? 'selected' : '' ?>
-                >
-                  <?= htmlspecialchars($category['name']) ?>
-                </option>
-              <?php endforeach; ?>
-            </select>
-          </label>
-
-          <label>Applies to motorcycle types
-            <?php
-            $allTypeIds = array_map('intval', array_column($motoTypes, 'id'));
-            $checkedIds = $editSvc ? parseAppliesTo($editSvc['applies_to'], $allTypeIds) : $allTypeIds;
-            ?>
-            <div class="checkbox-group">
-              <?php foreach ($motoTypes as $type): ?>
-                <label class="inline-check">
-                  <input type="checkbox" name="svc_type_ids[]" value="<?= (int)$type['id'] ?>" <?= in_array((int)$type['id'], $checkedIds, true) ? 'checked' : '' ?>>
-                  <?= htmlspecialchars($type['name']) ?>
-                </label>
-              <?php endforeach; ?>
-            </div>
-          </label>
-
-          <div class="form-actions">
-            <button type="submit" class="btn btn-primary"><?= $editSvc ? 'Update Service' : 'Add Service' ?></button>
-            <?php if ($editSvc): ?>
-              <a href="<?= baseUrl('admin/settings.php?tab=services') ?>" class="btn btn-outline">Cancel</a>
-            <?php endif; ?>
-          </div>
-        </form>
-      </div>
+        </div>
+      </form>
     </section>
 
-    <section class="admin-page-stack settings-services-panel">
-      <div class="admin-page-head">
+    <section class="mtx-card mtx-card--flush">
+      <div class="mtx-card-head">
         <div>
-          <h2>Motorcycle Types</h2>
+          <h2><i class="fas fa-motorcycle"></i> Motorcycle Types</h2>
           <p>Review service compatibility groups and delete unused motorcycle types when needed.</p>
         </div>
       </div>
 
       <?php if ($motoTypes): ?>
-        <div class="admin-table-wrap">
-          <table class="admin-data-table settings-data-table">
+        <div class="mtx-table-wrap">
+          <table class="mtx-table settings-data-table">
             <thead>
               <tr>
                 <th>Type</th>
@@ -805,7 +889,7 @@ if ($editMotorcycleId && $tab === 'vehicle-options') {
                       <?= authContextField() ?>
                       <input type="hidden" name="action" value="delete_motorcycle_type">
                       <input type="hidden" name="type_id" value="<?= (int)$type['id'] ?>">
-                      <button type="submit" class="btn btn-outline danger-btn settings-action-btn">Delete</button>
+                      <button type="submit" class="mtx-btn mtx-btn--ghost mtx-btn--sm" style="color:#b91c1c;border-color:#f3c1c1;"><i class="fas fa-trash-can"></i> Delete</button>
                     </form>
                   </td>
                 </tr>
@@ -814,21 +898,26 @@ if ($editMotorcycleId && $tab === 'vehicle-options') {
           </table>
         </div>
       <?php else: ?>
-        <p class="empty-note">No motorcycle types yet.</p>
+        <div style="padding:0 24px 24px;">
+          <div class="mtx-empty">
+            <i class="fas fa-motorcycle"></i>
+            <strong>No motorcycle types yet.</strong>
+          </div>
+        </div>
       <?php endif; ?>
     </section>
 
-    <section class="admin-page-stack settings-services-panel">
-      <div class="admin-page-head">
+    <section class="mtx-card mtx-card--flush">
+      <div class="mtx-card-head">
         <div>
-          <h2>Existing Services</h2>
+          <h2><i class="fas fa-list-check"></i> Existing Services</h2>
           <p>Manage the services shown to customers and staff during booking.</p>
         </div>
       </div>
 
       <?php if ($serviceTypes): ?>
-        <div class="admin-table-wrap">
-          <table class="admin-data-table settings-data-table">
+        <div class="mtx-table-wrap">
+          <table class="mtx-table settings-data-table">
             <thead>
               <tr>
                 <th>Service</th>
@@ -861,12 +950,12 @@ if ($editMotorcycleId && $tab === 'vehicle-options') {
                   <td><?= htmlspecialchars($serviceType['required_category'] ?: 'None') ?></td>
                   <td><span class="settings-tag"><?= htmlspecialchars($appLabel) ?></span></td>
                   <td class="settings-table-actions">
-                    <a href="<?= baseUrl('admin/settings.php?tab=services&edit_service=' . (int)$serviceType['id']) ?>" class="btn btn-outline settings-action-btn">Edit</a>
+                    <a href="<?= baseUrl('admin/settings.php?tab=services&edit_service=' . (int)$serviceType['id']) ?>" class="mtx-btn mtx-btn--ghost mtx-btn--sm"><i class="fas fa-pen"></i> Edit</a>
                     <form method="post" onsubmit="return confirm('Delete this service?')">
                       <?= authContextField() ?>
                       <input type="hidden" name="action" value="delete_service">
                       <input type="hidden" name="service_id" value="<?= (int)$serviceType['id'] ?>">
-                      <button type="submit" class="btn btn-outline danger-btn settings-action-btn">Delete</button>
+                      <button type="submit" class="mtx-btn mtx-btn--ghost mtx-btn--sm" style="color:#b91c1c;border-color:#f3c1c1;"><i class="fas fa-trash-can"></i> Delete</button>
                     </form>
                   </td>
                 </tr>
@@ -875,7 +964,13 @@ if ($editMotorcycleId && $tab === 'vehicle-options') {
           </table>
         </div>
       <?php else: ?>
-        <p class="empty-note">No services yet. Add one above.</p>
+        <div style="padding:0 24px 24px;">
+          <div class="mtx-empty">
+            <i class="fas fa-tools"></i>
+            <strong>No services yet.</strong>
+            <span>Add your first service using the form above.</span>
+          </div>
+        </div>
       <?php endif; ?>
     </section>
   <?php else: ?>
@@ -887,7 +982,7 @@ if ($editMotorcycleId && $tab === 'vehicle-options') {
     require __DIR__ . '/../includes/vehicle-options-ui.php';
     ?>
   <?php endif; ?>
-</section>
+</div><!-- /.mtx-shell -->
 
 <?php if ($tab === 'vehicle-options'): ?>
   <script src="<?= baseUrl('assets/js/main.js?v=' . filemtime(__DIR__ . '/../assets/js/main.js')) ?>"></script>

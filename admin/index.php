@@ -46,11 +46,10 @@ $ordersThisWeek = (int)(fetchOne("SELECT COUNT(*) AS n FROM orders WHERE created
 $ordersLastWeek = (int)(fetchOne("SELECT COUNT(*) AS n FROM orders WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 13 DAY) AND created_at < DATE_SUB(CURDATE(), INTERVAL 6 DAY)")['n'] ?? 0);
 $ordersTrend = dashTrend((float)$ordersThisWeek, (float)$ordersLastWeek);
 
-// --- Greeting / live snapshot line ---
-$hour = (int)date('G');
+// --- Greeting (Asia/Manila; kept live client-side by includes/mtx-clock.php) ---
+$manilaNow = new DateTime('now', new DateTimeZone('Asia/Manila'));
+$hour = (int)$manilaNow->format('G');
 $greeting = $hour < 12 ? 'Good Morning' : ($hour < 18 ? 'Good Afternoon' : 'Good Evening');
-$todayLabel = date('l, F j, Y');
-$timeLabel = date('g:i A');
 
 // --- Revenue chart: last 30 days, product vs labor ---
 $revenueSeries30 = bizRevenueSeries('daily', date('Y-m-d', strtotime('-29 days')), date('Y-m-d'));
@@ -206,18 +205,31 @@ $techPct = (int)round(TECH_LABOR_SHARE * 100);
   <header class="mtx-page-head">
     <div class="mtx-page-head-copy">
       <span class="eyebrow">Executive Overview</span>
-      <h1><?= $greeting ?>, <?= htmlspecialchars($currentUser['name']) ?></h1>
+      <h1><span data-greeting><?= $greeting ?></span>, <?= htmlspecialchars($currentUser['name']) ?></h1>
       <p>
         <strong style="color:var(--ink);"><?= formatPrice($todaySales) ?></strong> in shop sales today,
         <strong style="color:var(--ink);"><?= $todaysBookingsCount ?></strong> booking<?= $todaysBookingsCount === 1 ? '' : 's' ?> scheduled,
         <strong style="color:var(--ink);"><?= $lowStockCount ?></strong> item<?= $lowStockCount === 1 ? '' : 's' ?> need restocking.
       </p>
     </div>
-    <div class="mtx-page-head-meta">
-      <i class="fas fa-calendar"></i> <?= $todayLabel ?>
-      <i class="fas fa-clock"></i> <?= $timeLabel ?>
-    </div>
+    <?php require __DIR__ . '/../includes/mtx-clock.php'; ?>
   </header>
+
+  <!-- Quick Actions -->
+  <nav class="mtx-qa-strip" aria-label="Quick actions">
+    <a href="<?= baseUrl('admin/settings.php?tab=services') ?>" class="mtx-qa" style="--qa-color:#0f766e;">
+      <i class="fas fa-tools"></i><span>Add Service</span>
+    </a>
+    <a href="<?= baseUrl('admin/bookings.php') ?>" class="mtx-qa" style="--qa-color:#d71920;">
+      <i class="fas fa-list-check"></i><span>View Work Queue</span>
+    </a>
+    <a href="<?= baseUrl('admin/orders.php') ?>" class="mtx-qa" style="--qa-color:#7c3aed;">
+      <i class="fas fa-receipt"></i><span>Manage Orders</span>
+    </a>
+    <a href="<?= baseUrl('admin/analytics.php') ?>" class="mtx-qa" style="--qa-color:#d97706;">
+      <i class="fas fa-chart-bar"></i><span>View Analytics</span>
+    </a>
+  </nav>
 
   <!-- Business KPI cards -->
   <section class="mtx-kpi-grid" aria-label="Business metrics">
@@ -420,28 +432,8 @@ $techPct = (int)round(TECH_LABOR_SHARE * 100);
     </div>
   </section>
 
-  <!-- Quick Actions / Today's Activity -->
-  <section class="mtx-grid mtx-grid--half">
-    <div class="mtx-card">
-      <div class="mtx-card-head">
-        <div><h2><i class="fas fa-bolt"></i> Quick Actions</h2></div>
-      </div>
-      <div class="quick-actions-list">
-        <a href="<?= baseUrl('staff/products.php') ?>#tab-manage" class="quick-action">
-          <i class="fas fa-box"></i><span>Add Product</span>
-        </a>
-        <a href="<?= baseUrl('admin/settings.php?tab=services') ?>" class="quick-action">
-          <i class="fas fa-tools"></i><span>Add Service</span>
-        </a>
-        <a href="<?= baseUrl('admin/bookings.php') ?>" class="quick-action">
-          <i class="fas fa-list-check"></i><span>View Work Queue</span>
-        </a>
-        <a href="<?= baseUrl('admin/analytics.php') ?>" class="quick-action">
-          <i class="fas fa-chart-bar"></i><span>View Analytics</span>
-        </a>
-      </div>
-    </div>
-
+  <!-- Today's Activity / Technician Performance / Inventory Alerts -->
+  <section class="mtx-grid mtx-grid--thirds">
     <div class="mtx-card">
       <div class="mtx-card-head">
         <div><h2><i class="fas fa-clipboard-list"></i> Today's Shop Activity</h2></div>
@@ -454,10 +446,7 @@ $techPct = (int)round(TECH_LABOR_SHARE * 100);
         <div class="activity-row"><span><i class="fas fa-user-check"></i> Customers Served</span><strong><?= $customersServedToday ?></strong></div>
       </div>
     </div>
-  </section>
 
-  <!-- Technician Performance / Inventory Alerts -->
-  <section class="mtx-grid mtx-grid--half">
     <div class="mtx-card">
       <div class="mtx-card-head">
         <div>

@@ -161,9 +161,6 @@ foreach ($bookings as $b) {
       <h1>Bookings &amp; Labor Breakdown</h1>
       <p>Every service appointment with its labor revenue split — <?= $shopPct ?>% to the shop, <?= $techPct ?>% to the technician. Booking management stays in the Staff panel.</p>
     </div>
-    <div class="mtx-head-actions">
-      <a href="<?= baseUrl('staff/bookings.php') ?>" class="mtx-btn mtx-btn--ghost"><i class="fas fa-list-check"></i> Manage in Staff Panel</a>
-    </div>
   </header>
 
   <!-- Labor financial cards (match Dashboard) -->

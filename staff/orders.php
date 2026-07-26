@@ -1,11 +1,16 @@
 <?php
 $pageTitle = 'Orders';
-require_once __DIR__ . '/../includes/admin-sidebar.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/PosService.php';
+requireStaff();
+$currentUser = getCurrentUser();
 
 $validStatuses = ['pending', 'processing', 'completed', 'cancelled'];
 
+// Staff operational permission: update fulfillment status of online orders.
+// (POS orders are finalized at the counter and are never editable here.)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action  = $_POST['action'] ?? '';
     $orderId = (int)($_POST['order_id'] ?? 0);
@@ -18,15 +23,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             flashMessage('orders_error', 'Invalid order status.');
         }
-        redirect(baseUrl('admin/orders.php'));
+        redirect(baseUrl('staff/orders.php'));
     }
 }
 
 $flash    = getFlash('orders_success');
 $flashErr = getFlash('orders_error');
 
-// Channel tabs: online shop checkouts vs in-store POS sales.
-// POS orders are marked by their 'POS-…' payment reference / counter payment methods.
+// Channel tabs: online shop checkouts vs in-store POS sales (same rules as Admin Orders).
 $channel = $_GET['channel'] ?? 'online';
 $channel = in_array($channel, ['online', 'pos'], true) ? $channel : 'online';
 $posCondition = "(o.payment_reference LIKE 'POS-%' OR o.payment_method IN ('cash','gcash','card','bank_transfer','other'))";
@@ -108,10 +112,11 @@ $paidOrders      = array_filter($orders, fn($o) => $o['payment_status'] === 'pai
 $filteredRevenue = array_sum(array_column($paidOrders, 'total'));
 $paidCount       = count($paidOrders);
 $pendingCount    = count(array_filter($orders, fn($o) => $o['status'] === 'pending'));
-$avgOrderValue   = $paidCount > 0 ? $filteredRevenue / $paidCount : 0;
 
 $statusColor = ['pending'=>'#6b7280','processing'=>'#d97706','completed'=>'#15803d','cancelled'=>'#b91c1c'];
 $hasFilters = $search || $statusFilter || $dateFrom || $dateTo;
+
+require_once __DIR__ . '/../includes/staff-sidebar.php';
 ?>
 
 <div class="mtx-shell">
@@ -119,9 +124,12 @@ $hasFilters = $search || $statusFilter || $dateFrom || $dateTo;
   <!-- Header -->
   <header class="mtx-page-head">
     <div class="mtx-page-head-copy">
-      <span class="eyebrow">Shop Sales</span>
+      <span class="eyebrow">Staff Panel</span>
       <h1>Orders</h1>
       <p>Review purchases, payment status, items, and fulfillment across the online shop and in-store counter.</p>
+    </div>
+    <div class="mtx-head-actions">
+      <a href="<?= baseUrl('staff/pos.php') ?>" class="mtx-btn mtx-btn--primary"><i class="fas fa-cash-register"></i> Open POS</a>
     </div>
   </header>
 
@@ -130,8 +138,8 @@ $hasFilters = $search || $statusFilter || $dateFrom || $dateTo;
 
   <!-- Channel tabs -->
   <div class="mtx-seg mtx-seg--card" role="tablist" aria-label="Order channels">
-    <a href="<?= baseUrl('admin/orders.php?channel=online') ?>" class="<?= $channel === 'online' ? 'active' : '' ?>" role="tab"><i class="fas fa-globe"></i>Online Shop Purchases</a>
-    <a href="<?= baseUrl('admin/orders.php?channel=pos') ?>" class="<?= $channel === 'pos' ? 'active' : '' ?>" role="tab"><i class="fas fa-cash-register"></i>In-Store Purchases (POS)</a>
+    <a href="<?= baseUrl('staff/orders.php?channel=online') ?>" class="<?= $channel === 'online' ? 'active' : '' ?>" role="tab"><i class="fas fa-globe"></i>Online Shop Purchases</a>
+    <a href="<?= baseUrl('staff/orders.php?channel=pos') ?>" class="<?= $channel === 'pos' ? 'active' : '' ?>" role="tab"><i class="fas fa-cash-register"></i>In-Store Purchases (POS)</a>
   </div>
 
   <!-- Summary cards -->
@@ -187,7 +195,7 @@ $hasFilters = $search || $statusFilter || $dateFrom || $dateTo;
         <input type="date" name="date_to"   value="<?= htmlspecialchars($dateTo) ?>"   title="To date">
         <button type="submit" class="mtx-btn mtx-btn--dark">Filter</button>
         <?php if ($hasFilters): ?>
-          <a class="mtx-btn mtx-btn--ghost" href="<?= baseUrl('admin/orders.php?channel=' . $channel) ?>">Reset</a>
+          <a class="mtx-btn mtx-btn--ghost" href="<?= baseUrl('staff/orders.php?channel=' . $channel) ?>">Reset</a>
         <?php endif; ?>
       </form>
     </div>

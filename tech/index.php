@@ -4,9 +4,8 @@ require_once __DIR__ . '/../includes/tech-sidebar.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/TechnicianService.php';
 
-// Mark tech's notifications as read
-getDB()->prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0")
-       ->execute([(int)$currentUser['id']]);
+// Notifications stay unread until explicitly marked via the bell's
+// "Mark all read" — keeps the unread-count badge meaningful.
 
 // Quick status update from work queue
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -130,10 +129,15 @@ $earningsPerService = techEarningsPerService($techId);
 <header class="mtx-page-head">
   <div class="mtx-page-head-copy">
     <span class="eyebrow">Technician Panel</span>
-    <h1>Work Queue</h1>
+    <?php
+      $techHour = (int)(new DateTime('now', new DateTimeZone('Asia/Manila')))->format('G');
+      $techGreeting = $techHour < 12 ? 'Good Morning' : ($techHour < 18 ? 'Good Afternoon' : 'Good Evening');
+    ?>
+    <h1><span data-greeting><?= $techGreeting ?></span>, <?= htmlspecialchars(explode(' ', $currentUser['name'])[0]) ?></h1>
     <p>Jobs assigned to you. Complete your active jobs and log any notes.</p>
   </div>
   <div class="mtx-head-actions" style="align-items:center;">
+    <?php require __DIR__ . '/../includes/mtx-clock.php'; ?>
     <span class="mtx-pill" style="--pill-color:<?= $isReady ? '#15803d' : '#6b7280' ?>;font-size:.82rem;">
       <i class="fas fa-circle"></i> <?= $isReady ? 'Ready / On Site' : 'Off Duty' ?>
     </span>

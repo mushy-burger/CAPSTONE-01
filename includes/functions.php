@@ -90,6 +90,12 @@ function redirect(string $url): void {
         }
     }
 
+    // Drop any partially rendered page so the Location header can be sent
+    // cleanly (pages may have printed the sidebar before their POST handler).
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
     header('Location: ' . $url);
     exit;
 }

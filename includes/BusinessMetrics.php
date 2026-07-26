@@ -164,7 +164,7 @@ function bizTopProducts(int $limit = 8, ?string $from = null, ?string $to = null
              ) sales
              $where
              GROUP BY product_name
-             ORDER BY revenue DESC, units DESC
+             ORDER BY units DESC, revenue DESC
              LIMIT " . (int)$limit,
             $dateParams
         )
@@ -193,7 +193,7 @@ function bizTopServices(int $limit = 8, ?string $from = null, ?string $to = null
              JOIN bookings b ON b.id = bs.booking_id
              WHERE b.status = 'completed'$dateSql
              GROUP BY bs.service_id, service_name
-             ORDER BY labor DESC, requests DESC
+             ORDER BY requests DESC, labor DESC
              LIMIT " . (int)$limit,
             $dateParams
         )
@@ -226,7 +226,7 @@ function bizTechPerformance(int $limit = 8, ?string $from = null, ?string $to = 
              LEFT JOIN booking_services bs ON bs.booking_id = b.id
              WHERE b.status = 'completed'$dateSql
              GROUP BY b.technician_id, u.name
-             ORDER BY labor DESC
+             ORDER BY jobs_done DESC, labor DESC
              LIMIT " . (int)$limit,
             $dateParams
         )

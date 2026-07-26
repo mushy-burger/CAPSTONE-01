@@ -18,6 +18,18 @@ function respondSlots(array $payload, int $status = 200): void {
 $date = trim($_GET['date'] ?? '');
 $dt = DateTime::createFromFormat('Y-m-d', $date);
 if (!$dt || $dt->format('Y-m-d') !== $date) {
+    // Fallback for browsers without native date pickers, where users type a
+    // localized value such as 18/07/2026 (d/m/Y) into the text field.
+    foreach (['d/m/Y', 'd-m-Y'] as $format) {
+        $alt = DateTime::createFromFormat($format, $date);
+        if ($alt && $alt->format($format) === $date) {
+            $date = $alt->format('Y-m-d');
+            $dt = $alt;
+            break;
+        }
+    }
+}
+if (!$dt || $dt->format('Y-m-d') !== $date) {
     respondSlots(['ok' => false, 'message' => 'Invalid date.'], 422);
 }
 if ($date < date('Y-m-d')) {
