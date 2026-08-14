@@ -42,6 +42,19 @@ function formatPrice(float $amount): string {
     return 'PHP ' . number_format($amount, 2);
 }
 
+function formatDurationMinutes(int $minutes): string {
+    $hours = intdiv($minutes, 60);
+    $mins  = $minutes % 60;
+    $parts = [];
+    if ($hours > 0) {
+        $parts[] = $hours . ' hour' . ($hours === 1 ? '' : 's');
+    }
+    if ($mins > 0 || $hours === 0) {
+        $parts[] = $mins . ' minute' . ($mins === 1 ? '' : 's');
+    }
+    return implode(' ', $parts);
+}
+
 function slug(string $text): string {
     return strtolower(trim(preg_replace('/[^a-z0-9]+/i', '-', trim($text)), '-'));
 }

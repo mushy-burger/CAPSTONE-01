@@ -56,6 +56,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect(baseUrl('tech/job.php?id=' . $bookingId));
     }
 
+    // Save estimated service duration (shown to the customer)
+    if ($action === 'save_duration') {
+        if (!in_array($booking['status'], ['confirmed', 'in_progress'], true)) {
+            flashMessage('tech_error', 'The estimated duration can only be set while the job is active.');
+            redirect(baseUrl('tech/job.php?id=' . $bookingId));
+        }
+        $hoursRaw   = trim($_POST['duration_hours'] ?? '');
+        $minutesRaw = trim($_POST['duration_minutes'] ?? '');
+        if (($hoursRaw !== '' && !ctype_digit($hoursRaw)) || ($minutesRaw !== '' && !ctype_digit($minutesRaw))) {
+            flashMessage('tech_error', 'Estimated duration must use whole positive numbers.');
+            redirect(baseUrl('tech/job.php?id=' . $bookingId));
+        }
+        $totalMinutes = ((int)$hoursRaw * 60) + (int)$minutesRaw;
+        if ($totalMinutes < 1) {
+            flashMessage('tech_error', 'Please enter an estimated duration of at least 1 minute.');
+        } elseif ($totalMinutes > 1440) {
+            flashMessage('tech_error', 'Estimated duration cannot exceed 24 hours.');
+        } else {
+            getDB()->prepare("UPDATE bookings SET estimated_duration_minutes = ? WHERE id = ? AND technician_id = ?")
+                   ->execute([$totalMinutes, $bookingId, $currentUser['id']]);
+            flashMessage('tech_success', 'Estimated duration saved: ' . formatDurationMinutes($totalMinutes) . '. The customer can now see it.');
+        }
+        redirect(baseUrl('tech/job.php?id=' . $bookingId));
+    }
+
     // Update job status
     if ($action === 'update_status') {
         $newStatus = $_POST['status'] ?? '';
@@ -270,6 +295,42 @@ $pageTitle = 'Job #' . $bookingId;
       <i class="fas fa-check-circle" style="font-size:2.5rem;color:#15803d;margin-bottom:10px;display:block;"></i>
       <strong>Job Completed</strong>
       <p class="subtext" style="margin:6px 0 0;">This job has been marked as completed.</p>
+    </section>
+    <?php endif; ?>
+
+    <!-- Estimated Duration Card -->
+    <?php
+      $estMinutes = $booking['estimated_duration_minutes'] !== null ? (int)$booking['estimated_duration_minutes'] : null;
+      $canEditDuration = in_array($booking['status'], ['confirmed', 'in_progress'], true);
+    ?>
+    <?php if ($canEditDuration || $estMinutes): ?>
+    <section class="mtx-card">
+      <div class="mtx-card-head"><div><h2><i class="fas fa-hourglass-half"></i> Estimated Service Duration</h2></div></div>
+      <?php if ($estMinutes): ?>
+        <div class="detail-row"><span>Current estimate</span><strong><?= htmlspecialchars(formatDurationMinutes($estMinutes)) ?></strong></div>
+      <?php endif; ?>
+      <?php if ($canEditDuration): ?>
+        <form method="post" style="margin-top:12px;">
+          <?= authContextField() ?>
+          <input type="hidden" name="action" value="save_duration">
+          <div style="display:flex;gap:10px;">
+            <label class="mtx-field" style="flex:1;">
+              <span>Hours</span>
+              <input type="number" name="duration_hours" min="0" max="24" step="1" value="<?= $estMinutes !== null ? intdiv($estMinutes, 60) : '' ?>" placeholder="0">
+            </label>
+            <label class="mtx-field" style="flex:1;">
+              <span>Minutes</span>
+              <input type="number" name="duration_minutes" min="0" max="59" step="1" value="<?= $estMinutes !== null ? $estMinutes % 60 : '' ?>" placeholder="0">
+            </label>
+          </div>
+          <p class="subtext" style="margin:8px 0 0;font-size:.78rem;">
+            <i class="fas fa-eye"></i> This estimate will be shown to the customer on their booking.
+          </p>
+          <button type="submit" class="mtx-btn mtx-btn--primary" style="width:100%;margin-top:10px;">
+            <i class="fas fa-save"></i> <?= $estMinutes ? 'Update Estimate' : 'Save Estimate' ?>
+          </button>
+        </form>
+      <?php endif; ?>
     </section>
     <?php endif; ?>
 

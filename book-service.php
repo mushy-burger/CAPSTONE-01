@@ -492,10 +492,32 @@ require_once __DIR__ . '/includes/header.php';
             <div class="booking-status-msg booking-status-msg--<?= htmlspecialchars($status) ?>"><?= htmlspecialchars($statusMsg) ?></div>
             <?php endif; ?>
 
+            <?php
+              $estimatedMinutes = !empty($appointment['estimated_duration_minutes']) ? (int)$appointment['estimated_duration_minutes'] : null;
+              $showEstimate = in_array($status, ['confirmed', 'in_progress'], true);
+              $estimatedCompletion = null;
+              if ($estimatedMinutes && !empty($appointment['scheduled_time'])) {
+                  $serviceStart = strtotime($appointment['scheduled_date'] . ' ' . $appointment['scheduled_time']);
+                  $completionTs = $serviceStart + ($estimatedMinutes * 60);
+                  $estimatedCompletion = date('Y-m-d', $completionTs) === $appointment['scheduled_date']
+                      ? date('g:i A', $completionTs)
+                      : date('M j, g:i A', $completionTs);
+              }
+            ?>
             <div class="history-lines">
               <div><span>Motorcycle</span><strong><?= htmlspecialchars($vehicleLabel) ?></strong></div>
               <div><span>Type</span><strong><?= htmlspecialchars((string)($appointment['type_name'] ?? '-')) ?></strong></div>
               <div><span>Plate</span><strong><?= htmlspecialchars((string)($appointment['plate_number'] ?: '-')) ?></strong></div>
+              <?php if ($showEstimate): ?>
+                <?php if ($estimatedMinutes): ?>
+                  <div><span>Estimated Duration</span><strong><?= htmlspecialchars(formatDurationMinutes($estimatedMinutes)) ?></strong></div>
+                  <?php if ($estimatedCompletion): ?>
+                    <div><span>Estimated Completion</span><strong><?= htmlspecialchars($estimatedCompletion) ?></strong></div>
+                  <?php endif; ?>
+                <?php else: ?>
+                  <div><span>Estimated Duration</span><strong>Pending technician assessment</strong></div>
+                <?php endif; ?>
+              <?php endif; ?>
               <?php foreach ($servicesByBooking[$bookingId] ?? [] as $serviceRow): ?>
                 <div><span><?= htmlspecialchars($serviceRow['service_name']) ?></span><strong><?= formatPrice((float)$serviceRow['labor_fee']) ?></strong></div>
               <?php endforeach; ?>
