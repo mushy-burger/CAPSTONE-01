@@ -1,9 +1,11 @@
 <?php
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'mototrack');
-define('DB_USER', 'root');
-define('DB_PASS', '');
-define('DB_CHARSET', 'utf8mb4');
+require_once __DIR__ . '/functions.php';
+
+define('DB_HOST', envValue('DB_HOST', 'localhost'));
+define('DB_NAME', envValue('DB_NAME', 'mototrack'));
+define('DB_USER', envValue('DB_USER', 'root'));
+define('DB_PASS', envValue('DB_PASS', ''));
+define('DB_CHARSET', envValue('DB_CHARSET', 'utf8mb4'));
 
 function getDB(): PDO {
     static $pdo = null;

@@ -21,6 +21,11 @@ function paymongoIsTestMode(): bool {
 }
 
 function appUrl(string $path = ''): string {
+    $configuredUrl = rtrim((string)envValue('APP_URL', ''), '/');
+    if ($configuredUrl !== '') {
+        return $configuredUrl . '/' . ltrim($path, '/');
+    }
+
     $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
     $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
     return rtrim($scheme . '://' . $host . baseUrl($path), '/');
