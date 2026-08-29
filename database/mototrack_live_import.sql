@@ -1,3 +1,17 @@
+-- MotoTrack — full database import for a fresh deployment.
+--
+-- Importing this file alone produces a complete, working database: schema plus
+-- current catalogue data, including `product_codes` (barcode / QR identifiers)
+-- with every product's code already assigned.
+--
+-- Because the schema here is already current, a fresh import does NOT need the
+-- files in database/migrations/ — those exist to upgrade an EXISTING database
+-- that predates a feature. Do not run both against the same database.
+--
+-- Regenerate with:
+--   mysqldump -u root mototrack --add-drop-table --single-transaction \
+--     --default-character-set=utf8mb4 --skip-dump-date > database/mototrack_live_import.sql
+--
 -- MariaDB dump 10.19  Distrib 10.4.32-MariaDB, for Win64 (AMD64)
 --
 -- Host: localhost    Database: mototrack
@@ -63,7 +77,7 @@ CREATE TABLE `booking_products` (
   KEY `booking_id` (`booking_id`),
   KEY `service_id` (`service_id`),
   KEY `product_id` (`product_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=154 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -72,7 +86,7 @@ CREATE TABLE `booking_products` (
 
 LOCK TABLES `booking_products` WRITE;
 /*!40000 ALTER TABLE `booking_products` DISABLE KEYS */;
-INSERT INTO `booking_products` VALUES (1,1,19,14,585.00,'SHELL - CITY SCOOTER OIL','2026-06-27 22:14:56'),(2,1,18,18,149.99,'KOBY CVT CLEANER','2026-06-27 22:14:56'),(4,3,19,16,800.00,'LIQUI MOLY ENGINE OIL','2026-06-29 00:05:48'),(5,4,19,16,800.00,'LIQUI MOLY ENGINE OIL','2026-06-29 08:39:41'),(6,4,18,18,149.99,'KOBY CVT CLEANER','2026-06-29 08:39:41'),(7,5,19,16,800.00,'LIQUI MOLY ENGINE OIL','2026-06-29 08:40:30'),(8,5,18,18,149.99,'KOBY CVT CLEANER','2026-06-29 08:40:30'),(9,6,19,16,800.00,'LIQUI MOLY ENGINE OIL','2026-06-29 08:46:05'),(10,6,18,18,149.99,'KOBY CVT CLEANER','2026-06-29 08:46:05');
+INSERT INTO `booking_products` VALUES (115,75,35,68,1400.00,'RK CHAIN - 428','2026-07-16 18:15:46'),(116,75,33,47,500.00,'SHELL - LONG RIDE','2026-07-16 18:15:46'),(117,75,36,53,150.00,'PRESONE - COOLANT','2026-07-16 18:15:46'),(118,75,37,70,170.00,'WYNN\'S - THROTTLE BODY CLEANER','2026-07-16 18:15:46'),(119,76,35,68,1400.00,'RK CHAIN - 428','2026-07-16 18:28:31'),(120,76,33,47,500.00,'SHELL - LONG RIDE','2026-07-16 18:28:31'),(121,76,36,55,160.00,'AMSOIL - COOLANT','2026-07-16 18:28:31'),(122,76,37,69,200.00,'CRC - THROTTLE BODY CLEANER','2026-07-16 18:28:31'),(123,77,35,68,1400.00,'RK CHAIN - 428','2026-07-16 18:30:13'),(124,77,33,52,600.00,'LIQUI MOLY - SCOOTER MB','2026-07-16 18:30:13'),(125,77,36,57,140.00,'SHELL - COOLANT','2026-07-16 18:30:13'),(126,77,37,69,200.00,'CRC - THROTTLE BODY CLEANER','2026-07-16 18:30:13'),(127,78,33,46,500.00,'SHELL - CITY SCOOTER OIL','2026-07-16 18:31:14'),(128,78,36,53,150.00,'PRESONE - COOLANT','2026-07-16 18:31:14'),(129,78,32,61,160.00,'KOBY - CVT CLEANER','2026-07-16 18:31:14'),(130,78,37,70,170.00,'WYNN\'S - THROTTLE BODY CLEANER','2026-07-16 18:31:14'),(131,79,33,47,500.00,'SHELL - LONG RIDE','2026-07-16 18:33:42'),(132,79,36,53,150.00,'PRESONE - COOLANT','2026-07-16 18:33:42'),(133,79,32,62,140.00,'AEROPAK - CVT CLEANER','2026-07-16 18:33:42'),(134,79,37,69,200.00,'CRC - THROTTLE BODY CLEANER','2026-07-16 18:33:42'),(135,80,35,68,1400.00,'RK CHAIN - 428','2026-07-16 20:55:38'),(136,81,35,68,1400.00,'RK CHAIN - 428','2026-07-16 20:56:32'),(137,82,32,61,160.00,'KOBY - CVT CLEANER','2026-07-17 07:18:38'),(138,83,32,61,160.00,'KOBY - CVT CLEANER','2026-07-17 07:18:56'),(139,84,35,68,1400.00,'RK CHAIN - 428','2026-07-17 14:55:46'),(141,85,32,61,160.00,'KOBY - CVT CLEANER','2026-07-17 14:56:58'),(142,86,35,68,1400.00,'RK CHAIN - 428','2026-07-17 22:10:44'),(143,86,33,47,500.00,'SHELL - LONG RIDE','2026-07-17 22:10:44'),(144,86,36,53,150.00,'PRESONE - COOLANT','2026-07-17 22:10:44'),(145,86,37,69,200.00,'CRC - THROTTLE BODY CLEANER','2026-07-17 22:10:44'),(146,87,37,69,200.00,'CRC - THROTTLE BODY CLEANER','2026-07-17 22:13:05'),(147,88,33,52,600.00,'LIQUI MOLY - SCOOTER MB','2026-07-17 22:16:57'),(148,89,33,48,500.00,'SHELL - ADVANCE ULTRA OIL','2026-07-18 09:38:35'),(149,89,36,54,160.00,'PETRON -  COOLANT','2026-07-18 09:38:35'),(150,89,32,61,160.00,'KOBY - CVT CLEANER','2026-07-18 09:38:35'),(151,89,37,70,170.00,'WYNN\'S - THROTTLE BODY CLEANER','2026-07-18 09:38:35'),(152,90,33,52,600.00,'LIQUI MOLY - SCOOTER MB','2026-08-12 10:23:54'),(153,90,32,61,160.00,'KOBY - CVT CLEANER','2026-08-12 10:23:54');
 /*!40000 ALTER TABLE `booking_products` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -93,7 +107,7 @@ CREATE TABLE `booking_services` (
   PRIMARY KEY (`id`),
   KEY `booking_id` (`booking_id`),
   KEY `service_id` (`service_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=20 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=176 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -102,7 +116,7 @@ CREATE TABLE `booking_services` (
 
 LOCK TABLES `booking_services` WRITE;
 /*!40000 ALTER TABLE `booking_services` DISABLE KEYS */;
-INSERT INTO `booking_services` VALUES (1,1,19,70.00,'CHANGE ENGINE OIL','2026-06-27 22:14:56'),(2,1,18,350.00,'CVT CLEANING','2026-06-27 22:14:56'),(4,3,19,70.00,'CHANGE ENGINE OIL','2026-06-29 00:05:48'),(5,4,19,70.00,'CHANGE ENGINE OIL','2026-06-29 08:39:41'),(6,4,18,350.00,'CVT CLEANING','2026-06-29 08:39:41'),(7,5,19,70.00,'CHANGE ENGINE OIL','2026-06-29 08:40:30'),(8,5,18,350.00,'CVT CLEANING','2026-06-29 08:40:30'),(9,6,19,70.00,'CHANGE ENGINE OIL','2026-06-29 08:46:05'),(10,6,18,350.00,'CVT CLEANING','2026-06-29 08:46:05'),(11,7,19,70.00,'CHANGE ENGINE OIL','2026-06-29 09:07:04'),(12,8,19,70.00,'CHANGE ENGINE OIL','2026-06-29 09:07:35'),(13,9,19,70.00,'CHANGE ENGINE OIL','2026-06-29 09:11:00'),(14,10,18,350.00,'CVT CLEANING','2026-06-29 09:11:26'),(15,10,19,70.00,'CHANGE ENGINE OIL','2026-06-29 09:11:26'),(16,10,23,50.00,'COOLANT FLUSHING','2026-06-29 09:11:26'),(17,11,18,350.00,'CVT CLEANING','2026-06-29 09:12:04'),(18,11,19,70.00,'CHANGE ENGINE OIL','2026-06-29 09:12:04'),(19,11,23,50.00,'COOLANT FLUSHING','2026-06-29 09:12:04');
+INSERT INTO `booking_services` VALUES (137,75,35,250.00,'CHANGE DRIVE TRAIN','2026-07-16 18:15:46'),(138,75,33,50.00,'CHANGE ENGINE OIL','2026-07-16 18:15:46'),(139,75,36,100.00,'COOLANT FLUSHING','2026-07-16 18:15:46'),(140,75,37,300.00,'THROTTLE BODY CLEANING','2026-07-16 18:15:46'),(141,76,35,250.00,'CHANGE DRIVE TRAIN','2026-07-16 18:28:31'),(142,76,33,50.00,'CHANGE ENGINE OIL','2026-07-16 18:28:31'),(143,76,36,100.00,'COOLANT FLUSHING','2026-07-16 18:28:31'),(144,76,37,300.00,'THROTTLE BODY CLEANING','2026-07-16 18:28:31'),(145,77,35,250.00,'CHANGE DRIVE TRAIN','2026-07-16 18:30:13'),(146,77,33,50.00,'CHANGE ENGINE OIL','2026-07-16 18:30:13'),(147,77,36,100.00,'COOLANT FLUSHING','2026-07-16 18:30:13'),(148,77,37,300.00,'THROTTLE BODY CLEANING','2026-07-16 18:30:13'),(149,78,33,50.00,'CHANGE ENGINE OIL','2026-07-16 18:31:14'),(150,78,36,100.00,'COOLANT FLUSHING','2026-07-16 18:31:14'),(151,78,32,300.00,'CVT CLEANING','2026-07-16 18:31:14'),(152,78,37,300.00,'THROTTLE BODY CLEANING','2026-07-16 18:31:14'),(153,79,33,50.00,'CHANGE ENGINE OIL','2026-07-16 18:33:42'),(154,79,36,100.00,'COOLANT FLUSHING','2026-07-16 18:33:42'),(155,79,32,300.00,'CVT CLEANING','2026-07-16 18:33:42'),(156,79,37,300.00,'THROTTLE BODY CLEANING','2026-07-16 18:33:42'),(157,80,35,250.00,'CHANGE DRIVE TRAIN','2026-07-16 20:55:38'),(158,81,35,250.00,'CHANGE DRIVE TRAIN','2026-07-16 20:56:32'),(159,82,32,300.00,'CVT CLEANING','2026-07-17 07:18:38'),(160,83,32,300.00,'CVT CLEANING','2026-07-17 07:18:56'),(161,84,35,250.00,'CHANGE DRIVE TRAIN','2026-07-17 14:55:46'),(163,85,32,300.00,'CVT CLEANING','2026-07-17 14:56:58'),(164,86,35,250.00,'CHANGE DRIVE TRAIN','2026-07-17 22:10:44'),(165,86,33,50.00,'CHANGE ENGINE OIL','2026-07-17 22:10:44'),(166,86,36,100.00,'COOLANT FLUSHING','2026-07-17 22:10:44'),(167,86,37,300.00,'THROTTLE BODY CLEANING','2026-07-17 22:10:44'),(168,87,37,300.00,'THROTTLE BODY CLEANING','2026-07-17 22:13:05'),(169,88,33,50.00,'CHANGE ENGINE OIL','2026-07-17 22:16:57'),(170,89,33,50.00,'CHANGE ENGINE OIL','2026-07-18 09:38:35'),(171,89,36,100.00,'COOLANT FLUSHING','2026-07-18 09:38:35'),(172,89,32,300.00,'CVT CLEANING','2026-07-18 09:38:35'),(173,89,37,300.00,'THROTTLE BODY CLEANING','2026-07-18 09:38:35'),(174,90,33,50.00,'CHANGE ENGINE OIL','2026-08-12 10:23:54'),(175,90,32,300.00,'CVT CLEANING','2026-08-12 10:23:54');
 /*!40000 ALTER TABLE `booking_services` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -122,7 +136,10 @@ CREATE TABLE `bookings` (
   `status` enum('pending','confirmed','in_progress','completed','cancelled') NOT NULL DEFAULT 'pending',
   `notes` text DEFAULT NULL,
   `technician_id` int(10) unsigned DEFAULT NULL,
+  `assigned_at` datetime DEFAULT NULL,
+  `completed_at` datetime DEFAULT NULL,
   `tech_notes` text DEFAULT NULL,
+  `estimated_duration_minutes` int(10) unsigned DEFAULT NULL,
   `labor_total` decimal(10,2) NOT NULL DEFAULT 0.00,
   `products_total` decimal(10,2) NOT NULL DEFAULT 0.00,
   `total_amount` decimal(10,2) NOT NULL DEFAULT 0.00,
@@ -132,7 +149,7 @@ CREATE TABLE `bookings` (
   KEY `vehicle_id` (`vehicle_id`),
   KEY `status` (`status`),
   KEY `technician_id` (`technician_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=91 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -141,7 +158,7 @@ CREATE TABLE `bookings` (
 
 LOCK TABLES `bookings` WRITE;
 /*!40000 ALTER TABLE `bookings` DISABLE KEYS */;
-INSERT INTO `bookings` VALUES (1,5,NULL,'2026-07-05','23:15:00','completed','',3,NULL,420.00,734.99,1154.99,'2026-06-27 22:14:56'),(3,5,2,'2026-06-29','03:05:00','cancelled','',7,NULL,70.00,800.00,870.00,'2026-06-29 00:05:48'),(4,5,4,'2026-06-30','17:45:00','cancelled','',7,NULL,420.00,949.99,1369.99,'2026-06-29 08:39:41'),(5,5,4,'2026-06-30','22:42:00','cancelled','',3,NULL,420.00,949.99,1369.99,'2026-06-29 08:40:30'),(6,5,4,'2026-06-30','11:50:00','completed','',7,NULL,420.00,949.99,1369.99,'2026-06-29 08:46:05'),(7,6,4,'2026-06-30','10:00:00','confirmed','',7,NULL,0.00,0.00,70.00,'2026-06-29 09:07:04'),(8,6,4,'2026-06-30','10:00:00','confirmed','',7,NULL,0.00,0.00,70.00,'2026-06-29 09:07:35'),(9,6,4,'2026-06-30','10:00:00','confirmed','',7,NULL,0.00,0.00,70.00,'2026-06-29 09:11:00'),(10,5,4,'2026-06-30','17:00:00','confirmed','',7,NULL,0.00,0.00,470.00,'2026-06-29 09:11:26'),(11,5,4,'2026-06-30','17:00:00','confirmed','',3,NULL,0.00,0.00,470.00,'2026-06-29 09:12:04');
+INSERT INTO `bookings` VALUES (75,5,21,'2026-07-31','08:00:00','completed','',7,'2026-07-16 18:16:06','2026-07-16 18:17:03',NULL,NULL,700.00,2220.00,2920.00,'2026-07-16 18:15:46'),(76,5,21,'2026-07-31','08:00:00','completed','',8,'2026-07-16 18:28:37','2026-07-16 18:29:11',NULL,NULL,700.00,2260.00,2960.00,'2026-07-16 18:28:31'),(77,5,21,'2026-07-31','08:00:00','completed','',8,'2026-07-16 18:30:21','2026-07-16 18:30:36',NULL,NULL,700.00,2340.00,3040.00,'2026-07-16 18:30:13'),(78,5,20,'2026-07-31','09:00:00','completed','',3,'2026-07-16 18:31:34','2026-07-16 18:31:59',NULL,NULL,750.00,980.00,1730.00,'2026-07-16 18:31:14'),(79,5,20,'2026-07-31','09:00:00','completed','',17,'2026-07-16 18:33:46','2026-07-16 18:33:54',NULL,NULL,750.00,990.00,1740.00,'2026-07-16 18:33:42'),(80,5,21,'2026-07-31','09:00:00','completed','',7,'2026-07-16 20:55:47','2026-07-16 20:56:07',NULL,NULL,250.00,1400.00,1650.00,'2026-07-16 20:55:38'),(81,5,21,'2026-07-31','10:00:00','completed','',8,'2026-07-16 20:56:37','2026-07-16 20:56:50',NULL,NULL,250.00,1400.00,1650.00,'2026-07-16 20:56:32'),(82,10,22,'2026-07-31','10:00:00','cancelled','',17,'2026-07-17 07:19:29',NULL,NULL,NULL,300.00,160.00,460.00,'2026-07-17 07:18:38'),(83,5,20,'2026-07-31','10:00:00','cancelled','',17,'2026-07-17 07:19:21',NULL,NULL,NULL,300.00,160.00,460.00,'2026-07-17 07:18:56'),(84,5,24,'2026-07-31','11:00:00','cancelled','',NULL,NULL,NULL,NULL,NULL,250.00,1400.00,1650.00,'2026-07-17 14:55:46'),(85,5,23,'2026-07-31','11:00:00','cancelled','',NULL,NULL,NULL,NULL,NULL,300.00,160.00,460.00,'2026-07-17 14:56:46'),(86,5,25,'2026-07-31','10:00:00','completed','',8,'2026-07-17 22:10:57','2026-07-17 22:12:08','hi',NULL,700.00,2250.00,2950.00,'2026-07-17 22:10:44'),(87,5,25,'2026-07-31','10:00:00','completed','',8,'2026-07-17 22:13:12','2026-07-17 22:13:32',NULL,NULL,300.00,200.00,500.00,'2026-07-17 22:13:05'),(88,5,26,'2026-07-31','11:00:00','completed','',3,NULL,'2026-07-17 22:17:18',NULL,NULL,50.00,600.00,650.00,'2026-07-17 22:16:57'),(89,5,27,'2026-07-19','08:00:00','completed','',3,'2026-07-18 09:53:27','2026-07-18 09:54:57',NULL,NULL,750.00,990.00,1740.00,'2026-07-18 09:38:35'),(90,5,27,'2026-08-13','08:00:00','in_progress','',3,'2026-08-12 10:24:12',NULL,NULL,86,350.00,760.00,1110.00,'2026-08-12 10:23:54');
 /*!40000 ALTER TABLE `bookings` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -160,7 +177,7 @@ CREATE TABLE `cart_items` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `user_product` (`user_id`,`product_id`),
   KEY `user_id` (`user_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=37 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -186,7 +203,7 @@ CREATE TABLE `categories` (
   `image` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `slug` (`slug`)
-) ENGINE=InnoDB AUTO_INCREMENT=16 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=32 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -195,7 +212,7 @@ CREATE TABLE `categories` (
 
 LOCK TABLES `categories` WRITE;
 /*!40000 ALTER TABLE `categories` DISABLE KEYS */;
-INSERT INTO `categories` VALUES (7,'ENGINE OIL','engine-oil',NULL),(8,'CVT CLEANERS','cvt-cleaners',NULL),(15,'COOLANT','coolant',NULL);
+INSERT INTO `categories` VALUES (25,'ENGINE OIL','engine-oil',NULL),(26,'COOLANT','coolant',NULL),(27,'CVT CLEANER','cvt-cleaner',NULL),(28,'CLUTCH SYSTEM','clutch-system',NULL),(29,'DRIVE TRAIN','drive-train',NULL),(31,'THROTTLE BODY CLEANER','throttle-body-cleaner',NULL);
 /*!40000 ALTER TABLE `categories` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -217,7 +234,7 @@ CREATE TABLE `contact_messages` (
   PRIMARY KEY (`id`),
   KEY `is_read` (`is_read`),
   KEY `created_at` (`created_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -248,7 +265,7 @@ CREATE TABLE `customer_vehicles` (
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `user_id` (`user_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=28 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -257,7 +274,7 @@ CREATE TABLE `customer_vehicles` (
 
 LOCK TABLES `customer_vehicles` WRITE;
 /*!40000 ALTER TABLE `customer_vehicles` DISABLE KEYS */;
-INSERT INTO `customer_vehicles` VALUES (4,5,1,1,24,125,2022,'578QIM','2026-06-29 08:39:21');
+INSERT INTO `customer_vehicles` VALUES (22,10,10,8,52,108,2021,'123ABC','2026-07-17 07:18:26'),(27,5,10,9,56,114,2024,'123ABC','2026-07-18 09:37:50');
 /*!40000 ALTER TABLE `customer_vehicles` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -273,7 +290,7 @@ CREATE TABLE `motorcycle_brands` (
   `name` varchar(80) NOT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -282,7 +299,7 @@ CREATE TABLE `motorcycle_brands` (
 
 LOCK TABLES `motorcycle_brands` WRITE;
 /*!40000 ALTER TABLE `motorcycle_brands` DISABLE KEYS */;
-INSERT INTO `motorcycle_brands` VALUES (1,'HONDA',1),(2,'Yamaha',1),(3,'Suzuki',1);
+INSERT INTO `motorcycle_brands` VALUES (8,'Honda',1),(9,'Yamaha',1);
 /*!40000 ALTER TABLE `motorcycle_brands` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -306,7 +323,7 @@ CREATE TABLE `motorcycle_models` (
   PRIMARY KEY (`id`),
   KEY `brand_id` (`brand_id`),
   KEY `type_id` (`type_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=27 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=67 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -315,7 +332,7 @@ CREATE TABLE `motorcycle_models` (
 
 LOCK TABLES `motorcycle_models` WRITE;
 /*!40000 ALTER TABLE `motorcycle_models` DISABLE KEYS */;
-INSERT INTO `motorcycle_models` VALUES (22,2,4,'Sniper 155',155,NULL,NULL,NULL,1),(24,1,1,'Click 125i',125,NULL,NULL,NULL,1),(25,2,6,'YZF R15',150,NULL,NULL,NULL,1);
+INSERT INTO `motorcycle_models` VALUES (51,8,10,'Click 125i',125,NULL,NULL,NULL,1),(52,8,10,'BeAT FI',108,NULL,NULL,NULL,1),(53,8,10,'PCX 160',160,NULL,NULL,NULL,1),(55,8,10,'Zoomer-X',108,NULL,NULL,NULL,1),(56,9,10,'Mio Sporty',114,NULL,NULL,NULL,1),(57,9,10,'Mio i125',125,NULL,NULL,NULL,1),(58,9,10,'Mio Gravis',125,NULL,NULL,NULL,1),(59,9,11,'Sniper 155',155,NULL,NULL,NULL,1),(60,8,11,'Supra GTR150',150,NULL,NULL,NULL,1),(61,9,12,'YZF R15',150,NULL,NULL,NULL,1),(62,8,12,'CBR 150R',150,NULL,NULL,NULL,1),(63,9,10,'NMAX',125,NULL,NULL,NULL,1),(64,9,10,'NMAX 125',125,NULL,NULL,NULL,1),(65,9,10,'NMAX 155',155,NULL,NULL,NULL,1),(66,9,10,'NMAX 160',155,NULL,NULL,NULL,1);
 /*!40000 ALTER TABLE `motorcycle_models` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -332,7 +349,7 @@ CREATE TABLE `motorcycle_types` (
   `description` varchar(255) DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=13 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -341,7 +358,7 @@ CREATE TABLE `motorcycle_types` (
 
 LOCK TABLES `motorcycle_types` WRITE;
 /*!40000 ALTER TABLE `motorcycle_types` DISABLE KEYS */;
-INSERT INTO `motorcycle_types` VALUES (1,'SCOOTER',NULL,1),(4,'UNDERBONE',NULL,1),(6,'BACKBONE',NULL,1);
+INSERT INTO `motorcycle_types` VALUES (10,'SCOOTER',NULL,1),(11,'UNDERBONE',NULL,1),(12,'BACKBONE',NULL,1);
 /*!40000 ALTER TABLE `motorcycle_types` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -363,7 +380,7 @@ CREATE TABLE `notifications` (
   PRIMARY KEY (`id`),
   KEY `user_id` (`user_id`),
   KEY `booking_id` (`booking_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=25 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=176 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -372,7 +389,7 @@ CREATE TABLE `notifications` (
 
 LOCK TABLES `notifications` WRITE;
 /*!40000 ALTER TABLE `notifications` DISABLE KEYS */;
-INSERT INTO `notifications` VALUES (1,2,'booking','New booking request from FARES DAWOUD scheduled for Jul 5, 2026 (Booking #1).',1,1,'2026-06-27 22:14:56'),(2,3,'assignment','New job assigned: Booking #1 for FARES DAWOUD on Jul 5, 2026.',1,1,'2026-06-27 22:15:22'),(3,2,'completion','Job #1 has been marked as Completed by Tech User.',1,1,'2026-06-27 22:16:11'),(4,2,'booking','New booking request from FARES DAWOUD scheduled for Jun 30, 2026 (Booking #2).',2,1,'2026-06-29 00:02:07'),(5,3,'assignment','New job assigned to you: Booking #2 for FARES DAWOUD on Jun 30, 2026.',2,1,'2026-06-29 00:02:37'),(6,2,'booking','New booking request from FARES DAWOUD scheduled for Jun 29, 2026 (Booking #3).',3,1,'2026-06-29 00:05:48'),(7,7,'assignment','New job assigned to you: Booking #3 for FARES DAWOUD on Jun 29, 2026.',3,1,'2026-06-29 00:05:53'),(8,2,'booking','New booking request from FARES DAWOUD scheduled for Jun 30, 2026 (Booking #4).',4,1,'2026-06-29 08:39:41'),(9,7,'assignment','New job assigned to you: Booking #4 for FARES DAWOUD on Jun 30, 2026.',4,1,'2026-06-29 08:40:01'),(10,2,'booking','New booking request from FARES DAWOUD scheduled for Jun 30, 2026 (Booking #5).',5,1,'2026-06-29 08:40:30'),(11,3,'assignment','New job assigned to you: Booking #5 for FARES DAWOUD on Jun 30, 2026.',5,1,'2026-06-29 08:40:42'),(12,2,'booking','New booking request from FARES DAWOUD scheduled for Jun 30, 2026 (Booking #6).',6,1,'2026-06-29 08:46:05'),(13,7,'assignment','New job assigned to you: Booking #6 for FARES DAWOUD on Jun 30, 2026.',6,1,'2026-06-29 08:46:10'),(14,2,'completion','Job #6 has been marked as Completed by MECH MICO.',6,1,'2026-06-29 08:47:42'),(15,7,'booking','You have been assigned to Booking #7 by staff.',7,0,'2026-06-29 09:07:04'),(16,6,'booking','A service booking (#7) has been created for you by the shop.',7,0,'2026-06-29 09:07:04'),(17,7,'booking','You have been assigned to Booking #8 by staff.',8,0,'2026-06-29 09:07:35'),(18,6,'booking','A service booking (#8) has been created for you by the shop.',8,0,'2026-06-29 09:07:35'),(19,7,'booking','You have been assigned to Booking #9 by staff.',9,0,'2026-06-29 09:11:00'),(20,6,'booking','A service booking (#9) has been created for you by the shop.',9,0,'2026-06-29 09:11:00'),(21,7,'booking','You have been assigned to Booking #10 by staff.',10,0,'2026-06-29 09:11:26'),(22,5,'booking','A service booking (#10) has been created for you by the shop.',10,0,'2026-06-29 09:11:26'),(23,3,'booking','You have been assigned to Booking #11 by staff.',11,0,'2026-06-29 09:12:04'),(24,5,'booking','A service booking (#11) has been created for you by the shop.',11,0,'2026-06-29 09:12:04');
+INSERT INTO `notifications` VALUES (135,2,'booking','New booking request from FARES DAWOUD scheduled for Jul 31, 2026 (Booking #75).',75,1,'2026-07-16 18:15:46'),(136,7,'assignment','New job assigned to you: Booking #75 for FARES DAWOUD on Jul 31, 2026.',75,1,'2026-07-16 18:16:06'),(137,2,'completion','Job #75 has been marked as Completed by MECH MICO.',75,1,'2026-07-16 18:17:03'),(138,2,'booking','New booking request from FARES DAWOUD scheduled for Jul 31, 2026 (Booking #76).',76,1,'2026-07-16 18:28:31'),(139,8,'assignment','New job assigned to you: Booking #76 for FARES DAWOUD on Jul 31, 2026.',76,1,'2026-07-16 18:28:37'),(140,2,'completion','Job #76 has been marked as Completed by MECH JUN.',76,1,'2026-07-16 18:29:11'),(141,2,'booking','New booking request from FARES DAWOUD scheduled for Jul 31, 2026 (Booking #77).',77,1,'2026-07-16 18:30:13'),(142,8,'assignment','New job assigned to you: Booking #77 for FARES DAWOUD on Jul 31, 2026.',77,1,'2026-07-16 18:30:21'),(143,2,'completion','Job #77 has been marked as Completed by MECH JUN.',77,1,'2026-07-16 18:30:36'),(144,2,'booking','New booking request from FARES DAWOUD scheduled for Jul 31, 2026 (Booking #78).',78,1,'2026-07-16 18:31:14'),(145,3,'assignment','New job assigned to you: Booking #78 for FARES DAWOUD on Jul 31, 2026.',78,1,'2026-07-16 18:31:34'),(146,2,'completion','Job #78 has been marked as Completed by Tech User.',78,1,'2026-07-16 18:31:59'),(147,2,'booking','New booking request from FARES DAWOUD scheduled for Jul 31, 2026 (Booking #79).',79,1,'2026-07-16 18:33:42'),(148,17,'assignment','New job assigned to you: Booking #79 for FARES DAWOUD on Jul 31, 2026.',79,1,'2026-07-16 18:33:46'),(149,2,'completion','Job #79 has been marked as Completed by MECH NEYB.',79,1,'2026-07-16 18:33:54'),(150,2,'booking','New booking request from FARES DAWOUD scheduled for Jul 31, 2026 (Booking #80).',80,1,'2026-07-16 20:55:38'),(151,7,'assignment','New job assigned to you: Booking #80 for FARES DAWOUD on Jul 31, 2026.',80,1,'2026-07-16 20:55:47'),(152,2,'completion','Job #80 has been marked as Completed by MECH MICO.',80,1,'2026-07-16 20:56:07'),(153,2,'booking','New booking request from FARES DAWOUD scheduled for Jul 31, 2026 (Booking #81).',81,1,'2026-07-16 20:56:32'),(154,8,'assignment','New job assigned to you: Booking #81 for FARES DAWOUD on Jul 31, 2026.',81,0,'2026-07-16 20:56:37'),(155,2,'completion','Job #81 has been marked as Completed by MECH JUN.',81,1,'2026-07-16 20:56:50'),(156,2,'booking','New booking request from KATH scheduled for Jul 31, 2026 (Booking #82).',82,1,'2026-07-17 07:18:38'),(157,2,'booking','New booking request from FARES DAWOUD scheduled for Jul 31, 2026 (Booking #83).',83,1,'2026-07-17 07:18:56'),(158,17,'assignment','New job assigned to you: Booking #83 for FARES DAWOUD on Jul 31, 2026.',83,1,'2026-07-17 07:19:21'),(159,17,'assignment','New job assigned to you: Booking #82 for KATH on Jul 31, 2026.',82,1,'2026-07-17 07:19:29'),(160,2,'booking','New booking request from FARES DAWOUD scheduled for Jul 31, 2026 (Booking #84).',84,1,'2026-07-17 14:55:46'),(161,2,'booking','New booking request from FARES DAWOUD scheduled for Jul 31, 2026 (Booking #85).',85,1,'2026-07-17 14:56:48'),(162,2,'booking','New booking request from FARES DAWOUD scheduled for Jul 31, 2026 (Booking #86).',86,1,'2026-07-17 22:10:44'),(163,8,'assignment','New job assigned to you: Booking #86 for FARES DAWOUD on Jul 31, 2026.',86,0,'2026-07-17 22:10:57'),(164,2,'completion','Job #86 has been marked as Completed by MECH JUN.',86,1,'2026-07-17 22:12:08'),(165,2,'booking','New booking request from FARES DAWOUD scheduled for Jul 31, 2026 (Booking #87).',87,1,'2026-07-17 22:13:05'),(166,8,'assignment','New job assigned to you: Booking #87 for FARES DAWOUD on Jul 31, 2026.',87,0,'2026-07-17 22:13:12'),(167,2,'completion','Job #87 has been marked as Completed by MECH JUN.',87,1,'2026-07-17 22:13:32'),(168,3,'booking','You have been assigned to Booking #88 by staff.',88,1,'2026-07-17 22:16:57'),(169,5,'booking','A service booking (#88) has been created for you by the shop.',88,0,'2026-07-17 22:16:57'),(170,2,'completion','Job #88 has been marked as Completed by Tech User.',88,1,'2026-07-17 22:17:18'),(171,2,'booking','New booking request from FARES DAWOUD scheduled for Jul 19, 2026 (Booking #89).',89,0,'2026-07-18 09:38:35'),(172,3,'assignment','New job assigned to you: Booking #89 for FARES DAWOUD on Jul 19, 2026.',89,1,'2026-07-18 09:53:27'),(173,2,'completion','Job #89 has been marked as Completed by Tech User.',89,0,'2026-07-18 09:54:57'),(174,2,'booking','New booking request from FARES DAWOUD scheduled for Aug 13, 2026 (Booking #90).',90,0,'2026-08-12 10:23:54'),(175,3,'assignment','New job assigned to you: Booking #90 for FARES DAWOUD on Aug 13, 2026.',90,0,'2026-08-12 10:24:12');
 /*!40000 ALTER TABLE `notifications` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -393,7 +410,7 @@ CREATE TABLE `order_items` (
   PRIMARY KEY (`id`),
   KEY `order_id` (`order_id`),
   KEY `cart_item_id` (`cart_item_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=13 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=82 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -402,7 +419,7 @@ CREATE TABLE `order_items` (
 
 LOCK TABLES `order_items` WRITE;
 /*!40000 ALTER TABLE `order_items` DISABLE KEYS */;
-INSERT INTO `order_items` VALUES (1,1,NULL,17,1,500.00),(2,2,NULL,17,1,500.00),(3,3,NULL,17,1,500.00),(4,4,NULL,17,1,500.00),(5,5,NULL,18,1,149.99),(6,6,NULL,17,1,500.00),(7,7,NULL,17,1,500.00),(8,8,NULL,17,1,500.00),(10,10,5,16,1,800.00),(11,11,5,16,1,800.00),(12,12,6,18,1,149.99);
+INSERT INTO `order_items` VALUES (60,52,25,59,6,350.00),(61,53,25,59,6,350.00),(62,54,25,59,6,350.00),(63,55,25,59,6,350.00),(64,56,25,59,1,350.00),(65,57,25,59,1,350.00),(66,58,25,59,1,350.00),(67,59,26,59,6,350.00),(69,61,26,59,6,350.00),(70,62,28,68,1,1400.00),(71,63,28,68,1,1400.00),(72,64,29,68,1,1400.00),(73,65,30,65,1,400.00),(74,66,31,63,1,330.00),(75,67,32,65,1,400.00),(76,68,NULL,65,1,400.00),(77,69,NULL,60,1,150.00),(78,70,33,59,1,350.00),(79,71,35,60,1,150.00),(80,72,36,59,5,350.00);
 /*!40000 ALTER TABLE `order_items` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -427,7 +444,7 @@ CREATE TABLE `orders` (
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `user_id` (`user_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=13 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=74 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -436,7 +453,7 @@ CREATE TABLE `orders` (
 
 LOCK TABLES `orders` WRITE;
 /*!40000 ALTER TABLE `orders` DISABLE KEYS */;
-INSERT INTO `orders` VALUES (1,5,500.00,500.00,'paymongo','MT-1','checkout_created','cs_5dfc6f73d4e52ed94a6fb1a0',NULL,'pending','2026-06-27 22:21:55'),(2,5,500.00,500.00,'paymongo','MT-2','checkout_created','cs_5307d1f9725984636dfd3286',NULL,'pending','2026-06-27 22:22:17'),(3,5,500.00,500.00,'paymongo','MT-3','checkout_created','cs_7f18d76178de32903004814e',NULL,'pending','2026-06-27 22:22:59'),(4,5,500.00,500.00,'paymongo','MT-4','checkout_created','cs_a8dfce89edea8ef5d157da36',NULL,'pending','2026-06-27 22:35:55'),(5,5,149.99,149.99,'paymongo','MT-5','checkout_created','cs_fdf83bc17ec2a8b9bf3b2626',NULL,'pending','2026-06-27 22:36:38'),(6,5,500.00,500.00,'paymongo','MT-6','checkout_created','cs_742793a301cd7cf33aa3cf3d',NULL,'pending','2026-06-27 23:25:13'),(7,5,500.00,500.00,'paymongo','MT-7','checkout_created','cs_67d7149da9f6fdb76aa80f35',NULL,'pending','2026-06-27 23:26:03'),(8,5,500.00,500.00,'paymongo','MT-8','checkout_created','cs_1081a98c5271d12aea92f29a',NULL,'pending','2026-06-27 23:30:40'),(10,5,800.00,800.00,'paymongo','MT-10','paid','cs_64701d577c687a6fdc009663','2026-06-28 00:11:55','completed','2026-06-27 23:56:26'),(11,5,800.00,800.00,'paymongo','MT-11','paid','cs_0bf51ecbb933d01f64b8915d','2026-06-28 00:09:16','completed','2026-06-27 23:56:59'),(12,5,149.99,149.99,'paymongo','MT-12','paid','cs_d9f6e1b106269067e02a5588','2026-06-28 00:14:19','completed','2026-06-28 00:14:07');
+INSERT INTO `orders` VALUES (52,5,2100.00,2100.00,'paymongo','MT-52','checkout_created','cs_7ypT5Ru9LvkHTVfiLfnvNPMh',NULL,'pending','2026-07-16 18:38:33'),(53,5,2100.00,2100.00,'paymongo','MT-53','checkout_created','cs_s67i1pYs6535F1v8Bqb44tYP',NULL,'pending','2026-07-16 18:38:46'),(54,5,2100.00,2100.00,'paymongo','MT-54','checkout_created','cs_F4akrGEVvSavDM1XGqptRfyc',NULL,'pending','2026-07-16 18:39:48'),(55,5,2100.00,2100.00,'paymongo','MT-55','checkout_created','cs_vn9k8Xi9UjNpoMmWpfWtx5Vd',NULL,'pending','2026-07-16 18:44:15'),(56,5,350.00,350.00,'paymongo','MT-56','checkout_created','cs_mr8Gey9JmzUCDuAgbZDZRPWg',NULL,'pending','2026-07-16 18:45:30'),(57,5,350.00,350.00,'paymongo','MT-57','checkout_created','cs_4de5n4WpCcZRsL8qchTPTxvS',NULL,'pending','2026-07-16 18:50:55'),(58,5,350.00,350.00,'paymongo','MT-58','checkout_created','cs_nfTbiYLWAJP3Pq9LABmYjZsi',NULL,'pending','2026-07-16 18:51:13'),(59,10,2100.00,2100.00,'paymongo','MT-59','checkout_created','cs_Yn8k9FNEccdYkgbV9gW6ErHx',NULL,'pending','2026-07-16 18:57:22'),(61,10,2100.00,2100.00,'paymongo','MT-61-TEST','paid','SANDBOX-TEST','2026-07-16 19:06:34','completed','2026-07-16 19:06:34'),(62,10,1400.00,1400.00,'paymongo','MT-62','checkout_created','cs_rXc6eBfB2BDEC38B8yGywFPg',NULL,'pending','2026-07-16 19:06:50'),(63,10,1400.00,1400.00,'paymongo','MT-63','checkout_created','cs_CaJhzpiLrGNPEireJK7coACe',NULL,'pending','2026-07-16 19:08:41'),(64,5,1400.00,1400.00,'paymongo','MT-64','checkout_created','cs_Qo89BYDpeJvjzGc3Hehbmpwq',NULL,'pending','2026-07-16 20:03:24'),(65,5,400.00,400.00,'paymongo','MT-65','checkout_created','cs_DS6WwzHMxwNzRcPowtunQiHL',NULL,'pending','2026-07-16 20:04:31'),(66,5,330.00,330.00,'paymongo','MT-66','checkout_created','cs_5a02cc71fbecc257e23463e2',NULL,'pending','2026-07-16 20:44:44'),(67,5,400.00,400.00,'paymongo','MT-67','paid','cs_a6860cf3aa7292f0e2e4ad14','2026-07-16 20:58:03','completed','2026-07-16 20:57:34'),(68,NULL,400.00,400.00,'cash','POS-000068','paid',NULL,'2026-07-16 15:25:13','completed','2026-07-16 21:25:13'),(69,NULL,150.00,150.00,'cash','POS-000069','paid',NULL,'2026-07-17 16:16:09','completed','2026-07-17 22:16:09'),(70,5,350.00,350.00,'paymongo','MT-70','paid','cs_b8aac714ac5bd3c019b8853f','2026-07-17 22:18:02','completed','2026-07-17 22:17:42'),(71,5,150.00,150.00,'paymongo','MT-71','paid','cs_8c2c7c7aa947771c0d1e7fb7','2026-07-18 09:40:28','completed','2026-07-18 09:40:06'),(72,5,1750.00,1750.00,'paymongo','MT-72','paid','cs_4c6c75f9839d38842190f490','2026-07-18 09:59:07','completed','2026-07-18 09:57:30');
 /*!40000 ALTER TABLE `orders` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -459,7 +476,7 @@ CREATE TABLE `password_resets` (
   PRIMARY KEY (`id`),
   KEY `email` (`email`),
   KEY `user_id` (`user_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -468,7 +485,39 @@ CREATE TABLE `password_resets` (
 
 LOCK TABLES `password_resets` WRITE;
 /*!40000 ALTER TABLE `password_resets` DISABLE KEYS */;
+INSERT INTO `password_resets` VALUES (1,10,'castillokathlynanne@gmail.com','$2y$10$jFjBf0In0JK.cvDjX.Vc9OKrV5SfFer2r86LW1Itguc7ulz5wXWpG','2026-07-09 07:47:00',NULL,NULL,'2026-07-09 07:37:00');
 /*!40000 ALTER TABLE `password_resets` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `product_codes`
+--
+
+DROP TABLE IF EXISTS `product_codes`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `product_codes` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `product_id` int(10) unsigned NOT NULL,
+  `code` varchar(64) NOT NULL,
+  `code_type` enum('manufacturer','mototrack') NOT NULL DEFAULT 'manufacturer',
+  `symbology` enum('qr','barcode','both') NOT NULL DEFAULT 'both',
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_product_code` (`code`),
+  KEY `product_id` (`product_id`),
+  CONSTRAINT `fk_product_codes_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=32 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `product_codes`
+--
+
+LOCK TABLES `product_codes` WRITE;
+/*!40000 ALTER TABLE `product_codes` DISABLE KEYS */;
+INSERT INTO `product_codes` VALUES (11,77,'MT-P-000077','mototrack','qr','2026-08-29 20:52:38'),(12,46,'MT-P-000046','mototrack','both','2026-08-29 20:55:31'),(13,47,'MT-P-000047','mototrack','both','2026-08-29 20:55:31'),(14,48,'MT-P-000048','mototrack','both','2026-08-29 20:55:31'),(15,50,'MT-P-000050','mototrack','both','2026-08-29 20:55:31'),(16,51,'MT-P-000051','mototrack','both','2026-08-29 20:55:31'),(17,52,'MT-P-000052','mototrack','both','2026-08-29 20:55:31'),(18,53,'MT-P-000053','mototrack','both','2026-08-29 20:55:31'),(19,54,'MT-P-000054','mototrack','both','2026-08-29 20:55:31'),(20,55,'MT-P-000055','mototrack','both','2026-08-29 20:55:31'),(21,57,'MT-P-000057','mototrack','both','2026-08-29 20:55:31'),(22,58,'MT-P-000058','mototrack','both','2026-08-29 20:55:31'),(23,59,'MT-P-000059','mototrack','both','2026-08-29 20:55:31'),(24,60,'MT-P-000060','mototrack','both','2026-08-29 20:55:31'),(25,61,'MT-P-000061','mototrack','both','2026-08-29 20:55:31'),(26,62,'MT-P-000062','mototrack','both','2026-08-29 20:55:31'),(27,63,'MT-P-000063','mototrack','both','2026-08-29 20:55:31'),(28,65,'MT-P-000065','mototrack','both','2026-08-29 20:55:31'),(29,68,'MT-P-000068','mototrack','both','2026-08-29 20:55:31'),(30,69,'MT-P-000069','mototrack','both','2026-08-29 20:55:31'),(31,70,'MT-P-000070','mototrack','both','2026-08-29 20:55:31');
+/*!40000 ALTER TABLE `product_codes` ENABLE KEYS */;
 UNLOCK TABLES;
 
 --
@@ -487,13 +536,14 @@ CREATE TABLE `products` (
   `price` decimal(10,2) NOT NULL,
   `original_price` decimal(10,2) DEFAULT NULL,
   `stock` int(10) unsigned NOT NULL DEFAULT 0,
+  `min_stock` int(10) unsigned NOT NULL DEFAULT 10,
   `image` varchar(255) DEFAULT NULL,
   `status` enum('available','low_stock','out_of_stock') NOT NULL DEFAULT 'available',
   `featured` tinyint(1) NOT NULL DEFAULT 0,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `category_id` (`category_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=78 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -502,7 +552,7 @@ CREATE TABLE `products` (
 
 LOCK TABLES `products` WRITE;
 /*!40000 ALTER TABLE `products` DISABLE KEYS */;
-INSERT INTO `products` VALUES (14,7,'SHELL - CITY SCOOTER OIL','SHELL','',585.00,NULL,49,'products/prod_6a3c8d76ec1c9.jpg','available',0,'2026-06-25 10:07:50'),(16,7,'LIQUI MOLY ENGINE OIL','LIQUI MOLY','',800.00,NULL,497,'products/prod_6a3d31cf28a9e.webp','available',0,'2026-06-25 21:49:03'),(17,7,'MOTUL SCOOTER OIL','MOTUL','',500.00,NULL,4,'products/prod_6a3d32140c4d2.jpg','available',0,'2026-06-25 21:50:12'),(18,8,'KOBY CVT CLEANER','KOBY','',149.99,NULL,67,'products/prod_6a3d40fb0b10f.jpg','available',0,'2026-06-25 22:53:47'),(19,7,'RS8 OIL','RS8','',345.00,NULL,5,'products/prod_6a41c132373d8.jpg','available',0,'2026-06-29 08:49:54'),(20,15,'PRESONE COOLANT','PRESTONE','1 LITER',350.00,NULL,0,'products/prod_6a41c3ba28f82.jpg','available',0,'2026-06-29 09:00:42');
+INSERT INTO `products` VALUES (46,25,'SHELL - CITY SCOOTER OIL','SHELL','',500.00,NULL,99,10,'products/prod_6a58851762e85.jpg','available',0,'2026-07-16 15:15:35'),(47,25,'SHELL - LONG RIDE','SHELL','',500.00,NULL,96,10,'products/prod_6a588618e60d9.jpg','available',0,'2026-07-16 15:19:52'),(48,25,'SHELL - ADVANCE ULTRA OIL','SHELL','',500.00,NULL,99,10,'products/prod_6a58867c53c3a.jpg','available',0,'2026-07-16 15:21:32'),(50,25,'LIQUI MOLY - STREET','LIQUI MOLY','',600.00,NULL,100,10,'products/prod_6a5887277c4fc.jpg','available',0,'2026-07-16 15:24:23'),(51,25,'LIQUI MOLY - STREET RACE','LIQUI MOLY','',600.00,NULL,100,10,'products/prod_6a588772172cd.jpg','available',0,'2026-07-16 15:25:38'),(52,25,'LIQUI MOLY - SCOOTER MB','LIQUI MOLY','',600.00,NULL,98,10,'products/prod_6a5887cfa7939.jpg','available',0,'2026-07-16 15:27:11'),(53,26,'PRESONE - COOLANT','PRESTONE','',150.00,NULL,96,10,'products/prod_6a5888f19bdc7.jpg','available',0,'2026-07-16 15:32:01'),(54,26,'PETRON -  COOLANT','PETRON','',160.00,NULL,99,10,'products/prod_6a588a163a363.jpg','available',0,'2026-07-16 15:36:54'),(55,26,'AMSOIL - COOLANT','AMSOIL','',160.00,NULL,99,10,'products/prod_6a588a4911fcb.jpg','available',0,'2026-07-16 15:37:45'),(57,26,'SHELL - COOLANT','SHELL','',140.00,NULL,99,10,'products/prod_6a588b0f34e8f.jpg','available',0,'2026-07-16 15:41:03'),(58,25,'RS8 - SCOOTER OIL','RS8','',300.00,NULL,100,10,'products/prod_6a588b6db616d.webp','available',0,'2026-07-16 15:42:37'),(59,25,'RS8 - SCOOTER ULTRA OIL','RS8','',350.00,NULL,7,10,'products/prod_6a588bbd7ed10.webp','available',0,'2026-07-16 15:43:57'),(60,27,'RS8 - CVT CLEANER','RS8','',150.00,NULL,98,10,'products/prod_6a588c91f3dd3.jpg','available',0,'2026-07-16 15:47:30'),(61,27,'KOBY - CVT CLEANER','KOBY','',160.00,NULL,98,10,'products/prod_6a588f0ff2bdd.jpg','available',0,'2026-07-16 15:58:07'),(62,27,'AEROPAK - CVT CLEANER','AEROPAK','',140.00,NULL,99,10,'products/prod_6a588f74990d3.jpg','available',0,'2026-07-16 15:59:48'),(63,28,'YAMAHA GENUINE - CLUTCH DAMPER','GENUINE YAMAHA','',330.00,NULL,100,10,'products/prod_6a58903bf12e7.jpg','available',0,'2026-07-16 16:02:24'),(65,28,'YAMAHA GENUINE - CLUTCH LINING','YAMAHA GENUINE','',400.00,NULL,98,10,'products/prod_6a58a54eb9ff9.webp','available',0,'2026-07-16 17:33:02'),(68,29,'RK CHAIN - 428','RK','',1400.00,NULL,94,10,'products/prod_6a58a91a50f9c.jpg','available',0,'2026-07-16 17:49:14'),(69,31,'CRC - THROTTLE BODY CLEANER','CRC','',200.00,NULL,95,10,'products/prod_6a58a9e91234a.jpeg','available',0,'2026-07-16 17:52:41'),(70,31,'WYNN\'S - THROTTLE BODY CLEANER','WYNN\'S','',170.00,NULL,97,10,'products/prod_6a58aa307636e.jpg','available',0,'2026-07-16 17:53:52'),(77,29,'CHAIN GREASE','JIANLING','',100.00,NULL,30,10,'products/prod_6a92d6169a42c.jpg','available',0,'2026-08-29 20:52:38');
 /*!40000 ALTER TABLE `products` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -522,7 +572,7 @@ CREATE TABLE `service_booking_items` (
   `unit_price` decimal(10,2) NOT NULL DEFAULT 0.00,
   PRIMARY KEY (`id`),
   KEY `booking_id` (`booking_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -557,7 +607,7 @@ CREATE TABLE `service_bookings` (
   PRIMARY KEY (`id`),
   KEY `user_id` (`user_id`),
   KEY `service_type_id` (`service_type_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -596,7 +646,6 @@ CREATE TABLE `service_material_rules` (
 
 LOCK TABLES `service_material_rules` WRITE;
 /*!40000 ALTER TABLE `service_material_rules` DISABLE KEYS */;
-INSERT INTO `service_material_rules` VALUES (1,1,1,'Engine Oil 0.8L (110ccÔÇô125cc)',100,125,1.00,'bottle'),(2,1,2,'Engine Oil 1L (126cc and above)',126,9999,1.00,'bottle'),(3,2,3,'CVT Cleaner Spray (Ôëñ125cc)',0,125,2.00,'can'),(4,2,3,'CVT Cleaner Spray (ÔëÑ126cc)',126,9999,3.00,'can'),(5,3,4,'Chain Lubricant Spray',0,9999,1.00,'can');
 /*!40000 ALTER TABLE `service_material_rules` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -621,7 +670,6 @@ CREATE TABLE `service_products` (
 
 LOCK TABLES `service_products` WRITE;
 /*!40000 ALTER TABLE `service_products` DISABLE KEYS */;
-INSERT INTO `service_products` VALUES (1,1),(1,2),(2,3),(3,4);
 /*!40000 ALTER TABLE `service_products` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -641,7 +689,7 @@ CREATE TABLE `service_types` (
   `required_category` varchar(120) DEFAULT NULL,
   `required_category_id` int(10) unsigned DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=24 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=38 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -650,7 +698,7 @@ CREATE TABLE `service_types` (
 
 LOCK TABLES `service_types` WRITE;
 /*!40000 ALTER TABLE `service_types` DISABLE KEYS */;
-INSERT INTO `service_types` VALUES (18,'CVT CLEANING','',350.00,'1','CVT CLEANERS',8),(19,'CHANGE ENGINE OIL','',70.00,'all','ENGINE OIL',7),(23,'COOLANT FLUSHING','',50.00,'all',NULL,NULL);
+INSERT INTO `service_types` VALUES (32,'CVT CLEANING','',300.00,'10','CVT CLEANER',27),(33,'CHANGE ENGINE OIL','',50.00,'all','ENGINE OIL',25),(34,'CHANGE CLUTCH SYSTEM','',200.00,'11,12','CLUTCH SYSTEM',28),(35,'CHANGE DRIVE TRAIN','',250.00,'11,12','DRIVE TRAIN',29),(36,'COOLANT FLUSHING','',100.00,'all','COOLANT',26),(37,'THROTTLE BODY CLEANING','',300.00,'all','THROTTLE BODY CLEANER',31);
 /*!40000 ALTER TABLE `service_types` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -679,6 +727,34 @@ INSERT INTO `site_settings` VALUES ('hero_background_image','hero_background_ima
 UNLOCK TABLES;
 
 --
+-- Table structure for table `technician_services`
+--
+
+DROP TABLE IF EXISTS `technician_services`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `technician_services` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `technician_id` int(10) unsigned NOT NULL,
+  `service_id` int(10) unsigned NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `tech_service` (`technician_id`,`service_id`),
+  KEY `service_id` (`service_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=85 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `technician_services`
+--
+
+LOCK TABLES `technician_services` WRITE;
+/*!40000 ALTER TABLE `technician_services` DISABLE KEYS */;
+INSERT INTO `technician_services` VALUES (67,8,34,'2026-07-16 18:09:41'),(68,8,35,'2026-07-16 18:09:41'),(69,8,33,'2026-07-16 18:09:41'),(70,8,36,'2026-07-16 18:09:41'),(71,8,37,'2026-07-16 18:09:41'),(72,7,34,'2026-07-16 18:09:51'),(73,7,35,'2026-07-16 18:09:51'),(74,7,33,'2026-07-16 18:09:51'),(75,7,36,'2026-07-16 18:09:51'),(76,7,37,'2026-07-16 18:09:51'),(77,3,33,'2026-07-16 18:10:03'),(78,3,36,'2026-07-16 18:10:03'),(79,3,32,'2026-07-16 18:10:03'),(80,3,37,'2026-07-16 18:10:03'),(81,17,33,'2026-07-18 09:51:20'),(82,17,36,'2026-07-18 09:51:20'),(83,17,32,'2026-07-18 09:51:20'),(84,17,37,'2026-07-18 09:51:20');
+/*!40000 ALTER TABLE `technician_services` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
 -- Table structure for table `testimonials`
 --
 
@@ -701,7 +777,6 @@ CREATE TABLE `testimonials` (
 
 LOCK TABLES `testimonials` WRITE;
 /*!40000 ALTER TABLE `testimonials` DISABLE KEYS */;
-INSERT INTO `testimonials` VALUES (1,'Maria Santos','MotoTrack has been my go-to shop for all my motorcycle needs. Fast, reliable, and affordable!',5,'2026-06-21 06:46:58'),(2,'Carlos Reyes','Great service! The staff really knows their stuff. My Honda Click runs perfectly now.',5,'2026-06-21 06:46:58'),(3,'Ana Gonzales','I love how easy it is to book a service appointment online. No more waiting in long queues!',5,'2026-06-21 06:46:58');
 /*!40000 ALTER TABLE `testimonials` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -722,11 +797,12 @@ CREATE TABLE `users` (
   `auth_provider` enum('local','google') NOT NULL DEFAULT 'local',
   `role` enum('admin','staff','technician','customer') NOT NULL DEFAULT 'customer',
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `availability_status` enum('ready','off_duty') NOT NULL DEFAULT 'off_duty',
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   UNIQUE KEY `email` (`email`),
   UNIQUE KEY `google_id` (`google_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=18 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -735,7 +811,7 @@ CREATE TABLE `users` (
 
 LOCK TABLES `users` WRITE;
 /*!40000 ALTER TABLE `users` DISABLE KEYS */;
-INSERT INTO `users` VALUES (1,'Admin','admin@mototrack.com','$2y$10$Lx.3FXOgDKRvdohX8y/JG.1n6EeD0g0rZEF6ZxV94wSVN/Bs//8u2','09001234567',NULL,'local','admin',1,'2026-06-21 06:46:57'),(2,'Staff User','staff@mototrack.com','$2y$10$Lx.3FXOgDKRvdohX8y/JG.1n6EeD0g0rZEF6ZxV94wSVN/Bs//8u2','09001234568',NULL,'local','staff',1,'2026-06-21 06:46:57'),(3,'Tech User','tech@mototrack.com','$2y$10$Lx.3FXOgDKRvdohX8y/JG.1n6EeD0g0rZEF6ZxV94wSVN/Bs//8u2','09001234569',NULL,'local','technician',1,'2026-06-21 06:46:57'),(4,'Juan dela Cruz','juan@gmail.com','$2y$10$Lx.3FXOgDKRvdohX8y/JG.1n6EeD0g0rZEF6ZxV94wSVN/Bs//8u2','09171234567',NULL,'local','customer',1,'2026-06-21 06:46:57'),(5,'FARES DAWOUD','pippo.fares@gmail.com','$2y$10$7xHDTqtx64/G15zpgT64NuG01AMwEXTW0EHGIa6jieZZMScPiTNLm','09922550043','110525539002572377824','google','customer',1,'2026-06-21 14:50:15'),(6,'FARES WAEL IBRAHIM DAWOUD','dawoud_fareswaelibrahim@plpasig.edu.ph','$2y$10$hrp0QfvQv3.rpehCM83dRuwNeOTpw/44Sk/JvoQq78LR6rWV1Ls1a',NULL,'111815386491218525648','google','customer',1,'2026-06-24 14:54:35'),(7,'MECH MICO','mech@mototrack.com','$2y$10$61dQ6hZs3lf8D98XHOUVk.Jzs./FepNUtg.9z8EH/tNb7fuBVNEWC',NULL,NULL,'local','technician',1,'2026-06-29 00:05:19');
+INSERT INTO `users` VALUES (1,'Admin','admin@mototrack.com','$2y$10$Lx.3FXOgDKRvdohX8y/JG.1n6EeD0g0rZEF6ZxV94wSVN/Bs//8u2','09001234567',NULL,'local','admin',1,'off_duty','2026-06-21 06:46:57'),(2,'Staff User','staff@mototrack.com','$2y$10$Lx.3FXOgDKRvdohX8y/JG.1n6EeD0g0rZEF6ZxV94wSVN/Bs//8u2','09001234568',NULL,'local','staff',1,'off_duty','2026-06-21 06:46:57'),(3,'Tech User','tech@mototrack.com','$2y$10$Lx.3FXOgDKRvdohX8y/JG.1n6EeD0g0rZEF6ZxV94wSVN/Bs//8u2','09001234569',NULL,'local','technician',1,'ready','2026-06-21 06:46:57'),(4,'Juan dela Cruz','juan@gmail.com','$2y$10$Lx.3FXOgDKRvdohX8y/JG.1n6EeD0g0rZEF6ZxV94wSVN/Bs//8u2','09171234567',NULL,'local','customer',1,'off_duty','2026-06-21 06:46:57'),(5,'FARES DAWOUD','pippo.fares@gmail.com','$2y$10$7xHDTqtx64/G15zpgT64NuG01AMwEXTW0EHGIa6jieZZMScPiTNLm','09922550043','110525539002572377824','google','customer',1,'off_duty','2026-06-21 14:50:15'),(6,'FARES WAEL IBRAHIM DAWOUD','dawoud_fareswaelibrahim@plpasig.edu.ph','$2y$10$hrp0QfvQv3.rpehCM83dRuwNeOTpw/44Sk/JvoQq78LR6rWV1Ls1a',NULL,'111815386491218525648','google','customer',1,'off_duty','2026-06-24 14:54:35'),(7,'MECH MICO','mech@mototrack.com','$2y$10$yFSQ4EHnOQCvxPjzujX5m.TMCtvdXPk9wy25768kdeWGAzhfULC86',NULL,NULL,'local','technician',1,'off_duty','2026-06-29 00:05:19'),(8,'MECH JUN','mech2@mototrack.com','$2y$10$lrmHzHMnWtG7kWJP5neZ7O1J7442Uj4zMC78scMBj5y0oL.Wh3Itm',NULL,NULL,'local','technician',1,'off_duty','2026-07-07 12:02:57'),(10,'KATH','castillokathlynanne@gmail.com','$2y$10$HV9geRxA011MyAh3jhk4Cud7TTp/X/DQPj6KdQAclGeBAeKSprijm','09922550043',NULL,'local','customer',1,'off_duty','2026-07-09 07:36:36'),(17,'MECH NEYB','mechneyb@mototrack.com','$2y$10$v8AbPv34AvXA7ylQJXuL7uxGu7gqeEEXS24tpCo/39axaKc3j/Bgi',NULL,NULL,'local','technician',1,'off_duty','2026-07-09 13:22:06');
 /*!40000 ALTER TABLE `users` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
@@ -748,4 +824,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-06-29  9:18:05
+-- Dump completed
