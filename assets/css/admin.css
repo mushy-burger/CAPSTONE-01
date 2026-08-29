@@ -5304,3 +5304,365 @@ a.mtx-feed-row:hover, .mtx-feed-row[role="button"]:hover { background: #f8f9fb; 
 /* Combo dropdowns must escape the step card (overflow was clipping them) */
 .mtx-step { overflow: visible; }
 .mtx-step-head { border-radius: 13px 13px 0 0; }
+
+/* =========================================================
+   Product identification — barcode / QR (staff + admin)
+   ========================================================= */
+.prodx-idmsg { margin: 0 0 16px; max-width: 62ch; }
+
+.prodx-idmodes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.prodx-idmode { position: relative; cursor: pointer; }
+.prodx-idmode input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.prodx-idmode-body {
+  display: block;
+  height: 100%;
+  padding: 14px 16px;
+  border: 1px solid #d9dde4;
+  border-radius: 12px;
+  background: #fff;
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+.prodx-idmode-body strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .86rem;
+  color: #30343b;
+  margin-bottom: 4px;
+}
+.prodx-idmode-body strong i { color: var(--accent); }
+.prodx-idmode-body small { color: var(--muted); font-size: .76rem; line-height: 1.4; }
+.prodx-idmode:hover .prodx-idmode-body { border-color: #9aa1ac; }
+.prodx-idmode input:checked + .prodx-idmode-body {
+  border-color: var(--accent);
+  background: #fdf0f0;
+  box-shadow: 0 0 0 3px rgba(215, 25, 32, .12);
+}
+.prodx-idmode input:focus-visible + .prodx-idmode-body {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.prodx-idpanel {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fbfcfd;
+  margin-bottom: 14px;
+}
+
+/* Scan field — the icon sits inside the input */
+.prodx-scanfield { position: relative; display: block; }
+.prodx-scanfield i {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+.prodx-scanfield input {
+  width: 100%;
+  padding-left: 38px !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: .04em;
+}
+
+.prodx-codestatus {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 8px 0 0;
+  font-size: .8rem;
+  font-weight: 700;
+}
+.prodx-codestatus.is-ok  { color: #15803d; }
+.prodx-codestatus.is-bad { color: #b91c1c; }
+
+.prodx-genrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+.prodx-genlabel {
+  display: block;
+  font-size: .7rem;
+  font-weight: 900;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.prodx-gencode {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+  color: var(--accent);
+}
+.prodx-genrow small { display: block; margin-top: 4px; font-size: .74rem; }
+
+.prodx-symbology { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.prodx-symopt { position: relative; cursor: pointer; }
+.prodx-symopt input { position: absolute; opacity: 0; pointer-events: none; }
+.prodx-symopt span {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 16px;
+  border: 1px solid #d9dde4;
+  border-radius: 999px;
+  background: #fff;
+  font-size: .8rem;
+  font-weight: 700;
+  color: #30343b;
+  transition: border-color .15s, background .15s, color .15s;
+}
+.prodx-symopt input:checked + span {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.prodx-symopt input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.prodx-preview { margin-bottom: 14px; }
+.prodx-preview-symbols {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+  padding: 14px;
+  border: 1px dashed #d9dde4;
+  border-radius: 12px;
+  background: #fff;
+}
+.prodx-preview-symbols svg { display: block; max-width: 100%; height: auto; }
+
+/* Code chips on the product rows */
+.prodx-codechip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #f4f6f8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .68rem;
+  font-weight: 700;
+  color: #4b5563;
+  white-space: nowrap;
+}
+.prodx-codechip i { font-size: .7rem; color: var(--muted); }
+.prodx-codechip.is-mtx {
+  border-color: rgba(215, 25, 32, .25);
+  background: #fdf0f0;
+  color: #b2121a;
+}
+.prodx-codechip.is-mtx i { color: var(--accent); }
+
+/* POS scan box */
+.pos-scan {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fbfcfd;
+}
+.pos-scan-field { position: relative; flex: 1 1 260px; }
+.pos-scan-field i {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+.pos-scan-field input {
+  width: 100%;
+  height: 42px;
+  padding: 0 14px 0 36px;
+  border: 1px solid #d9dde4;
+  border-radius: 10px;
+  background: #fff;
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .85rem;
+}
+.pos-scan-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(215, 25, 32, .12);
+}
+.pos-scan-hint { font-size: .76rem; color: var(--muted); font-weight: 600; }
+.pos-scan-hint.is-ok  { color: #15803d; }
+.pos-scan-hint.is-bad { color: #b91c1c; }
+
+@media print {
+  .prodx-idmodes, .prodx-idpanel { break-inside: avoid; }
+}
+
+/* =========================================================
+   POS camera QR scanner
+   ========================================================= */
+.pos-scan-cam {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 18px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 800;
+  font-size: .82rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform .15s, box-shadow .15s, background .15s;
+}
+.pos-scan-cam:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(215, 25, 32, .3);
+}
+.pos-scan-cam:active { transform: translateY(0); }
+.pos-scan-cam:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+.pos-cam__dialog { width: min(520px, 100%); }
+
+.pos-cam__stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  margin: 4px 0 14px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #0d0f14;
+}
+.pos-cam__video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  /* Mirrored so moving the label matches what staff see on screen. */
+  transform: scaleX(-1);
+}
+
+/* Framing guide drawn over the preview */
+.pos-cam__reticle {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  width: 58%;
+  aspect-ratio: 1;
+  border-radius: 14px;
+  box-shadow: 0 0 0 2000px rgba(13, 15, 20, .35);
+  border: 2px solid rgba(255, 255, 255, .9);
+  pointer-events: none;
+}
+.pos-cam__reticle::before,
+.pos-cam__reticle::after {
+  content: '';
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  height: 3px;
+  background: var(--accent);
+  border-radius: 3px;
+}
+.pos-cam__reticle::before { top: -2px; }
+.pos-cam__reticle::after { bottom: -2px; }
+
+.pos-cam__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(13, 15, 20, .82);
+  color: #fff;
+  font-size: .86rem;
+  font-weight: 700;
+  text-align: center;
+  padding: 20px;
+}
+.pos-cam__overlay i { font-size: 1.6rem; }
+
+.pos-cam__status {
+  margin: 0 0 14px;
+  font-size: .85rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-align: center;
+  min-height: 1.2em;
+}
+.pos-cam__status.is-ok  { color: #15803d; }
+.pos-cam__status.is-bad { color: #b91c1c; }
+
+.pos-cam__result {
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  text-align: center;
+}
+.pos-cam__result-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: .72rem;
+  font-weight: 900;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: #15803d;
+  margin-bottom: 6px;
+}
+.pos-cam__result strong { display: block; font-size: 1rem; margin-bottom: 4px; }
+.pos-cam__result-meta {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  font-size: .82rem;
+  color: var(--muted);
+  font-weight: 700;
+}
+.pos-cam__result-added {
+  margin-top: 8px;
+  font-size: .8rem;
+  font-weight: 800;
+  color: #15803d;
+}
+
+.pos-cam__actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 540px) {
+  .pos-scan-cam { width: 100%; justify-content: center; }
+  .pos-cam__actions { justify-content: stretch; }
+  .pos-cam__actions .mtx-btn { flex: 1; justify-content: center; }
+}

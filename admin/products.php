@@ -2,6 +2,7 @@
 $pageTitle = 'Products';
 require_once __DIR__ . '/../includes/admin-sidebar.php';
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/ProductCodes.php';
 
 function buildUniqueCategorySlug(string $name, ?int $ignoreId = null): string {
     $base = slug($name);
@@ -110,6 +111,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect(baseUrl('admin/products.php' . ($pid ? '?edit=' . $pid : '')) . '#tab-manage');
         }
 
+        // --- Product identification (barcode / QR) ---
+        $codeMode      = $_POST['code_mode'] ?? 'none';
+        $codeMode      = in_array($codeMode, ['none', 'existing', 'generate'], true) ? $codeMode : 'none';
+        $existingCode  = mtxNormalizeCode($_POST['product_code'] ?? '');
+        $codeSymbology = in_array($_POST['code_symbology'] ?? '', ['qr', 'barcode', 'both'], true)
+            ? $_POST['code_symbology']
+            : 'both';
+
+        if ($codeMode === 'existing' && $existingCode !== '') {
+            $codeError = mtxValidateCode($existingCode, $pid);
+            if ($codeError !== '') {
+                flashMessage('prod_error', $codeError);
+                redirect(baseUrl('admin/products.php' . ($pid ? '?edit=' . $pid : '')) . '#tab-manage');
+            }
+        }
+
         $imageName = $_POST['existing_image'] ?? null;
         if (!empty($_FILES['image']['name'])) {
             $file = $_FILES['image'];
@@ -142,7 +159,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             getDB()->prepare(
                 "INSERT INTO products (name,category_id,brand,description,price,original_price,stock,min_stock,status,featured,image) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
             )->execute([$name, $categoryId, $brand, $description, $price, $origPrice, $stock, $minStock, $status, $featured, $imageName]);
+            // The MotoTrack code is derived from the id, which only exists now.
+            $pid = (int)getDB()->lastInsertId();
             flashMessage('prod_success', 'Product added.');
+        }
+
+        $savedCode = '';
+        if ($codeMode === 'generate') {
+            $savedCode = mtxAssignGeneratedCode($pid, $codeSymbology);
+        } elseif ($codeMode === 'existing' && $existingCode !== '') {
+            mtxSaveCode($pid, $existingCode, 'manufacturer', $codeSymbology);
+            $savedCode = $existingCode;
+        }
+
+        if ($savedCode !== '') {
+            flashMessage('prod_success', getFlash('prod_success') . ' Code ' . $savedCode . ' assigned.');
         }
 
         redirect(baseUrl('admin/products.php') . '#tab-manage');
@@ -185,8 +216,19 @@ $products = fetchAllRows(
     $params
 );
 
+$codesByProduct = mtxGetCodesForProducts(array_column($products, 'id'));
+
 $editId = (int)($_GET['edit'] ?? 0);
 $editProd = $editId ? fetchOne("SELECT * FROM products WHERE id = ?", [$editId]) : null;
+$editGeneratedCode = null;
+$editManufacturerCode = null;
+foreach ($editProd ? mtxGetProductCodes((int)$editProd['id']) : [] as $codeRow) {
+    if ($codeRow['code_type'] === 'mototrack' && $editGeneratedCode === null) {
+        $editGeneratedCode = $codeRow;
+    } elseif ($codeRow['code_type'] === 'manufacturer' && $editManufacturerCode === null) {
+        $editManufacturerCode = $codeRow;
+    }
+}
 $editCategoryId = (int)($_GET['edit_category'] ?? 0);
 $editCategory = $editCategoryId ? fetchOne("SELECT * FROM categories WHERE id = ?", [$editCategoryId]) : null;
 $formTitle = $editProd ? 'Edit Product' : 'Add New Product';
@@ -347,6 +389,72 @@ if ($editProd || $editCategory) {
             <img src="" alt="Preview">
           </div>
         </label>
+
+        <div class="span-2">
+          <?php
+            $currentMode = 'none';
+            if ($editGeneratedCode) {
+                $currentMode = 'generate';
+            } elseif ($editManufacturerCode) {
+                $currentMode = 'existing';
+            }
+            $currentSymbology = $editGeneratedCode['symbology'] ?? $editManufacturerCode['symbology'] ?? 'both';
+            $previewCode = $editProd
+                ? mtxProductCode((int)$editProd['id'])
+                : mtxProductCode((int)(fetchOne("SELECT COALESCE(MAX(id), 0) + 1 AS next FROM products")['next'] ?? 1));
+          ?>
+          <span>Product identification</span>
+          <div class="prodx-idmodes">
+            <label class="prodx-idmode">
+              <input type="radio" name="code_mode" value="none" <?= $currentMode === 'none' ? 'checked' : '' ?>>
+              <span class="prodx-idmode-body">
+                <strong><i class="fas fa-ban"></i> No code</strong>
+                <small>Skip for now.</small>
+              </span>
+            </label>
+            <label class="prodx-idmode">
+              <input type="radio" name="code_mode" value="existing" <?= $currentMode === 'existing' ? 'checked' : '' ?>>
+              <span class="prodx-idmode-body">
+                <strong><i class="fas fa-barcode"></i> Use existing code</strong>
+                <small>Scan the manufacturer barcode or QR.</small>
+              </span>
+            </label>
+            <label class="prodx-idmode">
+              <input type="radio" name="code_mode" value="generate" <?= $currentMode === 'generate' ? 'checked' : '' ?>>
+              <span class="prodx-idmode-body">
+                <strong><i class="fas fa-wand-magic-sparkles"></i> Generate MotoTrack code</strong>
+                <small><?= htmlspecialchars($previewCode) ?></small>
+              </span>
+            </label>
+          </div>
+
+          <div class="prodx-idpanel" data-idpanel="existing" hidden>
+            <div class="prodx-scanfield">
+              <i class="fas fa-barcode"></i>
+              <input type="text" name="product_code" id="prodxCodeInput" maxlength="64" autocomplete="off"
+                     placeholder="Click here, then scan the product"
+                     value="<?= htmlspecialchars($editManufacturerCode['code'] ?? '') ?>">
+            </div>
+            <p class="prodx-codestatus" id="prodxCodeStatus" hidden></p>
+          </div>
+
+          <div class="prodx-idpanel" data-idpanel="symbology" hidden>
+            <span class="prodx-genlabel">Generate</span>
+            <div class="prodx-symbology">
+              <?php foreach (['qr' => 'QR only', 'barcode' => 'Barcode only', 'both' => 'Both'] as $value => $label): ?>
+                <label class="prodx-symopt">
+                  <input type="radio" name="code_symbology" value="<?= $value ?>" <?= $currentSymbology === $value ? 'checked' : '' ?>>
+                  <span><?= $label ?></span>
+                </label>
+              <?php endforeach; ?>
+            </div>
+            <?php if ($editProd && ($editGeneratedCode || $editManufacturerCode)): ?>
+              <a href="<?= baseUrl('staff/product-label.php?id=' . (int)$editProd['id']) ?>" target="_blank" class="btn btn-outline">
+                <i class="fas fa-print"></i> Print label
+              </a>
+            <?php endif; ?>
+          </div>
+        </div>
 
         <label class="span-2 inline-toggle">
           <input type="checkbox" name="featured" value="1" <?= $editProd && $editProd['featured'] ? 'checked' : '' ?>>
@@ -516,6 +624,67 @@ if ($editProd || $editCategory) {
       modalImg.src = '';
     });
   });
+
+  /* ---------- Product identification (barcode / QR) ---------- */
+  const idModes = Array.from(document.querySelectorAll('input[name="code_mode"]'));
+  const idPanels = Array.from(document.querySelectorAll('[data-idpanel]'));
+  const codeInput = document.getElementById('prodxCodeInput');
+  const codeStatus = document.getElementById('prodxCodeStatus');
+  const editingId = <?= $editProd ? (int)$editProd['id'] : 0 ?>;
+  const lookupUrl = '<?= baseUrl('api/product-lookup.php') ?>';
+
+  function currentMode() {
+    const checked = idModes.find(r => r.checked);
+    return checked ? checked.value : 'none';
+  }
+
+  function syncIdPanels() {
+    const mode = currentMode();
+    idPanels.forEach(panel => {
+      const which = panel.dataset.idpanel;
+      panel.hidden = which === 'symbology' ? mode === 'none' : which !== mode;
+    });
+    if (codeInput) codeInput.required = mode === 'existing';
+    if (mode !== 'existing' && codeStatus) codeStatus.hidden = true;
+  }
+
+  idModes.forEach(radio => radio.addEventListener('change', syncIdPanels));
+
+  let checkTimer = null;
+  function checkCode() {
+    if (!codeInput || !codeStatus) return;
+    const value = codeInput.value.trim();
+    if (!value) {
+      codeStatus.hidden = true;
+      codeInput.setCustomValidity('');
+      return;
+    }
+    clearTimeout(checkTimer);
+    checkTimer = setTimeout(() => {
+      fetch(lookupUrl + '?check=' + encodeURIComponent(value) + '&product_id=' + editingId)
+        .then(r => r.json())
+        .then(data => {
+          const ok = !!data.available;
+          codeStatus.hidden = false;
+          codeStatus.className = 'prodx-codestatus ' + (ok ? 'is-ok' : 'is-bad');
+          codeStatus.innerHTML = ok
+            ? '<i class="fas fa-circle-check"></i> Code is available.'
+            : '<i class="fas fa-circle-exclamation"></i> ' + (data.error || 'That code is already in use.');
+          codeInput.setCustomValidity(ok ? '' : (data.error || 'That code is already in use.'));
+        })
+        .catch(() => { codeStatus.hidden = true; });
+    }, 300);
+  }
+
+  if (codeInput) {
+    codeInput.addEventListener('input', () => { codeInput.setCustomValidity(''); checkCode(); });
+    // A scanner ends its input with Enter; don't let that submit the form.
+    codeInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); checkCode(); }
+    });
+  }
+
+  if (idModes.length) syncIdPanels();
 
   <?php if ($editCategory): ?>
   openTab('manage');

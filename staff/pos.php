@@ -150,6 +150,17 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
       </div>
 
       <?php if ($products): ?>
+        <div class="pos-scan">
+          <div class="pos-scan-field">
+            <i class="fas fa-barcode"></i>
+            <input type="text" id="posScanInput" autocomplete="off"
+                   placeholder="Scan a barcode or QR code to add it to the sale">
+          </div>
+          <button type="button" class="pos-scan-cam" id="posCameraBtn">
+            <i class="fas fa-camera"></i> Scan QR Code
+          </button>
+          <span class="pos-scan-hint" id="posScanHint">Click here, then scan.</span>
+        </div>
         <div class="pos-category-rail" id="categoryRail" aria-label="Product categories">
           <button type="button" class="active" data-category-filter="">All</button>
           <?php foreach ($categoryNames as $categoryName): ?>
@@ -373,6 +384,46 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
   </section>
 </div>
 
+<!-- Camera QR scanner -->
+<div class="mtx-modal" id="posCameraModal" aria-hidden="true" role="dialog" aria-labelledby="posCamTitle">
+  <div class="mtx-modal__backdrop" data-close-camera></div>
+  <div class="mtx-modal__dialog pos-cam__dialog">
+    <button type="button" class="mtx-modal__close" data-close-camera aria-label="Close scanner">&times;</button>
+    <h2 class="mtx-modal__title" id="posCamTitle"><i class="fas fa-camera"></i> Scan QR Code</h2>
+    <p class="mtx-modal__meta">Hold a MotoTrack product label steady in front of the camera.</p>
+
+    <div class="pos-cam__stage">
+      <!-- muted + playsinline are required for autoplay on the video element -->
+      <video id="posCamVideo" class="pos-cam__video" playsinline muted></video>
+      <div class="pos-cam__reticle" aria-hidden="true"></div>
+      <div class="pos-cam__overlay" id="posCamOverlay">
+        <i class="fas fa-spinner fa-spin"></i>
+        <span>Starting camera…</span>
+      </div>
+    </div>
+
+    <p class="pos-cam__status" id="posCamStatus">Point the camera at a product QR code.</p>
+
+    <!-- Result card shown briefly after a successful scan -->
+    <div class="pos-cam__result" id="posCamResult" hidden>
+      <div class="pos-cam__result-head"><i class="fas fa-circle-check"></i> Product found</div>
+      <strong id="posCamResultName"></strong>
+      <div class="pos-cam__result-meta">
+        <span id="posCamResultPrice"></span>
+        <span id="posCamResultStock"></span>
+      </div>
+      <div class="pos-cam__result-added">Added to cart.</div>
+    </div>
+
+    <div class="pos-cam__actions">
+      <button type="button" class="mtx-btn mtx-btn--ghost" data-close-camera>Cancel</button>
+      <button type="button" class="mtx-btn mtx-btn--dark" id="posCamRetry" hidden>
+        <i class="fas fa-rotate-right"></i> Scan another
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- POS receipt modal -->
 <div class="mtx-modal" id="posReceiptModal" aria-hidden="true">
   <div class="mtx-modal__backdrop" data-close-modal></div>
@@ -400,6 +451,10 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
 </div>
 
 <script type="application/json" id="posReceiptsData"><?= json_encode($posReceipts, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?></script>
+
+<!-- QR decoder for the camera scanner. Served from the project so the counter
+     keeps working without an internet connection. -->
+<script src="<?= baseUrl('assets/js/vendor/jsQR.min.js?v=' . filemtime(__DIR__ . '/../assets/js/vendor/jsQR.min.js')) ?>"></script>
 
 <script>
 (function () {
@@ -653,6 +708,352 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
   }
 
   amountTendered.addEventListener('input', renderCart);
+
+  /* ---------- Barcode / QR scanning ---------- */
+  // A scanner behaves like a keyboard: it types the code and presses Enter.
+  // The code is resolved to a product id, then the existing cart path is
+  // reused, so checkout and stock handling are untouched.
+  var scanInput = document.getElementById('posScanInput');
+  var scanHint = document.getElementById('posScanHint');
+  var lookupUrl = '<?= baseUrl('api/product-lookup.php') ?>';
+
+  // baseUrl() already appends ?ctx=... to keep the tab's auth context, so the
+  // separator here depends on whether a query string is present.
+  function lookupUrlFor(code) {
+    return lookupUrl + (lookupUrl.indexOf('?') === -1 ? '?' : '&') + 'code=' + encodeURIComponent(code);
+  }
+
+  function setScanHint(message, state) {
+    if (!scanHint) return;
+    scanHint.textContent = message;
+    scanHint.className = 'pos-scan-hint' + (state ? ' is-' + state : '');
+  }
+
+  function addScannedProduct(product) {
+    var id = String(product.id);
+    var button = grid ? grid.querySelector('.pos-product[data-id="' + id + '"]') : null;
+
+    // Fall back to the API payload when the product is not on the grid
+    // (it can be filtered out of view, but it is still sellable).
+    var stock = button ? parseInt(button.getAttribute('data-stock'), 10) : product.stock;
+    var price = button ? parseFloat(button.getAttribute('data-price')) : product.price;
+    var name = button ? button.getAttribute('data-name') : product.name;
+
+    if (!cart[id]) {
+      cart[id] = { name: name, price: price, stock: stock, qty: 0 };
+    }
+    if (cart[id].qty >= stock) {
+      setScanHint(name + ' — only ' + stock + ' in stock.', 'bad');
+      renderCart();
+      return;
+    }
+
+    cart[id].qty += 1;
+    renderCart();
+    setScanHint('Added ' + name + ' (' + cart[id].qty + ' in cart).', 'ok');
+
+    if (button) {
+      button.classList.add('selected');
+      button.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }
+
+  function handleScan(code) {
+    if (!code) return;
+    setScanHint('Looking up ' + code + '…');
+    fetch(lookupUrlFor(code))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.found || !data.product) {
+          setScanHint(data.error || 'No product matches that code.', 'bad');
+          return;
+        }
+        if (!data.product.sellable) {
+          setScanHint(data.product.name + ' is out of stock.', 'bad');
+          return;
+        }
+        addScannedProduct(data.product);
+      })
+      .catch(function () { setScanHint('Could not reach the product lookup.', 'bad'); });
+  }
+
+  if (scanInput) {
+    scanInput.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter') return;
+      // The scanner's trailing Enter must not submit the sale.
+      e.preventDefault();
+      var code = scanInput.value.trim();
+      scanInput.value = '';
+      handleScan(code);
+    });
+  }
+
+  /* ---------- Camera QR scanning ---------- */
+  // Decodes QR codes from the laptop camera, then hands the decoded text to
+  // the same lookup + cart path the USB scanner uses. Nothing about the cart,
+  // checkout or stock handling changes.
+  var camBtn = document.getElementById('posCameraBtn');
+  var camModal = document.getElementById('posCameraModal');
+  var camVideo = document.getElementById('posCamVideo');
+  var camOverlay = document.getElementById('posCamOverlay');
+  var camStatus = document.getElementById('posCamStatus');
+  var camResult = document.getElementById('posCamResult');
+  var camRetry = document.getElementById('posCamRetry');
+
+  var camStream = null;    // active MediaStream, so every track can be stopped
+  var camRaf = null;       // requestAnimationFrame handle for the decode loop
+  var camCanvas = null;    // offscreen canvas holding the current frame
+  var camCtx = null;
+  var camScanning = false; // false once a code is accepted, to lock out repeats
+  var camLastCode = '';    // guards against the same label decoding repeatedly
+
+  function camSetStatus(message, state) {
+    if (!camStatus) return;
+    camStatus.textContent = message;
+    camStatus.className = 'pos-cam__status' + (state ? ' is-' + state : '');
+  }
+
+  function camSetOverlay(html) {
+    if (!camOverlay) return;
+    if (html === null) {
+      camOverlay.hidden = true;
+      return;
+    }
+    camOverlay.innerHTML = html;
+    camOverlay.hidden = false;
+  }
+
+  // Release the camera completely: stop the loop, stop every track, drop the
+  // stream reference and detach it from the video element.
+  function camStop() {
+    camScanning = false;
+    if (camRaf) {
+      cancelAnimationFrame(camRaf);
+      camRaf = null;
+    }
+    if (camStream) {
+      camStream.getTracks().forEach(function (track) { track.stop(); });
+      camStream = null;
+    }
+    if (camVideo) {
+      camVideo.srcObject = null;
+      try { camVideo.removeAttribute('src'); camVideo.load(); } catch (e) { /* ignore */ }
+    }
+  }
+
+  function camClose() {
+    camStop();
+    if (camModal) {
+      camModal.classList.remove('is-open');
+      camModal.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  // One decode attempt per animation frame.
+  function camTick() {
+    if (!camScanning) return;
+
+    if (camVideo.readyState === camVideo.HAVE_ENOUGH_DATA && camVideo.videoWidth > 0) {
+      var w = camVideo.videoWidth;
+      var h = camVideo.videoHeight;
+      if (camCanvas.width !== w || camCanvas.height !== h) {
+        camCanvas.width = w;
+        camCanvas.height = h;
+      }
+      camCtx.drawImage(camVideo, 0, 0, w, h);
+
+      var frame;
+      try {
+        frame = camCtx.getImageData(0, 0, w, h);
+      } catch (e) {
+        frame = null; // can throw if the stream dies mid-frame
+      }
+
+      if (frame && typeof window.jsQR === 'function') {
+        var found = window.jsQR(frame.data, frame.width, frame.height, {
+          inversionAttempts: 'dontInvert'
+        });
+        if (found && found.data) {
+          var code = String(found.data).trim();
+          if (code && code !== camLastCode) {
+            camLastCode = code;
+            camHandleDecoded(code);
+            return; // stop the loop; camHandleDecoded owns what happens next
+          }
+        }
+      }
+    }
+
+    camRaf = requestAnimationFrame(camTick);
+  }
+
+  // A QR was read. Validate it, look it up through the existing API, and add
+  // it to the cart with the existing function.
+  function camHandleDecoded(code) {
+    camScanning = false; // lock immediately so one label cannot scan twice
+
+    // Only MotoTrack product codes are meaningful here. Anything else (a URL,
+    // a Wi-Fi QR, a random sticker) is reported rather than sent to lookup.
+    if (!/^MT-P-\d{6}$/i.test(code)) {
+      camSetStatus('This QR code is not a valid MotoTrack product code.', 'bad');
+      camAllowRetry();
+      return;
+    }
+
+    camSetStatus('Looking up ' + code + '…');
+
+    fetch(lookupUrlFor(code))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.found || !data.product) {
+          camSetStatus('QR code detected, but no matching product was found.', 'bad');
+          camAllowRetry();
+          return;
+        }
+        if (!data.product.sellable) {
+          camSetStatus(data.product.name + ' is out of stock.', 'bad');
+          camAllowRetry();
+          return;
+        }
+
+        // Reuse the existing add-to-cart path.
+        addScannedProduct(data.product);
+
+        document.getElementById('posCamResultName').textContent = data.product.name;
+        document.getElementById('posCamResultPrice').textContent = money(data.product.price);
+        document.getElementById('posCamResultStock').textContent = 'Stock: ' + data.product.stock;
+        if (camResult) camResult.hidden = false;
+        camSetStatus('Added to the sale.', 'ok');
+
+        // One successful scan closes the camera, as intended.
+        camStop();
+        camSetOverlay('<i class="fas fa-circle-check"></i><span>Scanned</span>');
+        if (camRetry) camRetry.hidden = false;
+
+        // Give staff a moment to read the confirmation, then return to the POS.
+        setTimeout(function () {
+          if (camModal && camModal.classList.contains('is-open') && !camScanning) {
+            camClose();
+          }
+        }, 1800);
+      })
+      .catch(function () {
+        camSetStatus('Could not reach the product lookup.', 'bad');
+        camAllowRetry();
+      });
+  }
+
+  // After a failed scan, let the camera keep looking without reopening it.
+  function camAllowRetry() {
+    if (!camStream) {
+      if (camRetry) camRetry.hidden = false;
+      return;
+    }
+    setTimeout(function () {
+      if (!camStream) return;
+      camLastCode = '';
+      camScanning = true;
+      camRaf = requestAnimationFrame(camTick);
+      camSetStatus('Point the camera at a product QR code.');
+    }, 1500);
+  }
+
+  function camStart() {
+    if (!camModal || !camVideo) return;
+
+    // Reset the panel for a fresh run.
+    camLastCode = '';
+    if (camResult) camResult.hidden = true;
+    if (camRetry) camRetry.hidden = true;
+    camModal.classList.add('is-open');
+    camModal.setAttribute('aria-hidden', 'false');
+    camSetStatus('Point the camera at a product QR code.');
+    camSetOverlay('<i class="fas fa-spinner fa-spin"></i><span>Starting camera…</span>');
+
+    // The camera API only exists in a secure context (https, or http on
+    // localhost). Say so plainly rather than failing silently.
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      camSetOverlay('<i class="fas fa-triangle-exclamation"></i><span>Camera not available</span>');
+      camSetStatus(
+        window.isSecureContext === false
+          ? 'The camera needs a secure connection. Open MotoTrack via http://localhost or set up HTTPS.'
+          : 'This browser does not support camera access.',
+        'bad'
+      );
+      return;
+    }
+
+    if (typeof window.jsQR !== 'function') {
+      camSetOverlay('<i class="fas fa-triangle-exclamation"></i><span>Scanner unavailable</span>');
+      camSetStatus('The QR scanning library did not load. Reload the page and try again.', 'bad');
+      return;
+    }
+
+    if (!camCanvas) {
+      camCanvas = document.createElement('canvas');
+      // Frames are read back every tick, so hint the browser accordingly.
+      camCtx = camCanvas.getContext('2d', { willReadFrequently: true });
+    }
+
+    navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: 'environment', // prefers a rear camera, falls back to the built-in one
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    })
+      .then(function (stream) {
+        // The panel may have been closed while permission was pending.
+        if (!camModal.classList.contains('is-open')) {
+          stream.getTracks().forEach(function (t) { t.stop(); });
+          return;
+        }
+        camStream = stream;
+        camVideo.srcObject = stream;
+        return camVideo.play().catch(function () { /* some browsers resolve late */ });
+      })
+      .then(function () {
+        if (!camStream) return;
+        camSetOverlay(null);
+        camScanning = true;
+        camRaf = requestAnimationFrame(camTick);
+      })
+      .catch(function (err) {
+        var name = err && err.name ? err.name : '';
+        camSetOverlay('<i class="fas fa-triangle-exclamation"></i><span>Camera unavailable</span>');
+
+        if (name === 'NotAllowedError' || name === 'SecurityError') {
+          camSetStatus('Camera permission was denied. Please allow camera access in your browser settings.', 'bad');
+        } else if (name === 'NotFoundError' || name === 'OverconstrainedError' || name === 'DevicesNotFoundError') {
+          camSetStatus('No camera was detected or the camera is currently unavailable.', 'bad');
+        } else if (name === 'NotReadableError' || name === 'TrackStartError') {
+          camSetStatus('The camera is already in use by another application. Close it and try again.', 'bad');
+        } else {
+          camSetStatus('No camera was detected or the camera is currently unavailable.', 'bad');
+        }
+      });
+  }
+
+  if (camBtn) {
+    camBtn.addEventListener('click', camStart);
+  }
+  if (camRetry) {
+    camRetry.addEventListener('click', camStart);
+  }
+  if (camModal) {
+    camModal.querySelectorAll('[data-close-camera]').forEach(function (el) {
+      el.addEventListener('click', camClose);
+    });
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && camModal && camModal.classList.contains('is-open')) {
+      camClose();
+    }
+  });
+  // Never leave the camera running if the page is closed or navigated away.
+  window.addEventListener('pagehide', camStop);
+
   renderCart();
 })();
 </script>
