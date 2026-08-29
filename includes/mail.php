@@ -11,6 +11,26 @@ function sendOtpEmail(string $email, string $otp): bool {
     return @mail($email, $subject, $message, $headers);
 }
 
+/**
+ * Plain-text notification email (appointment + service updates).
+ *
+ * Uses the same transport, From address and headers as the rest of MotoTrack's
+ * mail so there is only one email system. Returns false rather than throwing,
+ * because notification delivery must never interrupt a booking or job.
+ */
+function sendNotificationEmail(string $email, string $subject, string $body): bool {
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        return false;
+    }
+
+    $fromEmail = envValue('MAIL_FROM_ADDRESS', 'no-reply@renz88.app');
+    $fromName  = envValue('MAIL_FROM_NAME', 'MotoTrack');
+    $headers   = "From: {$fromName} <{$fromEmail}>\r\n";
+    $headers  .= "Content-Type: text/plain; charset=UTF-8\r\n";
+
+    return @mail($email, $subject, $body, $headers);
+}
+
 function sendOrderEmail(string $email, string $name, int $orderId, float $total, array $items, string $paymentMethod): bool {
     $subject = "MotoTrack – Order #{$orderId} Confirmed";
     $itemLines = '';

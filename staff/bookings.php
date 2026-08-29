@@ -4,7 +4,35 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/TechnicianService.php';
+require_once __DIR__ . '/../includes/NotificationService.php';
 requireStaff();
+
+/** Short, honest summary of what actually reached the customer. */
+function bkDeliveryNote(array $delivery): string {
+    $parts = [];
+    foreach (['sms' => 'SMS', 'email' => 'Email'] as $channel => $label) {
+        switch ($delivery[$channel] ?? '') {
+            case 'sent':      $parts[] = "$label sent"; break;
+            case 'failed':    $parts[] = "$label failed"; break;
+            case 'skipped':   $parts[] = "$label skipped"; break;
+            case 'duplicate': $parts[] = "$label already sent"; break;
+        }
+    }
+    return $parts ? 'Customer notification — ' . implode(', ', $parts) . '.' : '';
+}
+
+/**
+ * Notify the customer that their appointment is confirmed.
+ * Wrapped so a provider outage can never undo a confirmed booking.
+ */
+function bkNotifyConfirmed(int $bookingId): string {
+    try {
+        return bkDeliveryNote(notifyAppointmentConfirmed($bookingId));
+    } catch (Throwable $e) {
+        smsLogLine("Confirmation notification failed for booking {$bookingId}: " . $e->getMessage());
+        return 'Customer notification could not be sent (logged).';
+    }
+}
 $currentUser = getCurrentUser();
 
 $validStatuses = ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled'];
@@ -52,7 +80,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $bookingId
         );
 
-        flashMessage('bk_success', "Booking #$bookingId confirmed and manually assigned to {$tech['name']}.");
+        $note = bkNotifyConfirmed($bookingId);
+        flashMessage('bk_success', "Booking #$bookingId confirmed and manually assigned to {$tech['name']}." . ($note !== '' ? ' ' . $note : ''));
         redirect(baseUrl('staff/bookings.php'));
     }
 
@@ -83,7 +112,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $bookingId
         );
 
-        flashMessage('bk_success', "Booking #$bookingId confirmed — auto-assigned to {$tech['name']}.");
+        $note = bkNotifyConfirmed($bookingId);
+        flashMessage('bk_success', "Booking #$bookingId confirmed — auto-assigned to {$tech['name']}." . ($note !== '' ? ' ' . $note : ''));
         redirect(baseUrl('staff/bookings.php'));
     }
 

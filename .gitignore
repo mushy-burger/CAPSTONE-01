@@ -1,2 +1,7 @@
 .env
 .env.production
+
+# Runtime logs may contain recipient numbers — never committed.
+# The directory itself is kept via storage/logs/.gitignore.
+storage/logs/*
+!storage/logs/.gitignore

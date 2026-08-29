@@ -1,0 +1,2 @@
+# Runtime storage (logs) is server-side only — never served over HTTP.
+Require all denied

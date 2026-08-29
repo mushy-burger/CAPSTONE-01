@@ -2,6 +2,8 @@
 $pageTitle = 'Job Detail';
 require_once __DIR__ . '/../includes/tech-sidebar.php';
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/JobService.php';
+require_once __DIR__ . '/../includes/NotificationService.php';
 
 $bookingId = (int)($_GET['id'] ?? 0);
 
@@ -58,81 +60,108 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Save estimated service duration (shown to the customer)
     if ($action === 'save_duration') {
-        if (!in_array($booking['status'], ['confirmed', 'in_progress'], true)) {
-            flashMessage('tech_error', 'The estimated duration can only be set while the job is active.');
-            redirect(baseUrl('tech/job.php?id=' . $bookingId));
-        }
-        $hoursRaw   = trim($_POST['duration_hours'] ?? '');
-        $minutesRaw = trim($_POST['duration_minutes'] ?? '');
-        if (($hoursRaw !== '' && !ctype_digit($hoursRaw)) || ($minutesRaw !== '' && !ctype_digit($minutesRaw))) {
-            flashMessage('tech_error', 'Estimated duration must use whole positive numbers.');
-            redirect(baseUrl('tech/job.php?id=' . $bookingId));
-        }
-        $totalMinutes = ((int)$hoursRaw * 60) + (int)$minutesRaw;
-        if ($totalMinutes < 1) {
-            flashMessage('tech_error', 'Please enter an estimated duration of at least 1 minute.');
-        } elseif ($totalMinutes > 1440) {
-            flashMessage('tech_error', 'Estimated duration cannot exceed 24 hours.');
+        $parsed = jobParseDuration($_POST['duration_hours'] ?? '', $_POST['duration_minutes'] ?? '');
+        if (!$parsed['ok']) {
+            flashMessage('tech_error', $parsed['error']);
         } else {
-            getDB()->prepare("UPDATE bookings SET estimated_duration_minutes = ? WHERE id = ? AND technician_id = ?")
-                   ->execute([$totalMinutes, $bookingId, $currentUser['id']]);
-            flashMessage('tech_success', 'Estimated duration saved: ' . formatDurationMinutes($totalMinutes) . '. The customer can now see it.');
+            $saved = jobSaveEstimate($bookingId, (int)$currentUser['id'], $parsed['minutes']);
+            if ($saved['ok']) {
+                flashMessage('tech_success', 'Estimated duration saved: ' . formatDurationMinutes($parsed['minutes']) . '. The customer can now see it.');
+            } else {
+                flashMessage('tech_error', $saved['error']);
+            }
         }
         redirect(baseUrl('tech/job.php?id=' . $bookingId));
     }
 
-    // Update job status
-    if ($action === 'update_status') {
-        $newStatus = $_POST['status'] ?? '';
-        $allowedTransitions = [
-            'confirmed'   => ['in_progress'],
-            'in_progress' => ['completed'],
-        ];
-        $current = $booking['status'];
-        if (isset($allowedTransitions[$current]) && in_array($newStatus, $allowedTransitions[$current], true)) {
-            if ($newStatus === 'completed') {
-                // completed_at feeds technician earnings and the auto-assignment fairness tie-breakers
-                getDB()->prepare("UPDATE bookings SET status = ?, completed_at = COALESCE(completed_at, NOW()) WHERE id = ? AND technician_id = ?")
-                       ->execute([$newStatus, $bookingId, $currentUser['id']]);
-            } else {
-                getDB()->prepare("UPDATE bookings SET status = ? WHERE id = ? AND technician_id = ?")
-                       ->execute([$newStatus, $bookingId, $currentUser['id']]);
+    // START JOB — requires an estimate; actual_start_time comes from the DB clock
+    if ($action === 'start_job') {
+        $estimate = null;
+        // The estimate may be entered on the same submit as Start.
+        if (($_POST['duration_hours'] ?? '') !== '' || ($_POST['duration_minutes'] ?? '') !== '') {
+            $parsed = jobParseDuration($_POST['duration_hours'] ?? '', $_POST['duration_minutes'] ?? '');
+            if (!$parsed['ok']) {
+                flashMessage('tech_error', $parsed['error']);
+                redirect(baseUrl('tech/job.php?id=' . $bookingId));
             }
+            $estimate = $parsed['minutes'];
+        }
 
-            // If completed, deduct stock for booking products + notify staff
-            if ($newStatus === 'completed') {
-                // Deduct product stock
-                $bookedProducts = fetchAllRows(
-                    "SELECT product_id FROM booking_products WHERE booking_id = ?",
-                    [$bookingId]
-                );
-                foreach ($bookedProducts as $bp) {
-                    getDB()->prepare(
-                        "UPDATE products SET stock = GREATEST(0, stock - 1) WHERE id = ?"
-                    )->execute([$bp['product_id']]);
-                    getDB()->prepare(
-                        "UPDATE products SET status = CASE
-                           WHEN stock = 0 THEN 'out_of_stock'
-                           WHEN stock <= 5 THEN 'low_stock'
-                           ELSE 'available'
-                         END WHERE id = ?"
-                    )->execute([$bp['product_id']]);
-                }
-
-                notifyAllStaff(
-                    "Job #{$bookingId} has been marked as Completed by {$currentUser['name']}.",
-                    'completion',
-                    $bookingId
-                );
-                flashMessage('tech_success', "Job #$bookingId marked as Completed. Great work!");
-            } else {
-                flashMessage('tech_success', "Job #$bookingId is now In Progress.");
-            }
+        $started = jobStart($bookingId, (int)$currentUser['id'], $estimate);
+        if ($started['ok']) {
+            flashMessage('tech_success', "Job #$bookingId started at " . notifyFormatTime($started['started_at']) . '.');
         } else {
-            flashMessage('tech_error', 'Invalid status transition.');
+            flashMessage('tech_error', $started['error']);
         }
         redirect(baseUrl('tech/job.php?id=' . $bookingId));
     }
+
+    // COMPLETE JOB — records completed_at, then notifies the customer.
+    if ($action === 'complete_job') {
+        $done = jobComplete($bookingId, (int)$currentUser['id']);
+
+        if (!$done['ok']) {
+            flashMessage('tech_error', $done['error']);
+            redirect(baseUrl('tech/job.php?id=' . $bookingId));
+        }
+
+        // --- Everything below is post-completion. The job is already saved as
+        // --- completed; none of it may undo that, so each part is isolated.
+        try {
+            $bookedProducts = fetchAllRows(
+                "SELECT product_id FROM booking_products WHERE booking_id = ?",
+                [$bookingId]
+            );
+            foreach ($bookedProducts as $bp) {
+                getDB()->prepare(
+                    "UPDATE products SET stock = GREATEST(0, stock - 1) WHERE id = ?"
+                )->execute([$bp['product_id']]);
+                getDB()->prepare(
+                    "UPDATE products SET status = CASE
+                       WHEN stock = 0 THEN 'out_of_stock'
+                       WHEN stock <= min_stock THEN 'low_stock'
+                       ELSE 'available'
+                     END WHERE id = ?"
+                )->execute([$bp['product_id']]);
+            }
+
+            notifyAllStaff(
+                "Job #{$bookingId} has been marked as Completed by {$currentUser['name']}.",
+                'completion',
+                $bookingId
+            );
+        } catch (Throwable $e) {
+            // Stock/staff-notice trouble must not affect the completed job.
+            smsLogLine("Post-completion housekeeping failed for booking {$bookingId}: " . $e->getMessage());
+        }
+
+        // Customer notification: failure here is logged, never fatal.
+        $delivery = ['sms' => 'skipped', 'email' => 'skipped'];
+        try {
+            $delivery = notifyJobCompleted($bookingId);
+        } catch (Throwable $e) {
+            smsLogLine("Completion notification failed for booking {$bookingId}: " . $e->getMessage());
+        }
+
+        $note = techDeliveryNote($delivery);
+        flashMessage('tech_success', "Job #$bookingId marked as Completed. Great work!" . ($note !== '' ? ' ' . $note : ''));
+        redirect(baseUrl('tech/job.php?id=' . $bookingId));
+    }
+
+}
+
+/** Short, honest summary of what actually reached the customer. */
+function techDeliveryNote(array $delivery): string {
+    $parts = [];
+    foreach (['sms' => 'SMS', 'email' => 'Email'] as $channel => $label) {
+        switch ($delivery[$channel] ?? '') {
+            case 'sent':      $parts[] = "$label sent"; break;
+            case 'failed':    $parts[] = "$label failed"; break;
+            case 'skipped':   $parts[] = "$label skipped"; break;
+            case 'duplicate': $parts[] = "$label already sent"; break;
+        }
+    }
+    return $parts ? 'Customer notification — ' . implode(', ', $parts) . '.' : '';
 }
 
 $flash    = getFlash('tech_success');
@@ -270,20 +299,49 @@ $pageTitle = 'Job #' . $bookingId;
         <?php endforeach; ?>
       </div>
 
+      <?php
+        $estMins   = $booking['estimated_duration_minutes'] !== null ? (int)$booking['estimated_duration_minutes'] : null;
+        $estFinish = jobEstimatedFinish($booking['actual_start_time'] ?? null, $estMins);
+      ?>
+
       <?php if ($booking['status'] === 'confirmed'): ?>
+        <!-- NOT STARTED: an estimate is required before the job can begin. -->
         <form method="post" style="margin-top:18px;">
           <?= authContextField() ?>
-          <input type="hidden" name="action" value="update_status">
-          <input type="hidden" name="status" value="in_progress">
-          <button type="submit" class="mtx-btn mtx-btn--primary" style="width:100%;">
-            <i class="fas fa-play"></i> Start Job (Mark In Progress)
+          <input type="hidden" name="action" value="start_job">
+          <div class="mtx-est-block">
+            <span class="mtx-est-label">Estimated service duration <em>*</em></span>
+            <div style="display:flex;gap:10px;">
+              <label class="mtx-field" style="flex:1;">
+                <span>Hours</span>
+                <input type="number" name="duration_hours" min="0" max="24" step="1"
+                       value="<?= $estMins !== null ? intdiv($estMins, 60) : '' ?>" placeholder="0">
+              </label>
+              <label class="mtx-field" style="flex:1;">
+                <span>Minutes</span>
+                <input type="number" name="duration_minutes" min="0" max="59" step="1"
+                       value="<?= $estMins !== null ? $estMins % 60 : '' ?>" placeholder="0">
+              </label>
+            </div>
+            <p class="subtext" style="margin:8px 0 0;font-size:.78rem;">
+              <i class="fas fa-circle-info"></i> Required. The start time is recorded automatically when you begin.
+            </p>
+          </div>
+          <button type="submit" class="mtx-btn mtx-btn--primary" style="width:100%;margin-top:12px;">
+            <i class="fas fa-play"></i> Start Job
           </button>
         </form>
+
       <?php elseif ($booking['status'] === 'in_progress'): ?>
-        <form method="post" style="margin-top:18px;" onsubmit="return confirm('Mark this job as Completed?');">
+        <!-- IN PROGRESS: show the live timing picture. -->
+        <div class="mtx-est-block" style="margin-top:18px;">
+          <div class="detail-row"><span>Estimated duration</span><strong><?= $estMins !== null ? htmlspecialchars(formatDurationMinutes($estMins)) : '—' ?></strong></div>
+          <div class="detail-row"><span>Started</span><strong><?= htmlspecialchars(notifyFormatTime($booking['actual_start_time'] ?? null)) ?></strong></div>
+          <div class="detail-row"><span>Estimated finish</span><strong><?= htmlspecialchars(notifyFormatTime($estFinish)) ?></strong></div>
+        </div>
+        <form method="post" style="margin-top:14px;" onsubmit="return confirm('Mark this job as Completed? The customer will be notified.');">
           <?= authContextField() ?>
-          <input type="hidden" name="action" value="update_status">
-          <input type="hidden" name="status" value="completed">
+          <input type="hidden" name="action" value="complete_job">
           <button type="submit" class="mtx-btn mtx-btn--primary" style="width:100%;background:#15803d;box-shadow:0 6px 16px rgba(21,128,61,.24);">
             <i class="fas fa-flag-checkered"></i> Complete Job
           </button>
@@ -291,17 +349,31 @@ $pageTitle = 'Job #' . $bookingId;
       <?php endif; ?>
     </section>
     <?php else: ?>
-    <section class="mtx-card" style="text-align:center;">
-      <i class="fas fa-check-circle" style="font-size:2.5rem;color:#15803d;margin-bottom:10px;display:block;"></i>
-      <strong>Job Completed</strong>
-      <p class="subtext" style="margin:6px 0 0;">This job has been marked as completed.</p>
+    <section class="mtx-card">
+      <?php
+        $estMins    = $booking['estimated_duration_minutes'] !== null ? (int)$booking['estimated_duration_minutes'] : null;
+        $actualMins = jobActualMinutes($booking['actual_start_time'] ?? null, $booking['completed_at'] ?? null);
+      ?>
+      <div style="text-align:center;margin-bottom:14px;">
+        <i class="fas fa-<?= $booking['status'] === 'completed' ? 'check-circle' : 'ban' ?>"
+           style="font-size:2.5rem;color:<?= $booking['status'] === 'completed' ? '#15803d' : '#b91c1c' ?>;margin-bottom:10px;display:block;"></i>
+        <strong><?= $booking['status'] === 'completed' ? 'Job Completed' : 'Job Cancelled' ?></strong>
+      </div>
+      <?php if ($booking['status'] === 'completed'): ?>
+        <div class="detail-row"><span>Estimated duration</span><strong><?= $estMins !== null ? htmlspecialchars(formatDurationMinutes($estMins)) : '—' ?></strong></div>
+        <div class="detail-row"><span>Started</span><strong><?= htmlspecialchars(notifyFormatTime($booking['actual_start_time'] ?? null)) ?></strong></div>
+        <div class="detail-row"><span>Completed</span><strong><?= htmlspecialchars(notifyFormatTime($booking['completed_at'] ?? null)) ?></strong></div>
+        <div class="detail-row"><span>Actual duration</span><strong><?= $actualMins !== null ? htmlspecialchars(formatDurationMinutes($actualMins)) : 'Not recorded' ?></strong></div>
+      <?php endif; ?>
     </section>
     <?php endif; ?>
 
     <!-- Estimated Duration Card -->
     <?php
       $estMinutes = $booking['estimated_duration_minutes'] !== null ? (int)$booking['estimated_duration_minutes'] : null;
-      $canEditDuration = in_array($booking['status'], ['confirmed', 'in_progress'], true);
+      // Confirmed jobs capture the estimate on the Start Job form above, so
+      // this card is only for revising it once work is under way.
+      $canEditDuration = $booking['status'] === 'in_progress';
     ?>
     <?php if ($canEditDuration || $estMinutes): ?>
     <section class="mtx-card">

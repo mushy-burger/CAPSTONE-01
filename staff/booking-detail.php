@@ -2,6 +2,7 @@
 $pageTitle = 'Booking Detail';
 require_once __DIR__ . '/../includes/staff-sidebar.php';
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/NotificationService.php';
 
 $bookingId = (int)($_GET['id'] ?? 0);
 if ($bookingId <= 0) {
@@ -90,7 +91,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($booking['status'] !== 'pending') {
             flashMessage('bk_error', 'Only pending bookings can be confirmed.');
         } else {
-            getDB()->prepare("UPDATE bookings SET status = 'confirmed', technician_id = ? WHERE id = ?")->execute([$techId, $bookingId]);
+            // assigned_at is set here too, matching the bookings list confirm paths.
+            getDB()->prepare("UPDATE bookings SET status = 'confirmed', technician_id = ?, assigned_at = NOW() WHERE id = ?")->execute([$techId, $bookingId]);
             $scheduledDate = date('M j, Y', strtotime($booking['scheduled_date']));
             createNotification(
                 $techId,
@@ -98,7 +100,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'assignment',
                 $bookingId
             );
-            flashMessage('bk_success', "Booking #$bookingId confirmed and assigned to {$tech['name']}.");
+
+            // Tell the customer. Delivery failure must not undo the confirmation.
+            $note = '';
+            try {
+                $delivery = notifyAppointmentConfirmed($bookingId);
+                $parts = [];
+                foreach (['sms' => 'SMS', 'email' => 'Email'] as $channel => $label) {
+                    switch ($delivery[$channel] ?? '') {
+                        case 'sent':      $parts[] = "$label sent"; break;
+                        case 'failed':    $parts[] = "$label failed"; break;
+                        case 'skipped':   $parts[] = "$label skipped"; break;
+                        case 'duplicate': $parts[] = "$label already sent"; break;
+                    }
+                }
+                $note = $parts ? ' Customer notification — ' . implode(', ', $parts) . '.' : '';
+            } catch (Throwable $e) {
+                smsLogLine("Confirmation notification failed for booking {$bookingId}: " . $e->getMessage());
+                $note = ' Customer notification could not be sent (logged).';
+            }
+
+            flashMessage('bk_success', "Booking #$bookingId confirmed and assigned to {$tech['name']}." . $note);
         }
         redirect(baseUrl('staff/booking-detail.php?id=' . $bookingId));
     }
