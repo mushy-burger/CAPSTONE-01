@@ -4,6 +4,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/MotorcycleApiService.php';
+require_once __DIR__ . '/../includes/BookingDeposit.php';
 requireAdminOnly();
 
 function saveOptimizedHeroImage(array $file, string $basename = 'hero_image', int $maxWidth = 1920, int $webpQuality = 90): string
@@ -310,6 +311,21 @@ $tab = $_GET['tab'] ?? 'homepage';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
+
+    // Reservation deposit charged before a booking can be confirmed.
+    // Stored in site_settings and read from there at runtime.
+    if ($action === 'save_reservation_deposit') {
+        $parsed = depositValidateAmount((string)($_POST['reservation_deposit_amount'] ?? ''));
+        if (!$parsed['ok']) {
+            flashMessage('settings_error', $parsed['error']);
+        } else {
+            setSiteSetting(DEPOSIT_SETTING_KEY, number_format($parsed['amount'], 2, '.', ''));
+            flashMessage('settings_success', $parsed['amount'] > 0
+                ? 'Reservation deposit set to ' . formatPrice($parsed['amount']) . '. It applies to new booking payments.'
+                : 'Reservation deposit disabled — bookings no longer require a deposit.');
+        }
+        redirect(baseUrl('admin/settings.php?tab=homepage'));
+    }
 
     if ($action === 'save_homepage') {
         foreach (['hero_eyebrow', 'hero_heading', 'hero_subtext'] as $field) {
@@ -725,6 +741,43 @@ if ($editMotorcycleId && $tab === 'vehicle-options') {
         </button>
       </div>
     </form>
+
+    <!-- Reservation deposit -->
+    <section class="mtx-card">
+      <div class="mtx-card-head">
+        <div>
+          <h2><i class="fas fa-hand-holding-dollar"></i> Reservation Deposit</h2>
+          <p>Customers must pay this online through PayMongo before a booking can be confirmed.</p>
+        </div>
+        <span class="mtx-pill" style="--pill-color:<?= depositIsRequired() ? '#15803d' : '#6b7280' ?>;">
+          <i class="fas fa-<?= depositIsRequired() ? 'lock' : 'lock-open' ?>"></i>
+          <?= depositIsRequired() ? 'Required' : 'Disabled' ?>
+        </span>
+      </div>
+
+      <form method="post" style="padding:18px;">
+        <?= authContextField() ?>
+        <input type="hidden" name="action" value="save_reservation_deposit">
+        <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;">
+          <label class="mtx-field" style="flex:1;min-width:220px;">
+            <span>Deposit amount (PHP)</span>
+            <input type="number" name="reservation_deposit_amount"
+                   min="0" max="100000" step="0.01"
+                   value="<?= htmlspecialchars(number_format(depositAmount(), 2, '.', '')) ?>"
+                   required>
+          </label>
+          <button type="submit" class="mtx-btn mtx-btn--primary">
+            <i class="fas fa-floppy-disk"></i> Save Deposit
+          </button>
+        </div>
+        <p class="mtx-help" style="margin:12px 0 0;">
+          <i class="fas fa-circle-info" style="color:#2563eb;margin-right:6px;"></i>
+          Current deposit: <strong><?= formatPrice(depositAmount()) ?></strong>.
+          Set it to <strong>0</strong> to stop requiring a deposit.
+          Changes apply to new payment attempts only — deposits already paid are never altered.
+        </p>
+      </form>
+    </section>
 
     <script>
       (() => {

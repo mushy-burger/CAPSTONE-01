@@ -572,8 +572,18 @@ function calculateBookingSelection(array $catalog, array $selectedServiceIds, ar
     ];
 }
 
-function getSiteSetting(string $key, string $default = ''): string {
+/**
+ * Settings are cached per request. The cache is shared with setSiteSetting()
+ * via siteSettingCache() so a value saved during this request is read back
+ * correctly instead of returning the pre-save value.
+ */
+function &siteSettingCache(): ?array {
     static $cache = null;
+    return $cache;
+}
+
+function getSiteSetting(string $key, string $default = ''): string {
+    $cache = &siteSettingCache();
     if ($cache === null) {
         try {
             $rows = fetchAllRows("SELECT `key`, `value` FROM site_settings");
@@ -589,6 +599,12 @@ function setSiteSetting(string $key, string $value): void {
     getDB()->prepare(
         "INSERT INTO site_settings (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)"
     )->execute([$key, $value]);
+
+    // Keep the request cache in step with the database.
+    $cache = &siteSettingCache();
+    if ($cache !== null) {
+        $cache[$key] = $value;
+    }
 }
 
 function getCustomerVehicles(int $userId): array {

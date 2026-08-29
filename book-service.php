@@ -3,6 +3,7 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/BookingSlots.php';
+require_once __DIR__ . '/includes/BookingDeposit.php';
 requireLogin();
 
 ensureMultiServiceBookingSchema();
@@ -256,6 +257,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pageAction === 'submit_booking') {
             }
 
             $db->commit();
+
+            // A new booking is saved as 'pending' and can only be confirmed once
+            // the reservation deposit is paid, so send the customer there next.
+            if (!$editBooking && depositIsRequired()) {
+                flashMessage('booking_success', 'Booking #' . $bookingId . ' saved. Please pay the reservation deposit to confirm it.');
+                redirect(baseUrl('booking-deposit.php?booking_id=' . $bookingId));
+            }
 
             flashMessage('booking_success', $editBooking ? 'Appointment updated successfully.' : 'Service appointment request saved. Reference #' . $bookingId);
             redirect(baseUrl('book-service.php?tab=appointments'));

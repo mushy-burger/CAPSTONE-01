@@ -34,6 +34,30 @@ $metadata = $resource['attributes']['metadata'] ?? [];
 $orderId = (int)($metadata['order_id'] ?? 0);
 $checkoutSessionId = $resource['id'] ?? '';
 
+// Booking reservation deposits carry their own metadata and are settled through
+// the deposit verifier, which re-checks the session against PayMongo before
+// marking anything paid. Shop orders continue below, untouched.
+if (($metadata['kind'] ?? '') === 'booking_deposit') {
+    require_once __DIR__ . '/includes/BookingDeposit.php';
+
+    $depositId = (int)($metadata['deposit_id'] ?? 0);
+    if ($depositId <= 0) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'message' => 'Missing deposit metadata.']);
+        exit;
+    }
+
+    try {
+        $verified = depositVerify($depositId);
+        http_response_code(200);
+        echo json_encode(['ok' => true, 'status' => $verified['status']]);
+    } catch (Throwable $e) {
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'message' => $e->getMessage()]);
+    }
+    exit;
+}
+
 if ($orderId <= 0) {
     http_response_code(400);
     echo json_encode(['ok' => false, 'message' => 'Missing order metadata.']);

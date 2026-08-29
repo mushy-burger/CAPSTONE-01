@@ -5,6 +5,7 @@ require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/TechnicianService.php';
 require_once __DIR__ . '/../includes/NotificationService.php';
+require_once __DIR__ . '/../includes/BookingDeposit.php';
 requireStaff();
 
 /** Short, honest summary of what actually reached the customer. */
@@ -67,6 +68,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect(baseUrl('staff/bookings.php'));
         }
 
+        // The reservation deposit must be settled before a booking is confirmed.
+        if (!depositIsSettled($bookingId)) {
+            flashMessage('bk_error', "Booking #$bookingId cannot be confirmed — the customer's reservation deposit has not been paid.");
+            redirect(baseUrl('staff/bookings.php'));
+        }
+
         getDB()->prepare(
             "UPDATE bookings SET status = 'confirmed', technician_id = ?, assigned_at = NOW() WHERE id = ?"
         )->execute([$techId, $bookingId]);
@@ -91,6 +98,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (!$booking || $booking['status'] !== 'pending') {
             flashMessage('bk_error', 'This booking cannot be confirmed (it may have already been processed).');
+            redirect(baseUrl('staff/bookings.php'));
+        }
+
+        if (!depositIsSettled($bookingId)) {
+            flashMessage('bk_error', "Booking #$bookingId cannot be confirmed — the customer's reservation deposit has not been paid.");
             redirect(baseUrl('staff/bookings.php'));
         }
 

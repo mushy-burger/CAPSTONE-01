@@ -146,6 +146,62 @@ function paymongoCreateCheckoutSession(array $order, array $items, array $custom
     return paymongoApiRequest('POST', '/v1/checkout_sessions', $payload);
 }
 
+/**
+ * Checkout session for a booking's reservation deposit.
+ *
+ * Kept separate from the order session above so shop checkout is untouched.
+ * The metadata carries booking_id and deposit_id, which the verifier checks
+ * before settling anything — that is what ties a payment to one booking.
+ *
+ * The amount is passed in by the caller from site_settings; it is never taken
+ * from a browser request.
+ */
+function paymongoCreateBookingDepositSession(
+    int $bookingId,
+    int $depositId,
+    int $userId,
+    float $amount,
+    array $customer
+): array {
+    $payload = [
+        'data' => [
+            'attributes' => [
+                'billing' => [
+                    'name'  => $customer['name'] ?? '',
+                    'email' => $customer['email'] ?? '',
+                    'phone' => $customer['phone'] ?? '',
+                ],
+                'customer_email' => $customer['email'] ?? '',
+                'description' => 'MotoTrack reservation deposit for booking #' . $bookingId,
+                'line_items' => [[
+                    'currency'    => 'PHP',
+                    // PayMongo works in centavos.
+                    'amount'      => (int)round($amount * 100),
+                    'name'        => 'Reservation Deposit',
+                    'quantity'    => 1,
+                    'description' => 'Reservation deposit for MotoTrack booking #' . $bookingId,
+                ]],
+                'metadata' => [
+                    'booking_id' => (string)$bookingId,
+                    'deposit_id' => (string)$depositId,
+                    'user_id'    => (string)$userId,
+                    'kind'       => 'booking_deposit',
+                ],
+                'payment_method_types' => paymongoPaymentMethodTypes('paymongo'),
+                'reference_number'   => 'MT-BK-' . $bookingId . '-' . $depositId,
+                'send_email_receipt' => true,
+                'show_description'   => true,
+                'show_line_items'    => true,
+                'statement_descriptor' => 'MotoTrack',
+                'success_url' => appUrl('booking-deposit.php?booking_id=' . $bookingId . '&result=success'),
+                'cancel_url'  => appUrl('booking-deposit.php?booking_id=' . $bookingId . '&result=cancelled'),
+            ],
+        ],
+    ];
+
+    return paymongoApiRequest('POST', '/v1/checkout_sessions', $payload);
+}
+
 function paymongoRetrieveCheckoutSession(string $checkoutSessionId): array {
     $checkoutSessionId = trim($checkoutSessionId);
     if ($checkoutSessionId === '') {

@@ -3,6 +3,7 @@ $pageTitle = 'Booking Detail';
 require_once __DIR__ . '/../includes/staff-sidebar.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/NotificationService.php';
+require_once __DIR__ . '/../includes/BookingDeposit.php';
 
 $bookingId = (int)($_GET['id'] ?? 0);
 if ($bookingId <= 0) {
@@ -90,6 +91,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flashMessage('bk_error', 'Please select a valid technician.');
         } elseif ($booking['status'] !== 'pending') {
             flashMessage('bk_error', 'Only pending bookings can be confirmed.');
+        } elseif (!depositIsSettled($bookingId)) {
+            // Deposit gate — mirrors the bookings list so neither path can skip it.
+            flashMessage('bk_error', "This booking cannot be confirmed — the customer's reservation deposit has not been paid.");
         } else {
             // assigned_at is set here too, matching the bookings list confirm paths.
             getDB()->prepare("UPDATE bookings SET status = 'confirmed', technician_id = ?, assigned_at = NOW() WHERE id = ?")->execute([$techId, $bookingId]);
@@ -190,6 +194,42 @@ $pageTitle = 'Booking #' . $bookingId;
         <div class="detail-row"><span>Customer Notes</span><?= nl2br(htmlspecialchars($booking['notes'])) ?></div>
       <?php endif; ?>
     </section>
+
+    <!-- Reservation deposit -->
+    <?php
+      $depositRow  = depositLatestRow($bookingId);
+      $depositPaid = depositPaidRow($bookingId);
+      $depositDue  = $depositPaid ? (float)$depositPaid['amount'] : depositAmount();
+    ?>
+    <?php if (depositIsRequired() || $depositRow): ?>
+    <section class="mtx-card">
+      <div class="mtx-card-head">
+        <div><h2><i class="fas fa-hand-holding-dollar"></i> Reservation Deposit</h2></div>
+        <span class="mtx-pill" style="--pill-color:<?= $depositPaid ? '#15803d' : '#b45309' ?>;">
+          <?= htmlspecialchars(depositStatusLabel($depositRow)) ?>
+        </span>
+      </div>
+      <div class="detail-row"><span>Amount</span><strong><?= formatPrice($depositDue) ?></strong></div>
+      <div class="detail-row">
+        <span>Payment Status</span>
+        <strong style="color:<?= $depositPaid ? '#15803d' : '#b45309' ?>;"><?= htmlspecialchars(depositStatusLabel($depositRow)) ?></strong>
+      </div>
+      <?php if ($depositPaid): ?>
+        <div class="detail-row"><span>Payment Method</span><strong>PayMongo</strong></div>
+        <?php if (!empty($depositPaid['payment_reference'])): ?>
+          <div class="detail-row"><span>Reference</span><span style="font-family:monospace;font-size:.85rem;"><?= htmlspecialchars($depositPaid['payment_reference']) ?></span></div>
+        <?php endif; ?>
+        <?php if (!empty($depositPaid['paid_at'])): ?>
+          <div class="detail-row"><span>Paid At</span><?= htmlspecialchars(date('M j, Y g:i A', strtotime($depositPaid['paid_at']))) ?></div>
+        <?php endif; ?>
+      <?php else: ?>
+        <p class="subtext" style="margin:10px 0 0;">
+          <i class="fas fa-triangle-exclamation" style="color:#b45309;"></i>
+          This booking cannot be confirmed until the customer pays the reservation deposit.
+        </p>
+      <?php endif; ?>
+    </section>
+    <?php endif; ?>
 
     <!-- Motorcycle -->
     <section class="mtx-card">
