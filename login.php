@@ -36,6 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'admin'      => baseUrl('admin/index.php'),
             'staff'      => baseUrl('staff/index.php'),
             'technician' => baseUrl('tech/index.php'),
+            'qa'         => baseUrl('index.php'),
         ];
         redirect($destinations[$user['role']] ?? baseUrl('index.php'));
     } else {

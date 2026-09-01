@@ -18,7 +18,7 @@ CREATE TABLE `users` (
   `phone` VARCHAR(20) DEFAULT NULL,
   `google_id` VARCHAR(100) DEFAULT NULL,
   `auth_provider` ENUM('local','google') NOT NULL DEFAULT 'local',
-  `role` ENUM('admin','staff','technician','customer') NOT NULL DEFAULT 'customer',
+  `role` ENUM('admin','staff','technician','customer','qa') NOT NULL DEFAULT 'customer',
   `is_active` TINYINT(1) NOT NULL DEFAULT 1,
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -272,12 +272,13 @@ CREATE TABLE `blogs` (
 -- SEED DATA
 -- --------------------------------------------------------
 
--- Admin user (password: admin123)
+-- Users (password for all accounts: admin123)
 INSERT INTO `users` (`name`, `email`, `password`, `phone`, `role`) VALUES
 ('Admin', 'admin@mototrack.com', '$2y$10$Lx.3FXOgDKRvdohX8y/JG.1n6EeD0g0rZEF6ZxV94wSVN/Bs//8u2', '09001234567', 'admin'),
 ('Staff User', 'staff@mototrack.com', '$2y$10$Lx.3FXOgDKRvdohX8y/JG.1n6EeD0g0rZEF6ZxV94wSVN/Bs//8u2', '09001234568', 'staff'),
 ('Tech User', 'tech@mototrack.com', '$2y$10$Lx.3FXOgDKRvdohX8y/JG.1n6EeD0g0rZEF6ZxV94wSVN/Bs//8u2', '09001234569', 'technician'),
-('Juan dela Cruz', 'juan@gmail.com', '$2y$10$Lx.3FXOgDKRvdohX8y/JG.1n6EeD0g0rZEF6ZxV94wSVN/Bs//8u2', '09171234567', 'customer');
+('Juan dela Cruz', 'juan@gmail.com', '$2y$10$Lx.3FXOgDKRvdohX8y/JG.1n6EeD0g0rZEF6ZxV94wSVN/Bs//8u2', '09171234567', 'customer'),
+('QA Tester', 'qa@mototrack.com', '$2y$10$Lx.3FXOgDKRvdohX8y/JG.1n6EeD0g0rZEF6ZxV94wSVN/Bs//8u2', '09001234570', 'qa');
 
 -- Categories
 INSERT INTO `categories` (`name`, `slug`) VALUES

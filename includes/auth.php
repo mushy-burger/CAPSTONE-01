@@ -129,6 +129,16 @@ function requireTechnician(): void {
     }
 }
 
+function requireQA(): void {
+    requireLogin();
+    $currentUser = getCurrentUser();
+    if (!$currentUser || $currentUser['role'] !== 'qa') {
+        require_once __DIR__ . '/functions.php';
+        header('Location: ' . baseUrl('index.php'));
+        exit;
+    }
+}
+
 // -------------------------------------------------------
 // Notification helpers
 // -------------------------------------------------------
