@@ -3,6 +3,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/functions.php';
 requireAdminOnly();
 $currentUser = getCurrentUser();
+$_isQA = $currentUser['role'] === 'qa';
 $adminPage = basename($_SERVER['PHP_SELF'], '.php');
 $unreadCount = getUnreadNotificationCount((int)$currentUser['id']);
 ?>
@@ -24,7 +25,7 @@ $unreadCount = getUnreadNotificationCount((int)$currentUser['id']);
       <i class="fas fa-motorcycle"></i>
       <span>MotoTrack</span>
     </div>
-    <div class="role-badge role-admin">Admin</div>
+    <div class="role-badge role-admin"><?= $_isQA ? '🟣 QA → Admin View' : 'Admin' ?></div>
     <nav class="sidebar-nav">
       <a href="<?= baseUrl('admin/index.php') ?>" class="<?= $adminPage === 'index' ? 'active' : '' ?>">
         <i class="fas fa-tachometer-alt"></i> Dashboard
@@ -69,3 +70,4 @@ $unreadCount = getUnreadNotificationCount((int)$currentUser['id']);
     </header>
 
     <main class="admin-content">
+<?php require_once __DIR__ . '/qa-banner.php'; ?>

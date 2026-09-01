@@ -3,6 +3,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/functions.php';
 requireStaff();
 $currentUser = getCurrentUser();
+$_isQA = $currentUser['role'] === 'qa';
 $staffPage = basename($_SERVER['PHP_SELF'], '.php');
 $unreadCount = getUnreadNotificationCount((int)$currentUser['id']);
 ?>
@@ -23,7 +24,7 @@ $unreadCount = getUnreadNotificationCount((int)$currentUser['id']);
       <i class="fas fa-motorcycle"></i>
       <span>MotoTrack</span>
     </div>
-    <div class="role-badge role-staff">Staff</div>
+    <div class="role-badge role-staff"><?= $_isQA ? '🟣 QA → Staff View' : 'Staff' ?></div>
     <nav class="sidebar-nav">
       <a href="<?= baseUrl('staff/index.php') ?>" class="<?= $staffPage === 'index' ? 'active' : '' ?>">
         <i class="fas fa-tachometer-alt"></i> Dashboard
@@ -91,6 +92,7 @@ $unreadCount = getUnreadNotificationCount((int)$currentUser['id']);
     </header>
 
     <main class="admin-content">
+<?php require_once __DIR__ . '/qa-banner.php'; ?>
 
 <script>
 (function(){

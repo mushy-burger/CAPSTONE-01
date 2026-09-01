@@ -95,6 +95,6 @@ $destinations = [
     'admin'      => baseUrl('admin/index.php'),
     'staff'      => baseUrl('staff/index.php'),
     'technician' => baseUrl('tech/index.php'),
-    'qa'         => baseUrl('index.php'),
+    'qa'         => baseUrl('qa/index.php'),
 ];
 redirect($destinations[$user['role']] ?? baseUrl('index.php'));

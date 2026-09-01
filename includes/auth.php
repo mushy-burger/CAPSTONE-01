@@ -92,7 +92,7 @@ function requireRole(string $role, string $redirect = ''): void {
 function requireAdminOrStaff(): void {
     requireLogin();
     $currentUser = getCurrentUser();
-    if (!$currentUser || !in_array($currentUser['role'], ['admin', 'staff'], true)) {
+    if (!$currentUser || !in_array($currentUser['role'], ['admin', 'staff', 'qa'], true)) {
         require_once __DIR__ . '/functions.php';
         header('Location: ' . baseUrl('index.php'));
         exit;
@@ -102,7 +102,7 @@ function requireAdminOrStaff(): void {
 function requireAdminOnly(): void {
     requireLogin();
     $currentUser = getCurrentUser();
-    if (!$currentUser || $currentUser['role'] !== 'admin') {
+    if (!$currentUser || !in_array($currentUser['role'], ['admin', 'qa'], true)) {
         require_once __DIR__ . '/functions.php';
         header('Location: ' . baseUrl('index.php'));
         exit;
@@ -112,7 +112,7 @@ function requireAdminOnly(): void {
 function requireStaff(): void {
     requireLogin();
     $currentUser = getCurrentUser();
-    if (!$currentUser || $currentUser['role'] !== 'staff') {
+    if (!$currentUser || !in_array($currentUser['role'], ['staff', 'qa'], true)) {
         require_once __DIR__ . '/functions.php';
         header('Location: ' . baseUrl('index.php'));
         exit;
@@ -122,7 +122,7 @@ function requireStaff(): void {
 function requireTechnician(): void {
     requireLogin();
     $currentUser = getCurrentUser();
-    if (!$currentUser || $currentUser['role'] !== 'technician') {
+    if (!$currentUser || !in_array($currentUser['role'], ['technician', 'qa'], true)) {
         require_once __DIR__ . '/functions.php';
         header('Location: ' . baseUrl('index.php'));
         exit;

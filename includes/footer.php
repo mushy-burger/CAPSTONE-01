@@ -41,6 +41,7 @@
 </footer>
 
 <?php if (!$currentUser || !in_array($currentUser['role'], ['admin', 'staff', 'technician'], true)): ?>
+<?php require_once __DIR__ . '/qa-banner.php'; ?>
 <link rel="stylesheet" href="<?= baseUrl('assets/css/chatbot.css?v=' . filemtime(__DIR__ . '/../assets/css/chatbot.css')) ?>">
 <div id="chatbotWidget" data-base-url="<?= htmlspecialchars(baseUrl('')) ?>">
   <button type="button" class="chatbot-launcher" id="chatbotLauncher" aria-label="Open MotoTrack Assistant" aria-expanded="false">
