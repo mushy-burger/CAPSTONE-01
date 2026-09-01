@@ -28,6 +28,7 @@ const NOTIFY_APPOINTMENT_CONFIRMED = 'appointment_confirmed';
 const NOTIFY_APPOINTMENT_REMINDER  = 'appointment_reminder';
 const NOTIFY_JOB_STARTED           = 'job_started';
 const NOTIFY_JOB_COMPLETED         = 'job_completed';
+const NOTIFY_RATING_REQUEST        = 'rating_request';
 
 /**
  * Everything the message templates need for one booking.
@@ -353,4 +354,55 @@ function notifyAppointmentReminder(int $bookingId): array {
            . "Please arrive on time.\n";
 
     return notifyDispatch($booking, NOTIFY_APPOINTMENT_REMINDER, $sms, "MotoTrack – Appointment Reminder (#{$bookingId})", $email);
+}
+
+/**
+ * RATING_REQUEST — sent after job completion with a one-time rating link.
+ *
+ * Generates a unique token (SHA-256), stores it on the booking, then
+ * dispatches SMS + email. Idempotency is handled by the token: if the
+ * booking already has a token, we reuse it so the same link is sent.
+ *
+ * @return array{sms:string,email:string,token:string}
+ */
+function notifyRatingRequest(int $bookingId): array {
+    $booking = notifyLoadBookingContext($bookingId);
+    if (!$booking) {
+        return ['sms' => 'skipped', 'email' => 'skipped', 'token' => ''];
+    }
+
+    // Generate or reuse token
+    $existing = fetchOne("SELECT rating_token, rating_token_used FROM bookings WHERE id = ?", [$bookingId]);
+    if ($existing && !empty($existing['rating_token']) && !(int)$existing['rating_token_used']) {
+        $token = $existing['rating_token'];
+    } else {
+        $token = bin2hex(random_bytes(32)); // 64 hex chars
+        getDB()->prepare("UPDATE bookings SET rating_token = ?, rating_token_used = 0 WHERE id = ?")
+               ->execute([$token, $bookingId]);
+    }
+
+    $shopName   = fetchOne("SELECT value FROM site_settings WHERE `key` = 'shop_name'")['value'] ?? 'MotoTrack';
+    $baseUrl    = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http')
+                . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . baseUrl('rate-booking.php');
+    $ratingUrl  = rtrim(preg_replace('/\.php.*$/', '.php', $baseUrl), '/') . '?token=' . $token;
+
+    $sms = "{$shopName}: Your motorcycle service is complete! \n"
+         . "Please rate your experience: {$ratingUrl}";
+
+    $email = "Hello {$booking['customer_name']},\n\n"
+           . "Your service at {$shopName} is now complete. We'd love to hear how we did!\n\n"
+           . "Please take a moment to rate your experience:\n"
+           . "{$ratingUrl}\n\n"
+           . "This link is valid for one use only.\n\n"
+           . "Thank you for choosing {$shopName}.\n";
+
+    $result = notifyDispatch(
+        $booking,
+        NOTIFY_RATING_REQUEST,
+        $sms,
+        "{$shopName} – Please Rate Your Service (Booking #{$bookingId})",
+        $email
+    );
+    $result['token'] = $token;
+    return $result;
 }

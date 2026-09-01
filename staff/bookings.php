@@ -395,10 +395,26 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
                 </span>
               </td>
 
-              <!-- Technician column -->
+              <!-- Technician column — Feature 5: skill-match indicator -->
               <td>
                 <?php if ($b['technician_name']): ?>
-                  <span class="mtx-pill" style="--pill-color:#15803d;"><i class="fas fa-user-cog"></i> <?= htmlspecialchars($b['technician_name']) ?></span>
+                  <?php
+                    $tid      = (int)($b['technician_id'] ?? 0);
+                    $reqIds   = $bookingServiceIds[$bid] ?? [];
+                    $techQual = $techQualifications[$tid] ?? [];
+                    $fullyQualified = !$reqIds
+                      || count(array_intersect(array_keys($techQual), $reqIds)) === count($reqIds);
+                  ?>
+                  <div style="display:flex;flex-direction:column;gap:4px;">
+                    <span class="mtx-pill" style="--pill-color:#15803d;">
+                      <i class="fas fa-user-cog"></i> <?= htmlspecialchars($b['technician_name']) ?>
+                    </span>
+                    <span style="font-size:.72rem;font-weight:700;padding:2px 7px;border-radius:20px;width:fit-content;
+                      background:<?= $fullyQualified ? 'rgba(21,128,61,.1)' : 'rgba(217,119,6,.1)' ?>;
+                      color:<?= $fullyQualified ? '#15803d' : '#d97706' ?>;">
+                      <?= $fullyQualified ? '✓ Qualified' : '⚠ Partial Match' ?>
+                    </span>
+                  </div>
                 <?php else: ?>
                   <span class="mtx-cell-sub">Unassigned</span>
                 <?php endif; ?>

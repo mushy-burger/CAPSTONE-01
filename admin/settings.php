@@ -312,6 +312,17 @@ $tab = $_GET['tab'] ?? 'homepage';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
+    // PMS reminder settings
+    if ($action === 'save_pms_settings') {
+        $intervalDays = (int)($_POST['pms_interval_days'] ?? 90);
+        $intervalDays = max(7, min(730, $intervalDays));
+        $enabled      = isset($_POST['pms_enabled']) ? '1' : '0';
+        getDB()->prepare("INSERT INTO site_settings (`key`,`value`) VALUES ('pms_reminder_interval_days',?) ON DUPLICATE KEY UPDATE value=VALUES(value)")->execute([$intervalDays]);
+        getDB()->prepare("INSERT INTO site_settings (`key`,`value`) VALUES ('pms_reminder_enabled',?) ON DUPLICATE KEY UPDATE value=VALUES(value)")->execute([$enabled]);
+        flashMessage('settings_success', 'PMS reminder settings saved.');
+        redirect(baseUrl('admin/settings.php?tab=notifications'));
+    }
+
     // Reservation deposit charged before a booking can be confirmed.
     // Stored in site_settings and read from there at runtime.
     if ($action === 'save_reservation_deposit') {
@@ -646,6 +657,7 @@ if ($editMotorcycleId && $tab === 'vehicle-options') {
     <a href="<?= baseUrl('admin/settings.php?tab=homepage') ?>" class="<?= $tab === 'homepage' ? 'active' : '' ?>" role="tab"><i class="fas fa-house"></i>Homepage</a>
     <a href="<?= baseUrl('admin/settings.php?tab=services') ?>" class="<?= $tab === 'services' ? 'active' : '' ?>" role="tab"><i class="fas fa-tools"></i>Compatible Services</a>
     <a href="<?= baseUrl('admin/settings.php?tab=vehicle-options') ?>" class="<?= $tab === 'vehicle-options' ? 'active' : '' ?>" role="tab"><i class="fas fa-motorcycle"></i>Vehicle Options</a>
+    <a href="<?= baseUrl('admin/settings.php?tab=notifications') ?>" class="<?= $tab === 'notifications' ? 'active' : '' ?>" role="tab"><i class="fas fa-bell"></i>Notifications</a>
   </div>
 
   <?php if ($flash): ?>
@@ -1025,6 +1037,54 @@ if ($editMotorcycleId && $tab === 'vehicle-options') {
           </div>
         </div>
       <?php endif; ?>
+    </section>
+  <?php elseif ($tab === 'notifications'): ?>
+    <?php
+      $pmsEnabled  = (int)(fetchOne("SELECT value FROM site_settings WHERE `key`='pms_reminder_enabled'")['value']  ?? 1);
+      $pmsInterval = (int)(fetchOne("SELECT value FROM site_settings WHERE `key`='pms_reminder_interval_days'")['value'] ?? 90);
+    ?>
+    <section class="mtx-card">
+      <div class="mtx-card-head">
+        <div>
+          <h2><i class="fas fa-wrench" style="color:#f59e0b;"></i> PMS Reminder Settings</h2>
+          <p>Automatically notify customers when their motorcycle is due for its next Preventive Maintenance Service.</p>
+        </div>
+        <span class="mtx-pill" style="--pill-color:<?= $pmsEnabled ? '#15803d' : '#6b7280' ?>;">
+          <?= $pmsEnabled ? 'Enabled' : 'Disabled' ?>
+        </span>
+      </div>
+      <form method="post" class="mtx-stack" style="gap:20px;">
+        <?= authContextField() ?>
+        <input type="hidden" name="action" value="save_pms_settings">
+
+        <label class="mtx-field">
+          <span>Reminder Interval (days)</span>
+          <input type="number" name="pms_interval_days" value="<?= $pmsInterval ?>" min="7" max="730" style="max-width:160px;">
+          <span class="mtx-help">How many days after the last completed service before sending a reminder. Recommended: 90 days (3 months).</span>
+        </label>
+
+        <label style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:14px 16px;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:10px;">
+          <input type="checkbox" name="pms_enabled" value="1" <?= $pmsEnabled ? 'checked' : '' ?>
+                 style="width:18px;height:18px;accent-color:#f59e0b;cursor:pointer;">
+          <span>
+            <strong>Enable PMS Reminders</strong>
+            <span class="mtx-help" style="display:block;margin-top:2px;">When checked, the PMS worker will send SMS/email reminders to customers whose vehicles are past the interval above.</span>
+          </span>
+        </label>
+
+        <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:10px;padding:14px 16px;font-size:.84rem;color:#fbbf24;line-height:1.6;">
+          <i class="fas fa-info-circle"></i>
+          <strong>How it works:</strong> After a technician marks a job as complete, the vehicle's last service date is automatically updated.
+          Run <code style="background:rgba(0,0,0,.3);padding:1px 5px;border-radius:4px;">php database/pms_reminder_worker.php</code>
+          daily via Windows Task Scheduler to dispatch reminders. Use <code style="background:rgba(0,0,0,.3);padding:1px 5px;border-radius:4px;">--dry</code> flag to preview without sending.
+        </div>
+
+        <div>
+          <button type="submit" class="mtx-btn mtx-btn--primary">
+            <i class="fas fa-save"></i> Save Notification Settings
+          </button>
+        </div>
+      </form>
     </section>
   <?php else: ?>
     <?php

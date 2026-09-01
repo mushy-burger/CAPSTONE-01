@@ -4,6 +4,7 @@ require_once __DIR__ . '/../includes/tech-sidebar.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/JobService.php';
 require_once __DIR__ . '/../includes/NotificationService.php';
+require_once __DIR__ . '/../includes/PartsReservationService.php';
 
 $bookingId = (int)($_GET['id'] ?? 0);
 
@@ -108,21 +109,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // --- Everything below is post-completion. The job is already saved as
         // --- completed; none of it may undo that, so each part is isolated.
         try {
-            $bookedProducts = fetchAllRows(
-                "SELECT product_id FROM booking_products WHERE booking_id = ?",
-                [$bookingId]
-            );
-            foreach ($bookedProducts as $bp) {
+            // Consume reserved parts (deducts stock, triggers PO check).
+            // Falls back to booking_products if no reservations exist.
+            $consumed = partsConsumeForBooking($bookingId);
+            if ($consumed === 0) {
+                // Legacy fallback for bookings confirmed before reservations were added
+                $bookedProducts = fetchAllRows(
+                    "SELECT product_id FROM booking_products WHERE booking_id = ?",
+                    [$bookingId]
+                );
+                foreach ($bookedProducts as $bp) {
+                    getDB()->prepare(
+                        "UPDATE products SET stock = GREATEST(0, stock - 1) WHERE id = ?"
+                    )->execute([$bp['product_id']]);
+                    getDB()->prepare(
+                        "UPDATE products SET status = CASE
+                           WHEN stock = 0 THEN 'out_of_stock'
+                           WHEN stock <= min_stock THEN 'low_stock'
+                           ELSE 'available'
+                         END WHERE id = ?"
+                    )->execute([$bp['product_id']]);
+                }
+            }
+
+            // Stamp vehicle's last service date for PMS reminders
+            if ($booking['vehicle_id']) {
                 getDB()->prepare(
-                    "UPDATE products SET stock = GREATEST(0, stock - 1) WHERE id = ?"
-                )->execute([$bp['product_id']]);
-                getDB()->prepare(
-                    "UPDATE products SET status = CASE
-                       WHEN stock = 0 THEN 'out_of_stock'
-                       WHEN stock <= min_stock THEN 'low_stock'
-                       ELSE 'available'
-                     END WHERE id = ?"
-                )->execute([$bp['product_id']]);
+                    "UPDATE customer_vehicles
+                     SET last_service_date = CURDATE(), last_service_booking_id = ?
+                     WHERE id = ?"
+                )->execute([$bookingId, $booking['vehicle_id']]);
             }
 
             notifyAllStaff(
@@ -141,6 +157,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $delivery = notifyJobCompleted($bookingId);
         } catch (Throwable $e) {
             smsLogLine("Completion notification failed for booking {$bookingId}: " . $e->getMessage());
+        }
+
+        // Send rating request link to customer (non-fatal — token stays valid for later resend)
+        try {
+            notifyRatingRequest($bookingId);
+        } catch (Throwable $e) {
+            smsLogLine("Rating request failed for booking {$bookingId}: " . $e->getMessage());
         }
 
         $note = techDeliveryNote($delivery);

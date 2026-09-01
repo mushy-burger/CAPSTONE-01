@@ -4,6 +4,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/ProductCodes.php';
+require_once __DIR__ . '/../includes/PurchaseOrderService.php';
 requireStaff();
 $currentUser = getCurrentUser();
 
@@ -187,6 +188,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect(baseUrl('staff/product-label.php?id=' . $pid . '&code=' . rawurlencode($savedCode) . '&autoprint=1'));
         }
 
+        redirect(baseUrl('staff/products.php') . '#tab-list');
+    }
+
+    // Adjust stock level only (quick +/- from product list)
+    if ($action === 'adjust_stock') {
+        $pid   = (int)($_POST['product_id'] ?? 0);
+        $delta = (int)($_POST['delta'] ?? 0);
+        if ($pid > 0 && $delta !== 0) {
+            getDB()->prepare(
+                "UPDATE products
+                 SET stock = GREATEST(0, stock + ?),
+                     status = CASE
+                       WHEN GREATEST(0, stock + ?) = 0 THEN 'out_of_stock'
+                       WHEN GREATEST(0, stock + ?) <= min_stock THEN 'low_stock'
+                       ELSE 'available'
+                     END
+                 WHERE id = ?"
+            )->execute([$delta, $delta, $delta, $pid]);
+            try { poCheckAndGenerateForProduct($pid); } catch (Throwable $e) {}
+        }
         redirect(baseUrl('staff/products.php') . '#tab-list');
     }
 }
