@@ -24,42 +24,6 @@ $pageTitle = 'QA Hub — MotoTrack';
       padding: 60px 24px 100px;
     }
 
-    /* Header */
-    .qa-hub-header {
-      display: flex;
-      align-items: center;
-      gap: 20px;
-      margin-bottom: 48px;
-    }
-    .qa-hub-icon {
-      width: 64px; height: 64px;
-      background: linear-gradient(135deg, #7c3aed, #a855f7);
-      border-radius: 18px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 1.8rem; color: #fff;
-      box-shadow: 0 8px 32px rgba(168,85,247,.4);
-      flex-shrink: 0;
-    }
-    .qa-hub-header h1 {
-      font-size: 1.75rem;
-      font-weight: 800;
-      color: #fff;
-      margin: 0 0 4px;
-      letter-spacing: -.02em;
-    }
-    .qa-hub-header p {
-      margin: 0;
-      color: rgba(255,255,255,.5);
-      font-size: .9rem;
-    }
-    .qa-hub-header .qa-pill {
-      display: inline-flex; align-items: center; gap: 6px;
-      background: rgba(168,85,247,.15);
-      border: 1px solid rgba(168,85,247,.4);
-      color: #c084fc;
-      font-size: .72rem; font-weight: 700; letter-spacing: .08em;
-      padding: 3px 10px; border-radius: 99px; margin-bottom: 6px;
-    }
 
     /* Section titles */
     .qa-section-title {
@@ -154,61 +118,12 @@ $pageTitle = 'QA Hub — MotoTrack';
     .qa-card--customer { --card-glow: linear-gradient(135deg,rgba(8,145,178,.08),transparent); --card-accent: rgba(8,145,178,.5); --card-accent-text: #a5f3fc; }
     .qa-card--customer .qa-card-icon { background: linear-gradient(135deg,#0e7490,#0891b2); }
 
-    /* Quick actions */
-    .qa-actions-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-      gap: 10px;
-      margin-bottom: 40px;
-    }
-    .qa-action-btn {
-      background: rgba(255,255,255,.04);
-      border: 1px solid rgba(255,255,255,.08);
-      border-radius: 10px;
-      padding: 12px 16px;
-      color: rgba(255,255,255,.7);
-      text-decoration: none;
-      font-size: .82rem;
-      display: flex; align-items: center; gap: 10px;
-      transition: background .15s, border-color .15s, color .15s;
-    }
-    .qa-action-btn i { color: rgba(255,255,255,.35); font-size: .9rem; width: 16px; text-align: center; }
-    .qa-action-btn:hover { background: rgba(168,85,247,.1); border-color: rgba(168,85,247,.3); color: #e9d5ff; }
-    .qa-action-btn:hover i { color: #c084fc; }
 
-    /* Logout */
-    .qa-logout-row {
-      display: flex;
-      justify-content: flex-end;
-      padding-top: 16px;
-    }
-    .qa-logout-btn {
-      display: inline-flex; align-items: center; gap: 8px;
-      background: rgba(239,68,68,.1);
-      border: 1px solid rgba(239,68,68,.25);
-      color: #fca5a5;
-      padding: 10px 20px;
-      border-radius: 10px;
-      font-size: .85rem; font-weight: 600;
-      text-decoration: none;
-      transition: background .15s;
-    }
-    .qa-logout-btn:hover { background: rgba(239,68,68,.2); }
   </style>
 </head>
 <body>
 
 <div class="qa-hub-wrap">
-
-  <!-- Header -->
-  <div class="qa-hub-header">
-    <div class="qa-hub-icon"><i class="fas fa-vial"></i></div>
-    <div>
-      <div class="qa-pill"><i class="fas fa-circle" style="font-size:.5rem"></i> QA MODE ACTIVE</div>
-      <h1>QA Tester Hub</h1>
-      <p>Hello, <strong style="color:#e9d5ff"><?= htmlspecialchars($currentUser['name']) ?></strong> — browse any panel below as a read-only observer.</p>
-    </div>
-  </div>
 
   <!-- Panels -->
   <p class="qa-section-title"><i class="fas fa-door-open"></i> System Panels</p>
@@ -266,29 +181,8 @@ $pageTitle = 'QA Hub — MotoTrack';
 
   </div>
 
-  <!-- Quick links -->
-  <p class="qa-section-title"><i class="fas fa-bolt"></i> Quick Links</p>
-  <div class="qa-actions-grid">
-    <a href="<?= baseUrl('admin/bookings.php') ?>" class="qa-action-btn"><i class="fas fa-calendar-alt"></i> Admin Bookings</a>
-    <a href="<?= baseUrl('admin/users.php') ?>" class="qa-action-btn"><i class="fas fa-users"></i> User Management</a>
-    <a href="<?= baseUrl('admin/analytics.php') ?>" class="qa-action-btn"><i class="fas fa-chart-bar"></i> Analytics</a>
-    <a href="<?= baseUrl('admin/orders.php') ?>" class="qa-action-btn"><i class="fas fa-shopping-bag"></i> Orders</a>
-    <a href="<?= baseUrl('admin/ratings.php') ?>" class="qa-action-btn"><i class="fas fa-star"></i> Ratings</a>
-    <a href="<?= baseUrl('admin/settings.php') ?>" class="qa-action-btn"><i class="fas fa-cog"></i> Settings</a>
-    <a href="<?= baseUrl('staff/bookings.php') ?>" class="qa-action-btn"><i class="fas fa-clipboard-list"></i> Staff Bookings</a>
-    <a href="<?= baseUrl('staff/pos.php') ?>" class="qa-action-btn"><i class="fas fa-cash-register"></i> POS</a>
-    <a href="<?= baseUrl('tech/index.php') ?>" class="qa-action-btn"><i class="fas fa-tools"></i> Work Queue</a>
-    <a href="<?= baseUrl('shop.php') ?>" class="qa-action-btn"><i class="fas fa-store"></i> Shop</a>
-    <a href="<?= baseUrl('profile.php') ?>" class="qa-action-btn"><i class="fas fa-user"></i> My Profile</a>
-    <a href="<?= baseUrl('book-service.php') ?>" class="qa-action-btn"><i class="fas fa-motorcycle"></i> Book Service</a>
-  </div>
-
-  <!-- Logout -->
-  <div class="qa-logout-row">
-    <a href="<?= baseUrl('logout.php') ?>" class="qa-logout-btn"><i class="fas fa-sign-out-alt"></i> Logout QA Session</a>
-  </div>
-
 </div>
+
 
 <?php require_once __DIR__ . '/../includes/qa-banner.php'; ?>
 
