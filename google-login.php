@@ -12,6 +12,9 @@ if (empty($google['client_id']) || empty($google['client_secret']) || empty($goo
 $state = bin2hex(random_bytes(24));
 $_SESSION['google_oauth_states'][$state] = [
     'ctx' => currentAuthContext(),
+    // Preserve the page the visitor was headed to (validated same-site path)
+    // so the callback can return them there after Google sign-in.
+    'next' => safeLocalPath($_GET['next'] ?? null),
     'created_at' => time(),
 ];
 

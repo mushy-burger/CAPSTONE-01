@@ -113,11 +113,11 @@ require_once __DIR__ . '/includes/header.php';
   <div>
     <div class="section-heading compact">
       <span class="eyebrow">Shop</span>
-      <h2>Cart & Orders</h2>
+      <h1>Cart & Orders</h1>
     </div>
-    <div class="page-tabs">
-      <a href="<?= baseUrl('cart.php?tab=cart') ?>" class="<?= $activeTab === 'cart' ? 'active' : '' ?>">Add To Cart</a>
-      <a href="<?= baseUrl('cart.php?tab=orders') ?>" class="<?= $activeTab === 'orders' ? 'active' : '' ?>">Checked Out Items</a>
+    <div class="page-tabs" role="navigation" aria-label="Cart views">
+      <a href="<?= baseUrl('cart.php?tab=cart') ?>" class="<?= $activeTab === 'cart' ? 'active' : '' ?>"<?= $activeTab === 'cart' ? ' aria-current="page"' : '' ?>>Cart</a>
+      <a href="<?= baseUrl('cart.php?tab=orders') ?>" class="<?= $activeTab === 'orders' ? 'active' : '' ?>"<?= $activeTab === 'orders' ? ' aria-current="page"' : '' ?>>Checked Out Items</a>
     </div>
     <?php if ($message): ?><div class="alert success"><?= htmlspecialchars($message) ?></div><?php endif; ?>
     <?php if ($staleItems && $activeTab === 'cart'): ?>
@@ -147,22 +147,22 @@ require_once __DIR__ . '/includes/header.php';
           <?php $lineSubtotal = (float)$item['price'] * (int)$item['quantity']; ?>
           <div class="cart-row" data-cart-row data-price="<?= htmlspecialchars((string)(float)$item['price']) ?>">
             <span class="cart-select-cell">
-              <input type="checkbox" name="selected_cart_ids[]" value="<?= (int)$item['cart_id'] ?>" class="cart-select-checkbox" form="cartCheckoutForm" checked>
+              <input type="checkbox" name="selected_cart_ids[]" value="<?= (int)$item['cart_id'] ?>" class="cart-select-checkbox" form="cartCheckoutForm" aria-label="Select <?= htmlspecialchars($item['name']) ?> for checkout" checked>
             </span>
             <span class="cart-item-cell">
               <?= productImageHtml($item['image'] ?? '', $item['name'], 'cart-item-thumb') ?>
               <span><?= htmlspecialchars($item['name']) ?></span>
             </span>
-            <span><?= formatPrice((float)$item['price']) ?></span>
-            <span>
+            <span class="cart-price-cell" data-label="Price"><?= formatPrice((float)$item['price']) ?></span>
+            <span class="cart-quantity-cell" data-label="Quantity">
               <span class="cart-qty-counter">
                 <button type="button" class="cart-qty-btn" data-cart-qty-minus aria-label="Decrease quantity">-</button>
                 <input type="number" name="qty[<?= (int)$item['cart_id'] ?>]" min="1" max="<?= (int)$item['stock'] ?>" value="<?= (int)$item['quantity'] ?>" data-cart-qty form="cartCheckoutForm">
                 <button type="button" class="cart-qty-btn" data-cart-qty-plus aria-label="Increase quantity">+</button>
               </span>
             </span>
-            <strong data-cart-line-subtotal><?= formatPrice($lineSubtotal) ?></strong>
-            <span>
+            <strong class="cart-subtotal-cell" data-label="Subtotal" data-cart-line-subtotal><?= formatPrice($lineSubtotal) ?></strong>
+            <span class="cart-action-cell">
               <form method="post" action="<?= baseUrl('cart.php?tab=cart') ?>" class="cart-remove-form">
                 <?= authContextField() ?>
                 <input type="hidden" name="action" value="remove">
@@ -174,7 +174,11 @@ require_once __DIR__ . '/includes/header.php';
         <?php endforeach; ?>
       </div>
     <?php else: ?>
-      <p class="empty-state">Your cart is empty. <a href="<?= baseUrl('shop.php') ?>">Browse products</a>.</p>
+      <div class="empty-state customer-empty-state cart-empty-state">
+        <h2>Your cart is empty</h2>
+        <p>Browse the catalog and add the parts or accessories you want to compare.</p>
+        <a class="btn btn-primary" href="<?= baseUrl('shop.php') ?>">Browse Products</a>
+      </div>
     <?php endif; ?>
     <?php else: ?>
       <div class="history-list">
@@ -212,7 +216,11 @@ require_once __DIR__ . '/includes/header.php';
             </article>
           <?php endforeach; ?>
         <?php else: ?>
-          <p class="empty-state">No checked out items yet.</p>
+          <div class="empty-state customer-empty-state">
+            <h2>No checked out items yet</h2>
+            <p>Completed product orders will appear here.</p>
+            <a class="btn btn-outline" href="<?= baseUrl('shop.php') ?>">Browse Products</a>
+          </div>
         <?php endif; ?>
       </div>
     <?php endif; ?>
@@ -221,7 +229,7 @@ require_once __DIR__ . '/includes/header.php';
   <aside class="summary-box">
     <h2>Cart Totals</h2>
     <div><span>Subtotal</span><strong data-cart-selected-subtotal><?= formatPrice($subtotal) ?></strong></div>
-    <div><span>Total</span><strong data-cart-selected-total><?= formatPrice($subtotal) ?></strong></div>
+    <div class="summary-grand-total"><span>Total</span><strong data-cart-selected-total><?= formatPrice($subtotal) ?></strong></div>
     <button class="btn btn-primary" type="submit" form="cartCheckoutForm" data-cart-checkout-btn <?= !$items ? 'disabled' : '' ?>>Proceed to checkout</button>
     <?php if ($items): ?><p class="fine-print" data-cart-selection-message></p><?php endif; ?>
   </aside>

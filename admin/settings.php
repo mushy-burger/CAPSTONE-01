@@ -725,8 +725,17 @@ if ($editMotorcycleId && $tab === 'vehicle-options') {
             <span class="mtx-media-filename" id="heroFileName">
               <?= $bgExists ? '<i class="fas fa-circle-check"></i>' . htmlspecialchars($bgFile) : 'No new file selected' ?>
             </span>
-            <label for="heroBackgroundInput" class="mtx-btn mtx-btn--ghost mtx-btn--sm" style="cursor:pointer;">
-              <i class="fas fa-upload"></i> <?= $bgExists ? 'Replace Image' : 'Upload Image' ?>
+            <label for="heroBackgroundInput" class="mtx-btn mtx-btn--ghost mtx-btn--sm mtx-image-picker" id="heroImagePickerButton" style="cursor:pointer;">
+              <span class="mtx-folder-icon" id="heroImageFolderIcon" aria-hidden="true">
+                <span class="mtx-folder-back">
+                  <span class="mtx-folder-paper mtx-folder-paper--1"></span>
+                  <span class="mtx-folder-paper mtx-folder-paper--2"></span>
+                  <span class="mtx-folder-paper mtx-folder-paper--3"></span>
+                  <span class="mtx-folder-front mtx-folder-front--left"></span>
+                  <span class="mtx-folder-front mtx-folder-front--right"></span>
+                </span>
+              </span>
+              <?= $bgExists ? 'Replace Image' : 'Upload Image' ?>
             </label>
           </div>
           <p class="mtx-help" style="margin:10px 0 0;">Recommended: 1920&times;1080 workshop background image for the full hero banner. Uploads are optimized automatically.</p>
@@ -786,6 +795,21 @@ if ($editMotorcycleId && $tab === 'vehicle-options') {
         const previewWrap = document.getElementById('heroPreviewWrap');
         const dropZone = document.getElementById('heroDropZone');
         const fileName = document.getElementById('heroFileName');
+        const imagePickerButton = document.getElementById('heroImagePickerButton');
+        const folderIcon = document.getElementById('heroImageFolderIcon');
+        let folderCloseTimer;
+
+        // Briefly open the folder when the image picker is activated. The label's
+        // native connection to the file input remains responsible for opening it.
+        if (imagePickerButton && folderIcon) {
+          imagePickerButton.addEventListener('click', () => {
+            window.clearTimeout(folderCloseTimer);
+            folderIcon.classList.add('is-open');
+            folderCloseTimer = window.setTimeout(() => {
+              folderIcon.classList.remove('is-open');
+            }, 520);
+          });
+        }
 
         const showFile = (file) => {
           if (!file) return;

@@ -16,7 +16,7 @@
     </div>
 
     <div class="footer-links">
-      <h4>Pages</h4>
+      <h2>Pages</h2>
       <ul>
         <li><a href="<?= baseUrl('index.php') ?>">Home</a></li>
         <li><a href="<?= baseUrl('about.php') ?>">About Us</a></li>
@@ -26,7 +26,7 @@
     </div>
 
     <div class="footer-contact">
-      <h4>Contact Us</h4>
+      <h2>Contact Us</h2>
       <p><i class="fas fa-phone"></i> 0900 500 1234</p>
       <p><i class="fas fa-envelope"></i> company@mototrack.com</p>
       <p><i class="fas fa-map-marker-alt"></i> Bambang City</p>

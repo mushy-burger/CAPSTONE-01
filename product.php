@@ -13,7 +13,19 @@ $product = fetchOne(
 
 if (!$product) {
     http_response_code(404);
-    echo '<section class="section container"><p class="empty-state">Product not found.</p></section>';
+    ?>
+    <section class="section container">
+      <div class="empty-state customer-empty-state">
+        <div class="empty-state-icon"><i class="fas fa-box-open" aria-hidden="true"></i></div>
+        <h1>Product not found</h1>
+        <p>This product may have been removed, or the link is out of date.</p>
+        <div class="empty-state-actions">
+          <a class="btn btn-primary" href="<?= baseUrl('shop.php') ?>">Browse products</a>
+          <a class="btn btn-outline" href="<?= baseUrl('index.php') ?>">Back to home</a>
+        </div>
+      </div>
+    </section>
+    <?php
     require_once __DIR__ . '/includes/footer.php';
     exit;
 }

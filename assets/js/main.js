@@ -137,6 +137,133 @@ if (window.MutationObserver) {
   observer.observe(document.documentElement, { childList: true, subtree: true });
 }
 
+// Shared React Bits-inspired tilt for catalog and booking product cards. Pointer
+// events are delegated so cards rendered later by the booking flow work too.
+(() => {
+  const finePointer = window.matchMedia('(hover: hover) and (pointer: fine)');
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const tiltStates = new WeakMap();
+  const maxTilt = 2;
+  const hoverScale = 1.05;
+
+  const tiltEnabled = () => finePointer.matches && !reducedMotion.matches;
+  const findTiltCard = (target) => target instanceof Element
+    ? target.closest('[data-tilt-card].mtx-tilt-card')
+    : null;
+
+  const getTiltState = (card) => {
+    if (!tiltStates.has(card)) {
+      tiltStates.set(card, {
+        currentX: 0,
+        currentY: 0,
+        currentScale: 1,
+        targetX: 0,
+        targetY: 0,
+        targetScale: 1,
+        frame: 0,
+        active: false,
+        bounds: null,
+      });
+    }
+    return tiltStates.get(card);
+  };
+
+  const animateTilt = (card, state) => {
+    if (state.frame) return;
+
+    const step = () => {
+      if (!card.isConnected) {
+        state.frame = 0;
+        return;
+      }
+
+      const easing = state.active ? 0.2 : 0.14;
+      state.currentX += (state.targetX - state.currentX) * easing;
+      state.currentY += (state.targetY - state.currentY) * easing;
+      state.currentScale += (state.targetScale - state.currentScale) * easing;
+
+      card.style.setProperty('--product-tilt-x', `${state.currentX.toFixed(2)}deg`);
+      card.style.setProperty('--product-tilt-y', `${state.currentY.toFixed(2)}deg`);
+      card.style.setProperty('--product-tilt-scale', state.currentScale.toFixed(3));
+
+      const settled = Math.abs(state.targetX - state.currentX) < 0.02
+        && Math.abs(state.targetY - state.currentY) < 0.02
+        && Math.abs(state.targetScale - state.currentScale) < 0.002;
+
+      if (settled) {
+        state.currentX = state.targetX;
+        state.currentY = state.targetY;
+        state.currentScale = state.targetScale;
+        state.frame = 0;
+
+        if (!state.active) {
+          card.classList.remove('is-tilting');
+          card.style.removeProperty('--product-tilt-x');
+          card.style.removeProperty('--product-tilt-y');
+          card.style.removeProperty('--product-tilt-scale');
+        }
+        return;
+      }
+
+      state.frame = window.requestAnimationFrame(step);
+    };
+
+    state.frame = window.requestAnimationFrame(step);
+  };
+
+  const resetTilt = (card) => {
+    const state = getTiltState(card);
+    state.active = false;
+    state.bounds = null;
+    state.targetX = 0;
+    state.targetY = 0;
+    state.targetScale = 1;
+    animateTilt(card, state);
+  };
+
+  document.addEventListener('pointerover', (event) => {
+    if (!tiltEnabled() || event.pointerType !== 'mouse') return;
+    const card = findTiltCard(event.target);
+    if (!card || (event.relatedTarget instanceof Node && card.contains(event.relatedTarget))) return;
+
+    const state = getTiltState(card);
+    state.active = true;
+    state.bounds = card.getBoundingClientRect();
+    state.targetScale = hoverScale;
+    card.classList.add('is-tilting');
+    animateTilt(card, state);
+  });
+
+  document.addEventListener('pointermove', (event) => {
+    if (!tiltEnabled() || event.pointerType !== 'mouse') return;
+    const card = findTiltCard(event.target);
+    if (!card) return;
+
+    const state = getTiltState(card);
+    const bounds = state.bounds || card.getBoundingClientRect();
+    const normalizedX = Math.max(-1, Math.min(1, ((event.clientX - bounds.left) / bounds.width - 0.5) * 2));
+    const normalizedY = Math.max(-1, Math.min(1, ((event.clientY - bounds.top) / bounds.height - 0.5) * 2));
+
+    state.active = true;
+    state.targetX = -normalizedY * maxTilt;
+    state.targetY = normalizedX * maxTilt;
+    state.targetScale = hoverScale;
+    card.classList.add('is-tilting');
+    animateTilt(card, state);
+  });
+
+  document.addEventListener('pointerout', (event) => {
+    const card = findTiltCard(event.target);
+    if (!card || (event.relatedTarget instanceof Node && card.contains(event.relatedTarget))) return;
+    resetTilt(card);
+  });
+
+  document.addEventListener('pointercancel', (event) => {
+    const card = findTiltCard(event.target);
+    if (card) resetTilt(card);
+  });
+})();
+
 function clearPageTextSelection() {
   const active = document.activeElement;
   const isEditable = active && (
@@ -169,7 +296,45 @@ const menuToggle = document.getElementById('menuToggle');
 const mobileNav = document.getElementById('mobileNav');
 
 if (menuToggle && mobileNav) {
-  menuToggle.addEventListener('click', () => mobileNav.classList.toggle('open'));
+  const setMobileMenuOpen = (open, returnFocus = false) => {
+    mobileNav.classList.toggle('open', open);
+    menuToggle.setAttribute('aria-expanded', String(open));
+    menuToggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+
+    const icon = menuToggle.querySelector('i');
+    if (icon) {
+      icon.classList.toggle('fa-bars', !open);
+      icon.classList.toggle('fa-times', open);
+    }
+
+    if (!open && returnFocus) menuToggle.focus();
+  };
+
+  menuToggle.addEventListener('click', () => {
+    setMobileMenuOpen(!mobileNav.classList.contains('open'));
+  });
+
+  mobileNav.addEventListener('click', (event) => {
+    if (event.target.closest('a')) setMobileMenuOpen(false);
+  });
+
+  document.addEventListener('click', (event) => {
+    if (mobileNav.classList.contains('open') && !event.target.closest('.site-header')) {
+      setMobileMenuOpen(false);
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && mobileNav.classList.contains('open')) {
+      setMobileMenuOpen(false, true);
+    }
+  });
+
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 980 && mobileNav.classList.contains('open')) {
+      setMobileMenuOpen(false);
+    }
+  });
 }
 
 const cartCheckoutForm = document.getElementById('cartCheckoutForm');
@@ -679,3 +844,106 @@ document.querySelectorAll('.vhx-modal').forEach((modal) => {
   panels.forEach((panel) => stepObserver.observe(panel, { attributes: true, attributeFilter: ['class'] }));
   syncStepper();
 });
+
+/* ------------------------------------------------------------------
+ * Unified inline form validation (progressive enhancement).
+ * Replaces native browser validation bubbles on forms marked with
+ * [data-validate] with consistent inline field errors, and scrolls a
+ * focused/invalid field clear of the sticky header. Server-side
+ * validation is unchanged and remains the source of truth.
+ * ------------------------------------------------------------------ */
+(() => {
+  const forms = document.querySelectorAll('form[data-validate]');
+  if (!forms.length) return;
+
+  const fieldLabel = (field) => {
+    const lab = field.closest('label');
+    let text = '';
+    if (lab) {
+      const clone = lab.cloneNode(true);
+      clone.querySelectorAll('input, select, textarea, button, .field-error').forEach((n) => n.remove());
+      text = clone.textContent || '';
+    }
+    return text.replace(/\s+/g, ' ').trim();
+  };
+
+  const friendly = (field) => {
+    const v = field.validity;
+    if (v.valueMissing) return field.tagName === 'SELECT' ? 'Please choose an option.' : 'This field is required.';
+    if (v.typeMismatch && field.type === 'email') return 'Enter a valid email address, like name@example.com.';
+    if (v.tooShort) return 'Use at least ' + field.minLength + ' characters.';
+    if (v.patternMismatch) return field.title || 'Please match the requested format.';
+    if (v.rangeUnderflow) return 'Enter a value of ' + field.min + ' or more.';
+    if (v.rangeOverflow) return 'Enter a value of ' + field.max + ' or less.';
+    if (v.badInput || v.stepMismatch) return 'Enter a valid value.';
+    return 'Please correct this field.';
+  };
+
+  forms.forEach((form) => {
+    form.noValidate = true;
+
+    const collect = () => Array.from(form.querySelectorAll('input, select, textarea'))
+      .filter((f) => f.type !== 'hidden' && f.type !== 'submit' && f.type !== 'button' && !f.disabled);
+
+    const errorEl = (field) => {
+      if (field._errEl && field._errEl.isConnected) return field._errEl;
+      const host = field.closest('.password-field') || field;
+      const el = document.createElement('span');
+      el.className = 'field-error';
+      el.setAttribute('role', 'alert');
+      host.insertAdjacentElement('afterend', el);
+      if (!field.id) field.id = 'fld_' + Math.random().toString(36).slice(2, 8);
+      el.id = field.id + '_err';
+      field._errEl = el;
+      return el;
+    };
+
+    const setInvalid = (field, msg) => {
+      field.classList.add('is-invalid');
+      field.setAttribute('aria-invalid', 'true');
+      const el = errorEl(field);
+      el.textContent = msg;
+      field.setAttribute('aria-describedby', el.id);
+    };
+
+    const clearInvalid = (field) => {
+      field.classList.remove('is-invalid');
+      field.removeAttribute('aria-invalid');
+      field.removeAttribute('aria-describedby');
+      if (field._errEl) field._errEl.textContent = '';
+    };
+
+    const matchTarget = (field) => (field.dataset.match ? form.querySelector('[name="' + field.dataset.match + '"]') : null);
+
+    const validateField = (field) => {
+      if (!field.checkValidity()) { setInvalid(field, friendly(field)); return false; }
+      const other = matchTarget(field);
+      if (other && other.value !== field.value) { setInvalid(field, 'Those values do not match.'); return false; }
+      clearInvalid(field);
+      return true;
+    };
+
+    form.addEventListener('submit', (event) => {
+      let firstBad = null;
+      collect().forEach((f) => { if (!validateField(f) && !firstBad) firstBad = f; });
+      if (firstBad) {
+        event.preventDefault();
+        const target = firstBad.closest('label') || firstBad;
+        target.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        firstBad.focus({ preventScroll: true });
+      }
+    });
+
+    form.addEventListener('input', (event) => {
+      const t = event.target;
+      if (!t.matches('input, select, textarea')) return;
+      if (t.classList.contains('is-invalid')) validateField(t);
+      const confirmField = form.querySelector('[data-match]');
+      if (confirmField && confirmField !== t && confirmField.classList.contains('is-invalid')) validateField(confirmField);
+    });
+
+    form.addEventListener('change', (event) => {
+      if (event.target.matches('select') && event.target.classList.contains('is-invalid')) validateField(event.target);
+    });
+  });
+})();

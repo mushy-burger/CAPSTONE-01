@@ -99,7 +99,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'create_checkout' && $i
     } elseif (!in_array($paymongoMethod, ['paymongo', 'gcash', 'paymaya'], true)) {
         $error = 'Please use the PayMongo payment option.';
     } elseif (!$paymongoReady) {
-        $error = 'PayMongo is not configured yet. Add your PayMongo keys in the local .env file first.';
+        $error = 'Online payment is temporarily unavailable. Please try again later or contact the shop.';
     } else {
         try {
             getDB()->beginTransaction();
@@ -191,7 +191,7 @@ require_once __DIR__ . '/includes/header.php';
       </p>
     <?php endif; ?>
     <?php if (!$paymongoReady): ?>
-      <div class="alert error">PayMongo keys are missing. Add them in your local <code>.env</code> file first.</div>
+      <div class="alert error">Online payment is temporarily unavailable. Please try again later or contact the shop.</div>
     <?php endif; ?>
     <button class="btn btn-primary" type="submit" <?= (!$items || !$paymongoReady) ? 'disabled' : '' ?>>Pay with PayMongo</button>
     <?php endif; ?>
@@ -203,7 +203,7 @@ require_once __DIR__ . '/includes/header.php';
       <div><span><?= htmlspecialchars($item['name']) ?> x<?= (int)$item['quantity'] ?></span><strong><?= formatPrice((float)$item['price'] * (int)$item['quantity']) ?></strong></div>
     <?php endforeach; ?>
     <div><span>Subtotal</span><strong><?= formatPrice($subtotal) ?></strong></div>
-    <div><span>Total</span><strong><?= formatPrice($subtotal) ?></strong></div>
+    <div class="summary-grand-total"><span>Total</span><strong><?= formatPrice($subtotal) ?></strong></div>
   </aside>
 </section>
 

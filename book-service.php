@@ -282,9 +282,15 @@ require_once __DIR__ . '/includes/header.php';
 ?>
 
 <section class="section container form-layout booking-layout">
+  <header class="customer-page-heading booking-page-heading">
+    <div>
+      <h1><?= $activeTab === 'appointments' ? 'Your appointments' : ($editBooking ? 'Update appointment' : 'Book a service') ?></h1>
+      <p><?= $activeTab === 'appointments' ? 'Review scheduled work and service history.' : 'Choose the motorcycle, work, products, and schedule for this visit.' ?></p>
+    </div>
+  </header>
   <div class="page-tabs booking-page-tabs">
-    <a href="<?= baseUrl('book-service.php?tab=book') ?>" class="<?= $activeTab === 'book' ? 'active' : '' ?>">Book Service</a>
-    <a href="<?= baseUrl('book-service.php?tab=appointments') ?>" class="<?= $activeTab === 'appointments' ? 'active' : '' ?>">Appointments</a>
+    <a href="<?= baseUrl('book-service.php?tab=book') ?>" class="<?= $activeTab === 'book' ? 'active' : '' ?>"<?= $activeTab === 'book' ? ' aria-current="page"' : '' ?>>Book Service</a>
+    <a href="<?= baseUrl('book-service.php?tab=appointments') ?>" class="<?= $activeTab === 'appointments' ? 'active' : '' ?>"<?= $activeTab === 'appointments' ? ' aria-current="page"' : '' ?>>Appointments</a>
   </div>
 
   <?php if ($activeTab === 'book'): ?>
@@ -298,8 +304,8 @@ require_once __DIR__ . '/includes/header.php';
     <?php if ($message): ?><div class="alert success"><?= htmlspecialchars($message) ?></div><?php endif; ?>
     <?php if ($error): ?><div class="alert error"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
-    <label>Select motorcycle
-      <select name="vehicle_id" onchange="this.form.method='get'; this.form.submit()">
+    <label><span>Select motorcycle</span>
+      <select name="vehicle_id" data-mtx-enhance onchange="this.form.method='get'; this.form.submit()">
         <?php foreach ($vehicles as $v): ?>
           <option value="<?= (int)$v['id'] ?>" <?= (int)$v['id'] === (int)$vehicle['id'] ? 'selected' : '' ?>>
             <?= htmlspecialchars($v['brand_name'] . ' ' . $v['model_name'] . ' (' . $v['type_name'] . ')') ?>
@@ -327,11 +333,14 @@ require_once __DIR__ . '/includes/header.php';
                 data-service-toggle
                 data-service-id="<?= (int)$service['id'] ?>"
               >
+              <span class="service-checkbox-control" aria-hidden="true"><i class="fas fa-check"></i></span>
               <span class="service-checkbox-copy">
                 <strong><?= htmlspecialchars($service['name']) ?></strong>
-                <small><?= htmlspecialchars($service['description'] ?: 'Service available for this motorcycle type.') ?></small>
+                <?php if (trim((string)($service['description'] ?? '')) !== ''): ?>
+                  <small><?= htmlspecialchars($service['description']) ?></small>
+                <?php endif; ?>
               </span>
-              <span class="service-checkbox-fee"><?= formatPrice((float)$service['labor_fee']) ?></span>
+              <span class="service-checkbox-fee"><small>Labor</small><strong><?= formatPrice((float)$service['labor_fee']) ?></strong></span>
             </label>
           <?php endforeach; ?>
         </div>
@@ -387,7 +396,7 @@ require_once __DIR__ . '/includes/header.php';
         <textarea name="notes" rows="4" placeholder="Describe symptoms, preferred parts, or requests"><?= htmlspecialchars($notesValue) ?></textarea>
       </label>
       <div class="booking-form-actions">
-        <button class="btn btn-primary" type="submit"><?= $editBooking ? 'Update appointment' : 'Submit booking' ?></button>
+        <button class="btn btn-primary" type="submit"><?= $editBooking ? 'Update appointment' : 'Confirm booking' ?></button>
         <?php if ($editBooking): ?><a class="btn btn-outline" href="<?= baseUrl('book-service.php?tab=appointments') ?>">Cancel edit</a><?php endif; ?>
       </div>
     <?php else: ?>
@@ -396,6 +405,7 @@ require_once __DIR__ . '/includes/header.php';
     <?php endif; ?>
   </form>
 
+  <div class="booking-summary-slot">
   <aside class="summary-box booking-summary" id="bookingSummaryPanel">
     <h2>Estimated Cost</h2>
 
@@ -441,6 +451,7 @@ require_once __DIR__ . '/includes/header.php';
     <div><span>Final total</span><strong id="bookingTotalValue"><?= formatPrice((float)$selection['total_amount']) ?></strong></div>
     <p class="fine-print">Final cost can still change if the technician records additional parts during service.</p>
   </aside>
+  </div>
   <?php else: ?>
   <div class="form-panel booking-history-panel">
     <h2>Your appointments</h2>
@@ -659,8 +670,9 @@ require_once __DIR__ . '/includes/header.php';
     return `
       <button
         type="button"
-        class="booking-product-card${isSelected ? ' is-selected' : ''}"
+        class="booking-product-card mtx-tilt-card${isSelected ? ' is-selected' : ''}"
         data-product-card
+        data-tilt-card
         data-service-id="${serviceId}"
         data-product-id="${Number(product.id)}"
       >
@@ -717,7 +729,6 @@ require_once __DIR__ . '/includes/header.php';
         <strong>${labor} labor</strong>
       </div>
       <div class="product-picker-heading">
-        <strong>${title} products</strong>
         <span>${category}</span>
       </div>
       <div class="booking-product-grid">${cards}</div>
@@ -947,6 +958,148 @@ require_once __DIR__ . '/includes/header.php';
       grid.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   });
+})();
+</script>
+<?php endif; ?>
+
+<?php if ($activeTab === 'book'): ?>
+<script>
+(() => {
+  // Enhance the motorcycle <select> with the shared custom listbox (same as Shop).
+  // The native <select> stays in the form as the source of truth: choosing an
+  // option writes back and fires `change`, so the existing onchange reload,
+  // name, values, and selected value are all preserved.
+  const selects = document.querySelectorAll('select[data-mtx-enhance]');
+  if (!selects.length || !('closest' in Element.prototype)) return;
+  let counter = 0;
+
+  const closeAll = (except) => {
+    document.querySelectorAll('.mtx-select[data-open]').forEach((el) => {
+      if (el === except) return;
+      el.removeAttribute('data-open');
+      el.querySelector('.mtx-select-trigger').setAttribute('aria-expanded', 'false');
+      el.querySelector('.mtx-select-menu').hidden = true;
+    });
+  };
+
+  selects.forEach((select) => {
+    const uid = 'mtxbs-' + (counter++);
+    const labelSpan = select.closest('label') ? select.closest('label').querySelector('span') : null;
+    if (labelSpan && !labelSpan.id) labelSpan.id = uid + '-lbl';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'mtx-select';
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'mtx-select-trigger';
+    trigger.id = uid + '-trg';
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', 'false');
+
+    const valueEl = document.createElement('span');
+    valueEl.className = 'mtx-select-value';
+    valueEl.id = uid + '-val';
+    const selText = () => (select.options[select.selectedIndex] ? select.options[select.selectedIndex].text.trim() : '');
+    valueEl.textContent = selText();
+
+    const chevron = document.createElement('i');
+    chevron.className = 'fas fa-chevron-down mtx-select-chevron';
+    chevron.setAttribute('aria-hidden', 'true');
+    trigger.append(valueEl, chevron);
+
+    const menu = document.createElement('ul');
+    menu.className = 'mtx-select-menu';
+    menu.id = uid + '-menu';
+    menu.setAttribute('role', 'listbox');
+    menu.tabIndex = -1;
+    menu.hidden = true;
+    if (labelSpan) menu.setAttribute('aria-labelledby', labelSpan.id);
+    trigger.setAttribute('aria-controls', menu.id);
+    trigger.setAttribute('aria-labelledby', (labelSpan ? labelSpan.id + ' ' : '') + valueEl.id);
+
+    const options = Array.from(select.options).map((opt, i) => {
+      const li = document.createElement('li');
+      li.className = 'mtx-select-option';
+      li.id = uid + '-opt-' + i;
+      li.setAttribute('role', 'option');
+      li.dataset.index = String(i);
+      li.setAttribute('aria-selected', opt.selected ? 'true' : 'false');
+      const label = document.createElement('span');
+      label.className = 'mtx-select-option-label';
+      label.textContent = opt.text.trim();
+      const check = document.createElement('i');
+      check.className = 'fas fa-check mtx-select-check';
+      check.setAttribute('aria-hidden', 'true');
+      li.append(label, check);
+      menu.appendChild(li);
+      return li;
+    });
+
+    let activeIndex = select.selectedIndex < 0 ? 0 : select.selectedIndex;
+    const setActive = (idx, scroll) => {
+      activeIndex = (idx + options.length) % options.length;
+      options.forEach((o, i) => o.classList.toggle('is-active', i === activeIndex));
+      menu.setAttribute('aria-activedescendant', options[activeIndex].id);
+      if (scroll !== false) options[activeIndex].scrollIntoView({ block: 'nearest' });
+    };
+
+    const open = () => {
+      closeAll(wrap);
+      wrap.setAttribute('data-open', '');
+      trigger.setAttribute('aria-expanded', 'true');
+      menu.hidden = false;
+      setActive(select.selectedIndex < 0 ? 0 : select.selectedIndex, true);
+      menu.focus();
+    };
+    const close = (focusTrigger) => {
+      wrap.removeAttribute('data-open');
+      trigger.setAttribute('aria-expanded', 'false');
+      menu.hidden = true;
+      if (focusTrigger) trigger.focus();
+    };
+    const choose = (idx) => {
+      const opt = select.options[idx];
+      if (!opt) return;
+      if (select.selectedIndex !== idx) {
+        select.selectedIndex = idx;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      valueEl.textContent = opt.text.trim();
+      options.forEach((o, i) => o.setAttribute('aria-selected', i === idx ? 'true' : 'false'));
+      close(true);
+    };
+
+    trigger.addEventListener('click', () => { wrap.hasAttribute('data-open') ? close(true) : open(); });
+    trigger.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    });
+    menu.addEventListener('keydown', (e) => {
+      switch (e.key) {
+        case 'ArrowDown': e.preventDefault(); setActive(activeIndex + 1); break;
+        case 'ArrowUp': e.preventDefault(); setActive(activeIndex - 1); break;
+        case 'Home': e.preventDefault(); setActive(0); break;
+        case 'End': e.preventDefault(); setActive(options.length - 1); break;
+        case 'Enter':
+        case ' ': e.preventDefault(); choose(activeIndex); break;
+        case 'Escape': e.preventDefault(); close(true); break;
+        case 'Tab': close(false); break;
+        default: break;
+      }
+    });
+    options.forEach((li, i) => {
+      li.addEventListener('click', () => choose(i));
+      li.addEventListener('mousemove', () => { if (activeIndex !== i) setActive(i, false); });
+    });
+
+    wrap.append(trigger, menu);
+    select.classList.add('mtx-select-native');
+    select.setAttribute('tabindex', '-1');
+    select.setAttribute('aria-hidden', 'true');
+    select.parentNode.insertBefore(wrap, select.nextSibling);
+  });
+
+  document.addEventListener('mousedown', (e) => { if (!e.target.closest('.mtx-select')) closeAll(null); });
 })();
 </script>
 <?php endif; ?>

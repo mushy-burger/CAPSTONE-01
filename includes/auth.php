@@ -71,10 +71,43 @@ function getCurrentUser(): ?array {
     ];
 }
 
+/**
+ * Validate a caller-supplied return path. Only same-site, absolute-path
+ * URLs are allowed (leading single "/", no scheme, no protocol-relative
+ * "//host", no CR/LF), and never the auth pages themselves, to avoid both
+ * open-redirects and login loops. Returns the path, or null if unsafe.
+ */
+function safeLocalPath(?string $path): ?string {
+    if (!is_string($path) || $path === '') {
+        return null;
+    }
+    if ($path[0] !== '/' || (isset($path[1]) && $path[1] === '/')) {
+        return null;
+    }
+    if (preg_match('/[\r\n\t\x00]/', $path) === 1) {
+        return null;
+    }
+    if (preg_match('#/(login|logout|register|forgot-password|reset-password|verify-otp)\.php#i', $path) === 1) {
+        return null;
+    }
+    return $path;
+}
+
 function requireLogin(string $redirect = ''): void {
     if (!isLoggedIn()) {
         require_once __DIR__ . '/functions.php';
-        header('Location: ' . ($redirect ?: baseUrl('login.php')));
+        if ($redirect !== '') {
+            header('Location: ' . $redirect);
+            exit;
+        }
+        // Preserve the page the visitor was trying to reach so login can
+        // return them to it instead of dropping them on the homepage.
+        $loginUrl = baseUrl('login.php');
+        $next = safeLocalPath($_SERVER['REQUEST_URI'] ?? null);
+        if ($next !== null) {
+            $loginUrl .= (strpos($loginUrl, '?') !== false ? '&' : '?') . 'next=' . rawurlencode($next);
+        }
+        header('Location: ' . $loginUrl);
         exit;
     }
 }

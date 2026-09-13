@@ -301,7 +301,7 @@ function productCard(array $product): string {
     $price = formatPrice((float)$product['price']);
     $oldPrice = !empty($product['original_price']) ? '<span class="old-price">' . formatPrice((float)$product['original_price']) . '</span>' : '';
 
-    return '<article class="product-card">
+    return '<article class="product-card mtx-tilt-card" data-tilt-card>
         <a href="' . $detailUrl . '" class="product-media">' . productImageHtml($product['image'] ?? '', $product['name'], '') . '</a>
         <div class="product-info">
             <span class="eyebrow">' . htmlspecialchars($product['category_name'] ?? $product['brand'] ?? 'Product') . '</span>

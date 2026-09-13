@@ -35,7 +35,9 @@ require_once __DIR__ . '/includes/header.php';
 ?>
 
 <section class="auth-section">
-  <form class="auth-card" method="post">
+  <div class="auth-layout">
+  <?php require __DIR__ . '/includes/auth-aside.php'; ?>
+  <form class="auth-card" method="post" data-validate>
     <?= authContextField() ?>
     <span class="eyebrow">Check your email</span>
     <h1>Enter OTP</h1>
@@ -45,6 +47,7 @@ require_once __DIR__ . '/includes/header.php';
     <button class="btn btn-primary" type="submit">Verify code</button>
     <p><a href="<?= baseUrl('forgot-password.php') ?>">Send a new code</a></p>
   </form>
+  </div>
 </section>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>
