@@ -10,6 +10,7 @@ if (isLoggedIn()) {
 $error      = '';
 $success    = getFlash('auth_success');
 $flashError = getFlash('auth_error');
+$next       = safeLocalPath($_POST['next'] ?? $_GET['next'] ?? null);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email    = trim($_POST['email'] ?? '');
@@ -38,7 +39,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'technician' => baseUrl('tech/index.php'),
             'qa'         => baseUrl('qa/index.php'),
         ];
-        redirect($destinations[$user['role']] ?? baseUrl('index.php'));
+        // Staff-type roles go to their dashboards; customers return to the
+        // page they were headed to (if any) instead of the homepage.
+        redirect($destinations[$user['role']] ?? ($next ?? baseUrl('index.php')));
     } else {
         $error = 'Invalid email or password.';
     }
@@ -49,14 +52,38 @@ require_once __DIR__ . '/includes/header.php';
 ?>
 
 <section class="auth-section">
-  <form class="auth-card" method="post">
+  <div class="auth-layout">
+  <?php require __DIR__ . '/includes/auth-aside.php'; ?>
+  <form class="auth-card" method="post" data-validate>
     <?= authContextField() ?>
+    <?php if ($next !== null): ?><input type="hidden" name="next" value="<?= htmlspecialchars($next, ENT_QUOTES, 'UTF-8') ?>"><?php endif; ?>
     <span class="eyebrow">Welcome back</span>
     <h1>Login to MotoTrack</h1>
+    <?php
+      if ($next !== null) {
+          $loginReason = 'to continue';
+          if (stripos($next, 'cart.php') !== false)            $loginReason = 'to view your cart';
+          elseif (stripos($next, 'checkout') !== false)        $loginReason = 'to check out';
+          elseif (stripos($next, 'book-service') !== false)    $loginReason = 'to book a service';
+          elseif (stripos($next, 'booking-deposit') !== false) $loginReason = 'to pay your booking deposit';
+          elseif (stripos($next, 'my-vehicle') !== false)      $loginReason = 'to manage your motorcycles';
+          elseif (stripos($next, 'profile') !== false)         $loginReason = 'to open your profile';
+          echo '<div class="alert info">Please log in ' . htmlspecialchars($loginReason) . '. You\'ll be taken straight there.</div>';
+      }
+    ?>
     <?php if ($error): ?><div class="alert error"><?= htmlspecialchars($error) ?></div><?php endif; ?>
     <?php if ($flashError): ?><div class="alert error"><?= htmlspecialchars($flashError) ?></div><?php endif; ?>
     <?php if ($success): ?><div class="alert success"><?= htmlspecialchars($success) ?></div><?php endif; ?>
-    <a class="btn btn-google" href="<?= baseUrl('google-login.php') ?>"><i class="fab fa-google"></i> Continue with Google</a>
+    <?php
+      // baseUrl() may already append ?ctx=... for the multi-tab auth context,
+      // so choose the query separator instead of hard-coding "?" (a second "?"
+      // would fold `next` into the ctx value and lose it).
+      $googleUrl = baseUrl('google-login.php');
+      if ($next !== null) {
+          $googleUrl .= (strpos($googleUrl, '?') !== false ? '&' : '?') . 'next=' . rawurlencode($next);
+      }
+    ?>
+    <a class="btn btn-google" href="<?= htmlspecialchars($googleUrl, ENT_QUOTES, 'UTF-8') ?>"><i class="fab fa-google"></i> Continue with Google</a>
     <div class="auth-divider"><span>or</span></div>
     <label>Email<input type="email" name="email" required></label>
     <label>Password
@@ -72,6 +99,7 @@ require_once __DIR__ . '/includes/header.php';
     <p><a href="<?= baseUrl('forgot-password.php') ?>">Forgot password?</a></p>
     <p>New customer? <a href="<?= baseUrl('register.php') ?>">Create an account</a></p>
   </form>
+  </div>
 </section>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

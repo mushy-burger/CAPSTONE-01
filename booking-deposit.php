@@ -61,30 +61,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'confirm') {
-        // Server-side gate: this is what a crafted POST hits.
-        if (!depositIsSettled($bookingId)) {
-            flashMessage('deposit_error', 'Please complete the reservation deposit payment before confirming your booking.');
-            redirect(baseUrl('booking-deposit.php?booking_id=' . $bookingId));
-        }
+        // Staff confirms while assigning a technician. Reject crafted customer
+        // confirmation requests as well as the removed UI action.
+        flashMessage('deposit_error', 'Staff will confirm your booking and assign a mechanic after reviewing your reservation.');
+        redirect(baseUrl('booking-deposit.php?booking_id=' . $bookingId));
 
-        // Conditional update — a repeat submit changes 0 rows instead of
-        // re-confirming, so refreshing cannot duplicate the confirmation.
-        $stmt = getDB()->prepare(
-            "UPDATE bookings SET status = 'confirmed' WHERE id = ? AND user_id = ? AND status = 'pending'"
-        );
-        $stmt->execute([$bookingId, $user['id']]);
-
-        if ($stmt->rowCount() === 1) {
-            notifyAllStaff(
-                "Booking #{$bookingId} from {$user['name']} is confirmed — reservation deposit paid.",
-                'booking',
-                $bookingId
-            );
-            flashMessage('booking_success', 'Booking #' . $bookingId . ' confirmed. We have received your reservation deposit.');
-        } else {
-            flashMessage('booking_success', 'Booking #' . $bookingId . ' is already confirmed.');
-        }
-        redirect(baseUrl('book-service.php?tab=appointments'));
     }
 }
 
@@ -97,7 +78,7 @@ if ($result === 'cancelled') {
 } elseif ($result === 'success') {
     // Verify with PayMongo rather than trusting the redirect.
     $verified = depositVerifyLatest($bookingId);
-    if ($verified['status'] === 'paid') {
+    if ($verified['status'] === 'paid' && $verified['error'] === '') {
         $notice = 'Payment successful! Your reservation deposit has been verified.';
     } elseif ($verified['error'] !== '') {
         $error = 'We could not verify the payment yet: ' . $verified['error'];
@@ -120,133 +101,125 @@ $paidRow    = depositPaidRow($bookingId);
 $isPaid     = $paidRow !== null;
 $required   = depositIsRequired();
 $amountDue  = $required ? depositAmount() : 0.0;
-$isConfirmed = $booking['status'] !== 'pending';
+$isPending = $booking['status'] === 'pending';
+$isCancelled = $booking['status'] === 'cancelled';
+$isStaffReviewPending = $isPaid && $isPending;
 
 $pageTitle = 'Reservation Deposit - MotoTrack';
 require_once __DIR__ . '/includes/header.php';
 ?>
 
-<section class="page-hero">
-  <div class="container">
-    <span class="eyebrow">Booking #<?= (int)$booking['id'] ?></span>
-    <h1>Reservation Deposit</h1>
-  </div>
-</section>
+<section class="deposit-page">
+  <div class="container deposit-page__container">
+    <header class="deposit-page__heading">
+      <span class="deposit-booking-id">Booking #<?= (int)$booking['id'] ?></span>
+      <h1>Reservation Deposit</h1>
+      <p>Review your booking and complete the payment to secure your service slot.</p>
+    </header>
 
-<section class="section container">
-  <div class="auth-card" style="max-width:620px;">
+    <?php if ($notice): ?><div class="alert success deposit-alert"><?= htmlspecialchars($notice) ?></div><?php endif; ?>
+    <?php if ($error): ?><div class="alert error deposit-alert"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
-    <?php if ($notice): ?><div class="alert success"><?= htmlspecialchars($notice) ?></div><?php endif; ?>
-    <?php if ($error): ?><div class="alert error"><?= htmlspecialchars($error) ?></div><?php endif; ?>
-
-    <!-- Booking summary -->
-    <div style="background:#f9fafb;border-radius:10px;padding:18px;margin-bottom:18px;">
-      <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-        <span style="color:#6b7280;">Date</span>
-        <strong><?= htmlspecialchars(date('F j, Y', strtotime($booking['scheduled_date']))) ?></strong>
-      </div>
-      <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-        <span style="color:#6b7280;">Time</span>
-        <strong><?= $booking['scheduled_time'] ? htmlspecialchars(date('g:i A', strtotime($booking['scheduled_time']))) : 'To be confirmed' ?></strong>
-      </div>
-      <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-        <span style="color:#6b7280;">Motorcycle</span>
-        <strong><?= htmlspecialchars($booking['vehicle_name'] ?: 'Not specified') ?><?= $booking['plate_number'] ? ' (' . htmlspecialchars($booking['plate_number']) . ')' : '' ?></strong>
-      </div>
-      <?php if ($services): ?>
-        <div style="display:flex;justify-content:space-between;margin-bottom:6px;gap:16px;">
-          <span style="color:#6b7280;">Service<?= count($services) > 1 ? 's' : '' ?></span>
-          <strong style="text-align:right;"><?= htmlspecialchars(implode(', ', array_column($services, 'service_name'))) ?></strong>
+    <div class="deposit-layout">
+      <article class="deposit-summary-panel">
+        <div class="deposit-panel-heading">
+          <h2>Booking summary</h2>
+          <span>Reservation details</span>
         </div>
-      <?php endif; ?>
-      <?php if ($booking['technician_name']): ?>
-        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-          <span style="color:#6b7280;">Technician</span>
-          <strong><?= htmlspecialchars($booking['technician_name']) ?></strong>
-        </div>
-      <?php endif; ?>
-      <div style="display:flex;justify-content:space-between;padding-top:10px;border-top:1px solid #e5e7eb;">
-        <span style="color:#6b7280;">Estimated total</span>
-        <strong><?= formatPrice((float)$booking['total_amount']) ?></strong>
-      </div>
+
+        <dl class="deposit-summary-list">
+          <div class="deposit-summary-row">
+            <dt>Date</dt>
+            <dd><?= htmlspecialchars(date('F j, Y', strtotime($booking['scheduled_date']))) ?></dd>
+          </div>
+          <div class="deposit-summary-row">
+            <dt>Time</dt>
+            <dd><?= $booking['scheduled_time'] ? htmlspecialchars(date('g:i A', strtotime($booking['scheduled_time']))) : 'To be confirmed' ?></dd>
+          </div>
+          <div class="deposit-summary-row">
+            <dt>Motorcycle</dt>
+            <dd><?= htmlspecialchars($booking['vehicle_name'] ?: 'Not specified') ?><?= $booking['plate_number'] ? ' (' . htmlspecialchars($booking['plate_number']) . ')' : '' ?></dd>
+          </div>
+          <?php if ($services): ?>
+            <div class="deposit-summary-row">
+              <dt>Service<?= count($services) > 1 ? 's' : '' ?></dt>
+              <dd><?= htmlspecialchars(implode(', ', array_column($services, 'service_name'))) ?></dd>
+            </div>
+          <?php endif; ?>
+          <?php if ($booking['technician_name']): ?>
+            <div class="deposit-summary-row">
+              <dt>Technician</dt>
+              <dd><?= htmlspecialchars($booking['technician_name']) ?></dd>
+            </div>
+          <?php endif; ?>
+          <div class="deposit-summary-row deposit-summary-row--total">
+            <dt>Estimated total</dt>
+            <dd><?= formatPrice((float)$booking['total_amount']) ?></dd>
+          </div>
+        </dl>
+      </article>
+
+      <aside class="deposit-payment-panel">
+        <?php if (!$required): ?>
+          <div class="deposit-payment-copy">
+            <span class="deposit-payment-label">Booking confirmation</span>
+            <h2>No deposit required</h2>
+            <p>Your booking can be confirmed without a reservation deposit.</p>
+          </div>
+          <div class="deposit-status deposit-status--paid"><span>Payment status</span><strong>Not required</strong></div>
+          <p class="deposit-staff-note">Your booking is awaiting staff confirmation and mechanic assignment.</p>
+
+        <?php else: ?>
+          <div class="deposit-payment-copy">
+            <span class="deposit-payment-label">Reservation deposit</span>
+            <h2><?= formatPrice($isPaid ? (float)$paidRow['amount'] : $amountDue) ?></h2>
+            <p><?= $isPaid ? 'Your reservation deposit has been verified.' : 'A reservation deposit of ' . formatPrice($amountDue) . ' is required to confirm your booking.' ?></p>
+          </div>
+
+          <div class="deposit-status <?= $isPaid ? 'deposit-status--paid' : 'deposit-status--unpaid' ?>">
+            <span>Payment status</span>
+            <strong><?= htmlspecialchars(depositStatusLabel($deposit)) ?></strong>
+          </div>
+
+          <?php if ($isPaid): ?>
+            <dl class="deposit-payment-details">
+              <div><dt>Payment method</dt><dd>PayMongo</dd></div>
+              <?php if (!empty($paidRow['payment_reference'])): ?>
+                <div><dt>Reference</dt><dd class="deposit-reference"><?= htmlspecialchars($paidRow['payment_reference']) ?></dd></div>
+              <?php endif; ?>
+              <?php if (!empty($paidRow['paid_at'])): ?>
+                <div><dt>Paid</dt><dd><?= htmlspecialchars(date('M j, Y g:i A', strtotime($paidRow['paid_at']))) ?></dd></div>
+              <?php endif; ?>
+            </dl>
+          <?php endif; ?>
+
+          <?php if ($isCancelled): ?>
+            <div class="alert error deposit-inline-alert">This booking has been cancelled. Please contact the shop if you need help with your deposit.</div>
+
+          <?php elseif ($isStaffReviewPending): ?>
+            <div class="alert success deposit-inline-alert">Reservation deposit paid.</div>
+            <p class="deposit-staff-note">Your booking is awaiting staff confirmation and mechanic assignment.</p>
+
+          <?php elseif (!$isPending): ?>
+            <div class="alert success deposit-inline-alert">Your booking has been accepted and is being handled by the shop.</div>
+
+          <?php else: ?>
+            <form method="post" class="deposit-action-form">
+              <?= authContextField() ?>
+              <input type="hidden" name="booking_id" value="<?= (int)$booking['id'] ?>">
+              <input type="hidden" name="action" value="pay">
+              <button type="submit" class="btn btn-primary deposit-primary-action">
+                <?= ($deposit && in_array($deposit['status'], ['cancelled','failed','expired'], true)) ? 'Retry Payment' : 'Pay Reservation Deposit' ?>
+              </button>
+            </form>
+            <p class="deposit-secure-note"><i class="fas fa-lock" aria-hidden="true"></i> You will be redirected to PayMongo to complete payment securely.</p>
+          <?php endif; ?>
+        <?php endif; ?>
+      </aside>
     </div>
 
-    <?php if (!$required): ?>
-      <div class="alert success">No reservation deposit is required for this booking.</div>
-      <?php if (!$isConfirmed): ?>
-        <form method="post">
-          <?= authContextField() ?>
-          <input type="hidden" name="booking_id" value="<?= (int)$booking['id'] ?>">
-          <input type="hidden" name="action" value="confirm">
-          <button type="submit" class="btn btn-primary" style="width:100%;">Confirm Booking</button>
-        </form>
-      <?php endif; ?>
-
-    <?php else: ?>
-      <!-- Deposit panel -->
-      <div style="border:1px solid <?= $isPaid ? '#bbf7d0' : '#fde68a' ?>;background:<?= $isPaid ? '#f0fdf4' : '#fffbeb' ?>;border-radius:10px;padding:18px;margin-bottom:18px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-          <span style="color:#6b7280;font-weight:700;">Reservation Deposit</span>
-          <strong style="font-size:1.3rem;color:<?= $isPaid ? '#15803d' : '#b45309' ?>;">
-            <?= formatPrice($isPaid ? (float)$paidRow['amount'] : $amountDue) ?>
-          </strong>
-        </div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-          <span style="color:#6b7280;">Payment Status</span>
-          <strong style="color:<?= $isPaid ? '#15803d' : '#b45309' ?>;"><?= htmlspecialchars(depositStatusLabel($deposit)) ?></strong>
-        </div>
-        <?php if ($isPaid): ?>
-          <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-            <span style="color:#6b7280;">Payment Method</span><strong>PayMongo</strong>
-          </div>
-          <?php if (!empty($paidRow['payment_reference'])): ?>
-            <div style="display:flex;justify-content:space-between;margin-bottom:6px;gap:12px;">
-              <span style="color:#6b7280;">Reference</span>
-              <strong style="font-family:monospace;font-size:.85rem;word-break:break-all;"><?= htmlspecialchars($paidRow['payment_reference']) ?></strong>
-            </div>
-          <?php endif; ?>
-          <?php if (!empty($paidRow['paid_at'])): ?>
-            <div style="display:flex;justify-content:space-between;">
-              <span style="color:#6b7280;">Paid</span>
-              <strong><?= htmlspecialchars(date('M j, Y g:i A', strtotime($paidRow['paid_at']))) ?></strong>
-            </div>
-          <?php endif; ?>
-        <?php else: ?>
-          <p style="margin:10px 0 0;color:#6b7280;font-size:.9rem;">
-            A reservation deposit of <?= formatPrice($amountDue) ?> is required to confirm your booking.
-          </p>
-        <?php endif; ?>
-      </div>
-
-      <?php if ($isConfirmed): ?>
-        <div class="alert success">This booking is already confirmed.</div>
-        <a class="btn btn-outline" href="<?= baseUrl('book-service.php?tab=appointments') ?>">Back to appointments</a>
-
-      <?php elseif ($isPaid): ?>
-        <form method="post">
-          <?= authContextField() ?>
-          <input type="hidden" name="booking_id" value="<?= (int)$booking['id'] ?>">
-          <input type="hidden" name="action" value="confirm">
-          <button type="submit" class="btn btn-primary" style="width:100%;">Confirm Booking</button>
-        </form>
-
-      <?php else: ?>
-        <form method="post">
-          <?= authContextField() ?>
-          <input type="hidden" name="booking_id" value="<?= (int)$booking['id'] ?>">
-          <input type="hidden" name="action" value="pay">
-          <button type="submit" class="btn btn-primary" style="width:100%;">
-            <?= ($deposit && in_array($deposit['status'], ['cancelled','failed','expired'], true)) ? 'Retry Payment' : 'Pay Reservation Deposit' ?>
-          </button>
-        </form>
-        <p class="fine-print" style="margin-top:10px;text-align:center;">
-          You will be redirected to PayMongo to complete the payment securely.
-        </p>
-      <?php endif; ?>
-    <?php endif; ?>
-
-    <div style="margin-top:16px;text-align:center;">
-      <a href="<?= baseUrl('book-service.php?tab=appointments') ?>" style="color:#6b7280;font-size:.9rem;">Back to my appointments</a>
+    <div class="deposit-back-link">
+      <a href="<?= baseUrl('book-service.php?tab=appointments') ?>"><i class="fas fa-arrow-left" aria-hidden="true"></i> Back to my appointments</a>
     </div>
   </div>
 </section>

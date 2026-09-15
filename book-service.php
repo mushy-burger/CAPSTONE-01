@@ -59,13 +59,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($pageAction, ['delete_appo
 
 $appointments = fetchAllRows(
     "SELECT b.*, v.plate_number, t.name AS type_name, br.name AS brand_name, m.name AS model_name,
-            tech.name AS technician_name
+            tech.name AS technician_name,
+            r.service_rating AS submitted_service_rating, r.mechanic_rating AS submitted_mechanic_rating
      FROM bookings b
      LEFT JOIN customer_vehicles v ON v.id = b.vehicle_id
      LEFT JOIN motorcycle_types t ON t.id = v.type_id
      LEFT JOIN motorcycle_brands br ON br.id = v.brand_id
      LEFT JOIN motorcycle_models m ON m.id = v.model_id
      LEFT JOIN users tech ON tech.id = b.technician_id
+     LEFT JOIN booking_ratings r ON r.booking_id = b.id
+     WHERE b.user_id = ?
+     ORDER BY b.created_at DESC, b.id DESC",
+    [$user['id']]
+);
+if ($message !== '' && str_contains($message, 'Please pay')) {
+    if (preg_match('/Booking #(\d+)/', $message, $match) && depositIsSettled((int)$match[1])) {
+        $message = 'Reservation deposit paid. Your booking is awaiting staff confirmation and mechanic assignment.';
+    }
+}
+// Re-check pending deposit sessions so eventual PayMongo success is reflected
+// when the customer returns to Appointment Details, even if the first callback
+// arrived before PayMongo exposed the paid payment.
+foreach ($appointments as $appointment) {
+    if ((string)$appointment['status'] === 'pending') {
+        try { depositVerifyLatest((int)$appointment['id']); } catch (Throwable $e) {}
+    }
+}
+$appointments = fetchAllRows(
+    "SELECT b.*, v.plate_number, t.name AS type_name, br.name AS brand_name, m.name AS model_name,
+            tech.name AS technician_name,
+            r.service_rating AS submitted_service_rating, r.mechanic_rating AS submitted_mechanic_rating
+     FROM bookings b
+     LEFT JOIN customer_vehicles v ON v.id = b.vehicle_id
+     LEFT JOIN motorcycle_types t ON t.id = v.type_id
+     LEFT JOIN motorcycle_brands br ON br.id = v.brand_id
+     LEFT JOIN motorcycle_models m ON m.id = v.model_id
+     LEFT JOIN users tech ON tech.id = b.technician_id
+     LEFT JOIN booking_ratings r ON r.booking_id = b.id
      WHERE b.user_id = ?
      ORDER BY b.created_at DESC, b.id DESC",
     [$user['id']]
@@ -179,6 +209,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pageAction === 'submit_booking') {
         $db = getDB();
         $db->beginTransaction();
         try {
+            assertAvailableStockForItems($selection['products'], $db);
             if ($editBooking) {
                 $bookingId = (int)$editBooking['id'];
                 $db->prepare(
@@ -281,10 +312,27 @@ $pageTitle = 'Book Service - MotoTrack';
 require_once __DIR__ . '/includes/header.php';
 ?>
 
+<style>
+  .page-book-service .appointment-rating-action { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:16px; padding:14px 0 2px; border-top:1px solid rgba(255,255,255,.09); }
+  .page-book-service .appointment-rating-action > div { display:grid; gap:3px; }
+  .page-book-service .appointment-rating-action > div strong { color:#fff; font-size:.9rem; }
+  .page-book-service .appointment-rating-action > div span { color:rgba(255,255,255,.62); font-size:.8rem; }
+  .page-book-service .appointment-rating-action__done { color:#8ee0ad; font-size:.84rem; font-weight:800; }
+  .page-book-service .appointment-rating-action__stars { margin-left:auto; color:#f4b740; font-size:.88rem; letter-spacing:.08em; }
+  .page-book-service .appointment-rating-action .btn { flex:0 0 auto; }
+  @media (max-width:560px) { .page-book-service .appointment-rating-action { align-items:flex-start; flex-wrap:wrap; } .page-book-service .appointment-rating-action .btn { width:100%; } .page-book-service .appointment-rating-action__stars { margin-left:0; } }
+</style>
+
 <section class="section container form-layout booking-layout">
+  <header class="customer-page-heading booking-page-heading">
+    <div>
+      <h1><?= $activeTab === 'appointments' ? 'Your appointments' : ($editBooking ? 'Update appointment' : 'Book a service') ?></h1>
+      <p><?= $activeTab === 'appointments' ? 'Review scheduled work and service history.' : 'Choose the motorcycle, work, products, and schedule for this visit.' ?></p>
+    </div>
+  </header>
   <div class="page-tabs booking-page-tabs">
-    <a href="<?= baseUrl('book-service.php?tab=book') ?>" class="<?= $activeTab === 'book' ? 'active' : '' ?>">Book Service</a>
-    <a href="<?= baseUrl('book-service.php?tab=appointments') ?>" class="<?= $activeTab === 'appointments' ? 'active' : '' ?>">Appointments</a>
+    <a href="<?= baseUrl('book-service.php?tab=book') ?>" class="<?= $activeTab === 'book' ? 'active' : '' ?>"<?= $activeTab === 'book' ? ' aria-current="page"' : '' ?>>Book Service</a>
+    <a href="<?= baseUrl('book-service.php?tab=appointments') ?>" class="<?= $activeTab === 'appointments' ? 'active' : '' ?>"<?= $activeTab === 'appointments' ? ' aria-current="page"' : '' ?>>Appointments</a>
   </div>
 
   <?php if ($activeTab === 'book'): ?>
@@ -298,8 +346,8 @@ require_once __DIR__ . '/includes/header.php';
     <?php if ($message): ?><div class="alert success"><?= htmlspecialchars($message) ?></div><?php endif; ?>
     <?php if ($error): ?><div class="alert error"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
-    <label>Select motorcycle
-      <select name="vehicle_id" onchange="this.form.method='get'; this.form.submit()">
+    <label><span>Select motorcycle</span>
+      <select name="vehicle_id" data-mtx-enhance onchange="this.form.method='get'; this.form.submit()">
         <?php foreach ($vehicles as $v): ?>
           <option value="<?= (int)$v['id'] ?>" <?= (int)$v['id'] === (int)$vehicle['id'] ? 'selected' : '' ?>>
             <?= htmlspecialchars($v['brand_name'] . ' ' . $v['model_name'] . ' (' . $v['type_name'] . ')') ?>
@@ -327,11 +375,14 @@ require_once __DIR__ . '/includes/header.php';
                 data-service-toggle
                 data-service-id="<?= (int)$service['id'] ?>"
               >
+              <span class="service-checkbox-control" aria-hidden="true"><i class="fas fa-check"></i></span>
               <span class="service-checkbox-copy">
                 <strong><?= htmlspecialchars($service['name']) ?></strong>
-                <small><?= htmlspecialchars($service['description'] ?: 'Service available for this motorcycle type.') ?></small>
+                <?php if (trim((string)($service['description'] ?? '')) !== ''): ?>
+                  <small><?= htmlspecialchars($service['description']) ?></small>
+                <?php endif; ?>
               </span>
-              <span class="service-checkbox-fee"><?= formatPrice((float)$service['labor_fee']) ?></span>
+              <span class="service-checkbox-fee"><small>Labor</small><strong><?= formatPrice((float)$service['labor_fee']) ?></strong></span>
             </label>
           <?php endforeach; ?>
         </div>
@@ -387,7 +438,7 @@ require_once __DIR__ . '/includes/header.php';
         <textarea name="notes" rows="4" placeholder="Describe symptoms, preferred parts, or requests"><?= htmlspecialchars($notesValue) ?></textarea>
       </label>
       <div class="booking-form-actions">
-        <button class="btn btn-primary" type="submit"><?= $editBooking ? 'Update appointment' : 'Submit booking' ?></button>
+        <button class="btn btn-primary" type="submit"><?= $editBooking ? 'Update appointment' : 'Confirm booking' ?></button>
         <?php if ($editBooking): ?><a class="btn btn-outline" href="<?= baseUrl('book-service.php?tab=appointments') ?>">Cancel edit</a><?php endif; ?>
       </div>
     <?php else: ?>
@@ -396,6 +447,7 @@ require_once __DIR__ . '/includes/header.php';
     <?php endif; ?>
   </form>
 
+  <div class="booking-summary-slot">
   <aside class="summary-box booking-summary" id="bookingSummaryPanel">
     <h2>Estimated Cost</h2>
 
@@ -441,6 +493,7 @@ require_once __DIR__ . '/includes/header.php';
     <div><span>Final total</span><strong id="bookingTotalValue"><?= formatPrice((float)$selection['total_amount']) ?></strong></div>
     <p class="fine-print">Final cost can still change if the technician records additional parts during service.</p>
   </aside>
+  </div>
   <?php else: ?>
   <div class="form-panel booking-history-panel">
     <h2>Your appointments</h2>
@@ -538,6 +591,23 @@ require_once __DIR__ . '/includes/header.php';
               <span>Total</span>
               <strong><?= formatPrice((float)$appointment['total_amount']) ?></strong>
             </div>
+
+            <?php if ($status === 'completed'): ?>
+              <div class="appointment-rating-action">
+                <?php if ($appointment['submitted_service_rating'] !== null): ?>
+                  <span class="appointment-rating-action__done"><i class="fas fa-circle-check" aria-hidden="true"></i> Review submitted</span>
+                  <span class="appointment-rating-action__stars" aria-label="<?= (int)$appointment['submitted_service_rating'] ?> out of 5 service stars">
+                    <?php for ($i = 1; $i <= 5; $i++): ?><i class="<?= $i <= (int)$appointment['submitted_service_rating'] ? 'fas' : 'far' ?> fa-star" aria-hidden="true"></i><?php endfor; ?>
+                  </span>
+                <?php elseif ((int)($appointment['rating_token_used'] ?? 0) === 0): ?>
+                  <div>
+                    <strong>Service completed</strong>
+                    <span>Tell us about your MotoTrack experience.</span>
+                  </div>
+                  <a class="btn btn-primary btn-small" href="<?= baseUrl('rate-booking.php?booking_id=' . $bookingId . '&ctx=' . urlencode(currentAuthContext())) ?>"><i class="fas fa-star" aria-hidden="true"></i> Rate Service</a>
+                <?php endif; ?>
+              </div>
+            <?php endif; ?>
 
             <div class="history-actions">
               <?php if ($canEdit && $isPending): ?>
@@ -655,14 +725,18 @@ require_once __DIR__ . '/includes/header.php';
 
   const productCardMarkup = (serviceId, product) => {
     const isSelected = selectedProducts.get(serviceId) === Number(product.id);
+    const available = Number(product.available_stock ?? 0) > 0;
+    const isDisabled = !available;
     const description = product.description || product.category_name || 'Compatible product';
     return `
       <button
         type="button"
-        class="booking-product-card${isSelected ? ' is-selected' : ''}"
+        class="booking-product-card mtx-tilt-card${isSelected ? ' is-selected' : ''}${isDisabled ? ' is-unavailable' : ''}"
         data-product-card
+        data-tilt-card
         data-service-id="${serviceId}"
         data-product-id="${Number(product.id)}"
+        ${isDisabled ? 'disabled aria-disabled="true"' : ''}
       >
         <span class="booking-product-check"><i class="fas fa-check"></i></span>
         <span class="booking-product-image">${getProductImageMarkup(product)}</span>
@@ -670,9 +744,9 @@ require_once __DIR__ . '/includes/header.php';
           <strong>${escapeHtml(product.name)}</strong>
           <small>${escapeHtml(product.brand || 'MotoTrack')}</small>
           <em>${escapeHtml(description)}</em>
-          <b>${formatMoney(product.price)}</b>
+          <b>${formatMoney(product.price)}</b><small>${available ? 'Available' : 'Unavailable'}</small>
         </span>
-        <span class="booking-product-action">${isSelected ? 'Selected' : 'Select Product'}</span>
+        <span class="booking-product-action">${isDisabled ? 'Unavailable' : (isSelected ? 'Selected' : 'Select Product')}</span>
       </button>
     `;
   };
@@ -717,7 +791,6 @@ require_once __DIR__ . '/includes/header.php';
         <strong>${labor} labor</strong>
       </div>
       <div class="product-picker-heading">
-        <strong>${title} products</strong>
         <span>${category}</span>
       </div>
       <div class="booking-product-grid">${cards}</div>
@@ -729,17 +802,12 @@ require_once __DIR__ . '/includes/header.php';
     const service = serviceLookup.get(serviceId);
     if (!service || !serviceProductSections) return;
 
-    if (productCache.has(serviceId)) {
-      renderProductSection(service, productCache.get(serviceId));
-      updateBookingUi();
-      return;
-    }
-
     renderProductSection(service, [], 'loading');
 
     const url = new URL(productEndpoint, window.location.href);
     url.searchParams.set('service_id', String(serviceId));
     url.searchParams.set('vehicle_id', String(vehicleId));
+    url.searchParams.set('_availability', String(Date.now()));
 
     try {
       const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
@@ -947,6 +1015,148 @@ require_once __DIR__ . '/includes/header.php';
       grid.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   });
+})();
+</script>
+<?php endif; ?>
+
+<?php if ($activeTab === 'book'): ?>
+<script>
+(() => {
+  // Enhance the motorcycle <select> with the shared custom listbox (same as Shop).
+  // The native <select> stays in the form as the source of truth: choosing an
+  // option writes back and fires `change`, so the existing onchange reload,
+  // name, values, and selected value are all preserved.
+  const selects = document.querySelectorAll('select[data-mtx-enhance]');
+  if (!selects.length || !('closest' in Element.prototype)) return;
+  let counter = 0;
+
+  const closeAll = (except) => {
+    document.querySelectorAll('.mtx-select[data-open]').forEach((el) => {
+      if (el === except) return;
+      el.removeAttribute('data-open');
+      el.querySelector('.mtx-select-trigger').setAttribute('aria-expanded', 'false');
+      el.querySelector('.mtx-select-menu').hidden = true;
+    });
+  };
+
+  selects.forEach((select) => {
+    const uid = 'mtxbs-' + (counter++);
+    const labelSpan = select.closest('label') ? select.closest('label').querySelector('span') : null;
+    if (labelSpan && !labelSpan.id) labelSpan.id = uid + '-lbl';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'mtx-select';
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'mtx-select-trigger';
+    trigger.id = uid + '-trg';
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', 'false');
+
+    const valueEl = document.createElement('span');
+    valueEl.className = 'mtx-select-value';
+    valueEl.id = uid + '-val';
+    const selText = () => (select.options[select.selectedIndex] ? select.options[select.selectedIndex].text.trim() : '');
+    valueEl.textContent = selText();
+
+    const chevron = document.createElement('i');
+    chevron.className = 'fas fa-chevron-down mtx-select-chevron';
+    chevron.setAttribute('aria-hidden', 'true');
+    trigger.append(valueEl, chevron);
+
+    const menu = document.createElement('ul');
+    menu.className = 'mtx-select-menu';
+    menu.id = uid + '-menu';
+    menu.setAttribute('role', 'listbox');
+    menu.tabIndex = -1;
+    menu.hidden = true;
+    if (labelSpan) menu.setAttribute('aria-labelledby', labelSpan.id);
+    trigger.setAttribute('aria-controls', menu.id);
+    trigger.setAttribute('aria-labelledby', (labelSpan ? labelSpan.id + ' ' : '') + valueEl.id);
+
+    const options = Array.from(select.options).map((opt, i) => {
+      const li = document.createElement('li');
+      li.className = 'mtx-select-option';
+      li.id = uid + '-opt-' + i;
+      li.setAttribute('role', 'option');
+      li.dataset.index = String(i);
+      li.setAttribute('aria-selected', opt.selected ? 'true' : 'false');
+      const label = document.createElement('span');
+      label.className = 'mtx-select-option-label';
+      label.textContent = opt.text.trim();
+      const check = document.createElement('i');
+      check.className = 'fas fa-check mtx-select-check';
+      check.setAttribute('aria-hidden', 'true');
+      li.append(label, check);
+      menu.appendChild(li);
+      return li;
+    });
+
+    let activeIndex = select.selectedIndex < 0 ? 0 : select.selectedIndex;
+    const setActive = (idx, scroll) => {
+      activeIndex = (idx + options.length) % options.length;
+      options.forEach((o, i) => o.classList.toggle('is-active', i === activeIndex));
+      menu.setAttribute('aria-activedescendant', options[activeIndex].id);
+      if (scroll !== false) options[activeIndex].scrollIntoView({ block: 'nearest' });
+    };
+
+    const open = () => {
+      closeAll(wrap);
+      wrap.setAttribute('data-open', '');
+      trigger.setAttribute('aria-expanded', 'true');
+      menu.hidden = false;
+      setActive(select.selectedIndex < 0 ? 0 : select.selectedIndex, true);
+      menu.focus();
+    };
+    const close = (focusTrigger) => {
+      wrap.removeAttribute('data-open');
+      trigger.setAttribute('aria-expanded', 'false');
+      menu.hidden = true;
+      if (focusTrigger) trigger.focus();
+    };
+    const choose = (idx) => {
+      const opt = select.options[idx];
+      if (!opt) return;
+      if (select.selectedIndex !== idx) {
+        select.selectedIndex = idx;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      valueEl.textContent = opt.text.trim();
+      options.forEach((o, i) => o.setAttribute('aria-selected', i === idx ? 'true' : 'false'));
+      close(true);
+    };
+
+    trigger.addEventListener('click', () => { wrap.hasAttribute('data-open') ? close(true) : open(); });
+    trigger.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    });
+    menu.addEventListener('keydown', (e) => {
+      switch (e.key) {
+        case 'ArrowDown': e.preventDefault(); setActive(activeIndex + 1); break;
+        case 'ArrowUp': e.preventDefault(); setActive(activeIndex - 1); break;
+        case 'Home': e.preventDefault(); setActive(0); break;
+        case 'End': e.preventDefault(); setActive(options.length - 1); break;
+        case 'Enter':
+        case ' ': e.preventDefault(); choose(activeIndex); break;
+        case 'Escape': e.preventDefault(); close(true); break;
+        case 'Tab': close(false); break;
+        default: break;
+      }
+    });
+    options.forEach((li, i) => {
+      li.addEventListener('click', () => choose(i));
+      li.addEventListener('mousemove', () => { if (activeIndex !== i) setActive(i, false); });
+    });
+
+    wrap.append(trigger, menu);
+    select.classList.add('mtx-select-native');
+    select.setAttribute('tabindex', '-1');
+    select.setAttribute('aria-hidden', 'true');
+    select.parentNode.insertBefore(wrap, select.nextSibling);
+  });
+
+  document.addEventListener('mousedown', (e) => { if (!e.target.closest('.mtx-select')) closeAll(null); });
 })();
 </script>
 <?php endif; ?>

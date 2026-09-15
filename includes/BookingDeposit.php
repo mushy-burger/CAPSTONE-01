@@ -11,13 +11,14 @@
  *          |
  *   Return / webhook  ->  depositVerify()  ->  PayMongo API says paid
  *          |
- *   Booking may now be confirmed
+ *   Staff may now confirm and assign booking
  *
  * The amount always comes from site_settings, never from the request, so a
  * crafted form cannot lower what the customer owes.
  */
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/functions.php';
+require_once __DIR__ . '/PartsReservationService.php';
 require_once __DIR__ . '/paymongo.php';
 
 const DEPOSIT_SETTING_KEY = 'reservation_deposit_amount';
@@ -104,7 +105,15 @@ function depositIsSettled(int $bookingId): bool {
     if (!depositIsRequired()) {
         return true;
     }
-    return depositPaidRow($bookingId) !== null;
+    if (depositPaidRow($bookingId) !== null) {
+        return true;
+    }
+    $latest = depositLatestRow($bookingId);
+    if (!$latest || empty($latest['checkout_session_id']) || !in_array($latest['status'], ['pending', 'paid'], true)) {
+        return false;
+    }
+    $verified = depositVerify((int)$latest['id']);
+    return $verified['status'] === 'paid' && $verified['error'] === '';
 }
 
 /** Deposits for many bookings at once, keyed by booking id (avoids N+1). */
@@ -243,6 +252,8 @@ function depositVerify(int $depositId): array {
         return ['status' => 'unknown', 'error' => 'Payment record not found.'];
     }
     if ($deposit['status'] === 'paid') {
+        try { partsReserveForBooking((int)$deposit['booking_id']); }
+        catch (Throwable $e) { return ['status' => 'paid', 'error' => 'Payment verified, but inventory could not be held: ' . $e->getMessage()]; }
         return ['status' => 'paid', 'error' => ''];
     }
     if (empty($deposit['checkout_session_id'])) {
@@ -273,14 +284,26 @@ function depositVerify(int $depositId): array {
             }
         }
 
-        // Conditional update: only a still-unpaid row is settled, so two
-        // concurrent verifications (page + webhook) cannot both "first-pay" it.
-        $stmt = getDB()->prepare(
-            "UPDATE booking_deposits
-                SET status = 'paid', payment_id = ?, paid_at = COALESCE(paid_at, NOW())
-              WHERE id = ? AND status <> 'paid'"
-        );
-        $stmt->execute([$paymentId !== '' ? $paymentId : null, $depositId]);
+        // Lock the payment row, then reserve parts in the same transaction.
+        // Competing webhook/return verifications serialize on this row and on
+        // each product row locked by partsReserveForBooking().
+        $db = getDB();
+        $db->beginTransaction();
+        try {
+            $locked = fetchOne("SELECT status, booking_id FROM booking_deposits WHERE id = ? FOR UPDATE", [$depositId]);
+            if (($locked['status'] ?? '') !== 'paid') {
+                $db->prepare(
+                    "UPDATE booking_deposits
+                        SET status = 'paid', payment_id = ?, paid_at = COALESCE(paid_at, NOW())
+                      WHERE id = ? AND status <> 'paid'"
+                )->execute([$paymentId !== '' ? $paymentId : null, $depositId]);
+            }
+            partsReserveForBooking((int)($locked['booking_id'] ?? $deposit['booking_id']));
+            $db->commit();
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            return ['status' => (string)$deposit['status'], 'error' => 'Payment verified, but inventory could not be held: ' . $e->getMessage()];
+        }
 
         return ['status' => 'paid', 'error' => ''];
     }

@@ -40,7 +40,9 @@ require_once __DIR__ . '/includes/header.php';
 ?>
 
 <section class="auth-section">
-  <form class="auth-card" method="post">
+  <div class="auth-layout">
+  <?php require __DIR__ . '/includes/auth-aside.php'; ?>
+  <form class="auth-card" method="post" data-validate>
     <?= authContextField() ?>
     <span class="eyebrow">Password help</span>
     <h1>Forgot password</h1>
@@ -52,6 +54,7 @@ require_once __DIR__ . '/includes/header.php';
     <p><a href="<?= baseUrl('verify-otp.php') ?>">I already have a code</a></p>
     <p><a href="<?= baseUrl('login.php') ?>">Back to login</a></p>
   </form>
+  </div>
 </section>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

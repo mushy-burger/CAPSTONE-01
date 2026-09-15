@@ -8,7 +8,7 @@ if (!$_qa_user || $_qa_user['role'] !== 'qa')
 <div id="qa-mode-bar">
   <span class="qa-badge-pill"><i class="fas fa-vial"></i> QA MODE</span>
   <span class="qa-bar-label">
-    You are viewing as <strong>QA Tester</strong>
+    You are viewing as <strong>QA Tester</strong> — read-only observer.
   </span>
   <div class="qa-bar-links">
     <a href="<?= baseUrl('qa/index.php') ?>"><i class="fas fa-th-large"></i> QA Hub</a>
@@ -102,3 +102,24 @@ if (!$_qa_user || $_qa_user['role'] !== 'qa')
     padding-bottom: 52px !important;
   }
 </style>
+
+<script>
+(function () {
+  function lockWriteControls() {
+    document.querySelectorAll('form').forEach(function (form) {
+      if ((form.getAttribute('method') || 'get').toLowerCase() !== 'post') return;
+      form.querySelectorAll('button[type="submit"], input[type="submit"]').forEach(function (control) {
+        control.disabled = true;
+        control.setAttribute('aria-disabled', 'true');
+        control.title = 'QA mode is read-only';
+      });
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', lockWriteControls, { once: true });
+  } else {
+    lockWriteControls();
+  }
+})();
+</script>

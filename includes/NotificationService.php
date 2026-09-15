@@ -359,9 +359,9 @@ function notifyAppointmentReminder(int $bookingId): array {
 /**
  * RATING_REQUEST — sent after job completion with a one-time rating link.
  *
- * Generates a unique token (SHA-256), stores it on the booking, then
- * dispatches SMS + email. Idempotency is handled by the token: if the
- * booking already has a token, we reuse it so the same link is sent.
+ * Generates a cryptographically random token, stores it on the booking, then
+ * dispatches SMS + email. An existing unused token is reused after a partial
+ * delivery failure. Completed ratings are never reopened.
  *
  * @return array{sms:string,email:string,token:string}
  */
@@ -371,8 +371,18 @@ function notifyRatingRequest(int $bookingId): array {
         return ['sms' => 'skipped', 'email' => 'skipped', 'token' => ''];
     }
 
-    // Generate or reuse token
-    $existing = fetchOne("SELECT rating_token, rating_token_used FROM bookings WHERE id = ?", [$bookingId]);
+    // Generate or reuse an unused token. Never reopen a completed rating.
+    $existing = fetchOne(
+        "SELECT b.rating_token, b.rating_token_used,
+                EXISTS(SELECT 1 FROM booking_ratings r WHERE r.booking_id = b.id) AS has_rating
+         FROM bookings b
+         WHERE b.id = ?",
+        [$bookingId]
+    );
+    if ($existing && ((int)$existing['rating_token_used'] === 1 || (int)$existing['has_rating'] === 1)) {
+        return ['sms' => 'duplicate', 'email' => 'duplicate', 'token' => ''];
+    }
+
     if ($existing && !empty($existing['rating_token']) && !(int)$existing['rating_token_used']) {
         $token = $existing['rating_token'];
     } else {
@@ -381,7 +391,8 @@ function notifyRatingRequest(int $bookingId): array {
                ->execute([$token, $bookingId]);
     }
 
-    $shopName   = fetchOne("SELECT value FROM site_settings WHERE `key` = 'shop_name'")['value'] ?? 'MotoTrack';
+    $shopSetting = fetchOne("SELECT value FROM site_settings WHERE `key` = 'shop_name'");
+    $shopName   = $shopSetting['value'] ?? 'MotoTrack';
     $baseUrl    = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http')
                 . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . baseUrl('rate-booking.php');
     $ratingUrl  = rtrim(preg_replace('/\.php.*$/', '.php', $baseUrl), '/') . '?token=' . $token;

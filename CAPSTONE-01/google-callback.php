@@ -15,6 +15,7 @@ if (!$stored || (time() - (int)$stored['created_at']) > 600) {
 
 unset($_SESSION['google_oauth_states'][$state]);
 $_GET['ctx'] = $stored['ctx'];
+$next = safeLocalPath($stored['next'] ?? null);
 
 if ($code === '') {
     flashMessage('auth_error', 'Google did not return an authorization code.');
@@ -97,4 +98,6 @@ $destinations = [
     'technician' => baseUrl('tech/index.php'),
     'qa'         => baseUrl('qa/index.php'),
 ];
-redirect($destinations[$user['role']] ?? baseUrl('index.php'));
+// Customers return to the page they originally requested (if any); staff-type
+// roles go to their dashboards, unchanged.
+redirect($destinations[$user['role']] ?? ($next ?? baseUrl('index.php')));

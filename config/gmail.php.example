@@ -1,0 +1,21 @@
+<?php
+require_once __DIR__ . '/../includes/functions.php';
+
+/*
+ * Copy this file to config/gmail.php on each environment. Keep the copied
+ * file local: it contains machine-specific secret and token paths.
+ */
+return [
+    'client_secret_path' => (string)envValue('GMAIL_OAUTH_CLIENT_SECRET_PATH', ''),
+    'token_path' => (string)envValue('GMAIL_OAUTH_TOKEN_PATH', ''),
+    'redirect_uri' => (string)envValue(
+        'GMAIL_OAUTH_REDIRECT_URI',
+        'http://localhost/CAPSTONE-01/CAPSTONE-01/admin/gmail-callback.php'
+    ),
+    'sender_email' => (string)envValue('GMAIL_SENDER_EMAIL', ''),
+    'sender_name' => (string)envValue('GMAIL_SENDER_NAME', 'MotoTrack'),
+    'scopes' => [
+        'https://www.googleapis.com/auth/gmail.readonly',
+        'https://www.googleapis.com/auth/gmail.send',
+    ],
+];

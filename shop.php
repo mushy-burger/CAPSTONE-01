@@ -13,7 +13,7 @@ $validSorts = ['featured','price_asc','price_desc','newest'];
 $sort       = in_array($sort, $validSorts, true) ? $sort : 'featured';
 $categories = getCategories();
 
-$where  = ["p.status != 'out_of_stock'"];
+$where  = ["p.status != 'archived'"];
 $params = [];
 if ($categoryId) {
     $where[]  = 'p.category_id = ?';
@@ -33,7 +33,8 @@ $orderBy = match($sort) {
 };
 
 $products = fetchAllRows(
-    "SELECT p.*, c.name AS category_name
+    "SELECT p.*, c.name AS category_name,
+            " . availableStockSql('p') . " AS available_stock
      FROM products p
      JOIN categories c ON c.id = p.category_id
      WHERE " . implode(' AND ', $where) . "
@@ -43,27 +44,37 @@ $products = fetchAllRows(
 ?>
 
 <section class="section container">
+  <header class="customer-page-heading shop-page-heading">
+    <div>
+      <h1>Shop motorcycle parts</h1>
+      <p>Search products, narrow the catalog, and compare options.</p>
+    </div>
+    <span class="shop-result-count"><?= count($products) ?> product<?= count($products) !== 1 ? 's' : '' ?></span>
+  </header>
+
   <!-- Filter / Sort Bar -->
-  <form class="filter-bar" method="get" style="flex-wrap:wrap;gap:10px;">
+  <form class="filter-bar shop-toolbar" method="get" aria-label="Product filters">
     <?= authContextField() ?>
-    <input type="search" name="q" value="<?= htmlspecialchars($q) ?>" placeholder="Search product or brand" style="flex:1;min-width:180px;">
-    <select name="category">
+    <label class="shop-search-field"><span>Search products</span>
+      <input type="search" name="q" value="<?= htmlspecialchars($q) ?>" placeholder="Product or brand">
+    </label>
+    <label><span>Category</span><select name="category">
       <option value="">All categories</option>
       <?php foreach ($categories as $category): ?>
         <option value="<?= (int)$category['id'] ?>" <?= $categoryId === (int)$category['id'] ? 'selected' : '' ?>>
           <?= htmlspecialchars($category['name']) ?>
         </option>
       <?php endforeach; ?>
-    </select>
-    <select name="sort">
+    </select></label>
+    <label><span>Sort by</span><select name="sort">
       <option value="featured"   <?= $sort==='featured'   ? 'selected':'' ?>>Featured</option>
       <option value="newest"     <?= $sort==='newest'     ? 'selected':'' ?>>Newest</option>
       <option value="price_asc"  <?= $sort==='price_asc'  ? 'selected':'' ?>>Price: Low to High</option>
       <option value="price_desc" <?= $sort==='price_desc' ? 'selected':'' ?>>Price: High to Low</option>
-    </select>
-    <button class="btn btn-dark" type="submit">Filter</button>
+    </select></label>
+    <button class="btn btn-dark shop-filter-submit" type="submit">Apply filters</button>
     <?php if ($q || $categoryId || $sort !== 'featured'): ?>
-      <a href="<?= baseUrl('shop.php') ?>" class="btn btn-outline">Reset</a>
+      <a href="<?= baseUrl('shop.php') ?>" class="btn btn-outline shop-filter-reset">Reset</a>
     <?php endif; ?>
   </form>
 
@@ -73,10 +84,10 @@ $products = fetchAllRows(
       <i class="fas fa-chevron-left"></i>
     </button>
     <div class="category-pills" id="categoryPills">
-      <a href="<?= baseUrl('shop.php') ?>" class="<?= !$categoryId ? 'active' : '' ?>">All</a>
+      <a href="<?= baseUrl('shop.php') ?>" class="<?= !$categoryId ? 'active' : '' ?>"<?= !$categoryId ? ' aria-current="page"' : '' ?>>All</a>
       <?php foreach ($categories as $category): ?>
         <a href="<?= baseUrl('shop.php?category=' . (int)$category['id']) ?>"
-           class="<?= $categoryId === (int)$category['id'] ? 'active' : '' ?>">
+           class="<?= $categoryId === (int)$category['id'] ? 'active' : '' ?>"<?= $categoryId === (int)$category['id'] ? ' aria-current="page"' : '' ?>>
           <?= htmlspecialchars($category['name']) ?>
         </a>
       <?php endforeach; ?>
@@ -88,7 +99,7 @@ $products = fetchAllRows(
 
   <!-- Results count -->
   <?php if ($q || $categoryId): ?>
-    <p style="color:var(--muted);font-size:.88rem;margin-bottom:12px;">
+    <p class="shop-results-context">
       <?= count($products) ?> result<?= count($products)!==1?'s':'' ?>
       <?= $q ? ' for "<strong>' . htmlspecialchars($q) . '</strong>"' : '' ?>
     </p>
@@ -98,17 +109,12 @@ $products = fetchAllRows(
   <div class="product-grid">
     <?php foreach ($products as $product): ?>
       <?php
-        // Add low-stock badge dynamically
         $stockBadge = '';
-        $stock = (int)$product['stock'];
-        if ($stock <= 5 && $stock > 0) {
-            $stockBadge = '<span style="position:absolute;top:10px;left:10px;background:#d97706;color:#fff;font-size:.68rem;font-weight:900;padding:3px 8px;border-radius:20px;z-index:2;">Only ' . $stock . ' left</span>';
-        }
         if ($product['featured']) {
-            $stockBadge .= '<span style="position:absolute;top:10px;right:10px;background:#d71920;color:#fff;font-size:.68rem;font-weight:900;padding:3px 8px;border-radius:20px;z-index:2;">Featured</span>';
+            $stockBadge .= '<span class="product-status-badge is-featured">Featured</span>';
         }
       ?>
-      <div style="position:relative;">
+      <div class="product-card-shell">
         <?= $stockBadge ?>
         <?= productCard($product) ?>
       </div>
@@ -116,7 +122,11 @@ $products = fetchAllRows(
   </div>
 
   <?php if (!$products): ?>
-    <p class="empty-state">No products matched your search. <a href="<?= baseUrl('shop.php') ?>">Clear filters</a></p>
+    <div class="empty-state customer-empty-state">
+      <h2>No matching products</h2>
+      <p>Try a different search or clear the current filters.</p>
+      <a class="btn btn-outline" href="<?= baseUrl('shop.php') ?>">Clear filters</a>
+    </div>
   <?php endif; ?>
 </section>
 
@@ -143,6 +153,152 @@ $products = fetchAllRows(
   pills.addEventListener('scroll', sync, { passive: true });
   window.addEventListener('resize', sync);
   sync();
+})();
+
+(() => {
+  // Enhance the Category and Sort selects with a custom listbox. The native
+  // <select> stays in the form (sr-only) and remains the single source of
+  // truth: choosing an option writes back to it and fires `change`, so filtering,
+  // Apply Filters, and URL/query behavior are unchanged. No JS = native select.
+  const toolbar = document.querySelector('.shop-toolbar');
+  if (!toolbar || !('closest' in Element.prototype)) return;
+  const selects = toolbar.querySelectorAll('select');
+  let counter = 0;
+
+  const closeAll = (except) => {
+    document.querySelectorAll('.mtx-select[data-open]').forEach((el) => {
+      if (el === except) return;
+      el.removeAttribute('data-open');
+      el.querySelector('.mtx-select-trigger').setAttribute('aria-expanded', 'false');
+      el.querySelector('.mtx-select-menu').hidden = true;
+    });
+  };
+
+  selects.forEach((select) => {
+    const uid = 'mtxsel-' + (counter++);
+    const labelSpan = select.closest('label') ? select.closest('label').querySelector('span') : null;
+    if (labelSpan && !labelSpan.id) labelSpan.id = uid + '-lbl';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'mtx-select';
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'mtx-select-trigger';
+    trigger.id = uid + '-trg';
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', 'false');
+
+    const valueEl = document.createElement('span');
+    valueEl.className = 'mtx-select-value';
+    valueEl.id = uid + '-val';
+    const selText = () => (select.options[select.selectedIndex] ? select.options[select.selectedIndex].text.trim() : '');
+    valueEl.textContent = selText();
+
+    const chevron = document.createElement('i');
+    chevron.className = 'fas fa-chevron-down mtx-select-chevron';
+    chevron.setAttribute('aria-hidden', 'true');
+    trigger.append(valueEl, chevron);
+
+    const menu = document.createElement('ul');
+    menu.className = 'mtx-select-menu';
+    menu.id = uid + '-menu';
+    menu.setAttribute('role', 'listbox');
+    menu.tabIndex = -1;
+    menu.hidden = true;
+    if (labelSpan) menu.setAttribute('aria-labelledby', labelSpan.id);
+    trigger.setAttribute('aria-controls', menu.id);
+    trigger.setAttribute('aria-labelledby', (labelSpan ? labelSpan.id + ' ' : '') + valueEl.id);
+
+    const options = Array.from(select.options).map((opt, i) => {
+      const li = document.createElement('li');
+      li.className = 'mtx-select-option';
+      li.id = uid + '-opt-' + i;
+      li.setAttribute('role', 'option');
+      li.dataset.index = String(i);
+      li.setAttribute('aria-selected', opt.selected ? 'true' : 'false');
+      const label = document.createElement('span');
+      label.className = 'mtx-select-option-label';
+      label.textContent = opt.text.trim();
+      const check = document.createElement('i');
+      check.className = 'fas fa-check mtx-select-check';
+      check.setAttribute('aria-hidden', 'true');
+      li.append(label, check);
+      menu.appendChild(li);
+      return li;
+    });
+
+    let activeIndex = select.selectedIndex < 0 ? 0 : select.selectedIndex;
+    const setActive = (idx, scroll) => {
+      activeIndex = (idx + options.length) % options.length;
+      options.forEach((o, i) => o.classList.toggle('is-active', i === activeIndex));
+      menu.setAttribute('aria-activedescendant', options[activeIndex].id);
+      if (scroll !== false) options[activeIndex].scrollIntoView({ block: 'nearest' });
+    };
+
+    const open = () => {
+      closeAll(wrap);
+      wrap.setAttribute('data-open', '');
+      trigger.setAttribute('aria-expanded', 'true');
+      menu.hidden = false;
+      setActive(select.selectedIndex < 0 ? 0 : select.selectedIndex, true);
+      menu.focus();
+    };
+    const close = (focusTrigger) => {
+      wrap.removeAttribute('data-open');
+      trigger.setAttribute('aria-expanded', 'false');
+      menu.hidden = true;
+      if (focusTrigger) trigger.focus();
+    };
+    const choose = (idx) => {
+      const opt = select.options[idx];
+      if (!opt) return;
+      if (select.selectedIndex !== idx) {
+        select.selectedIndex = idx;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      valueEl.textContent = opt.text.trim();
+      options.forEach((o, i) => o.setAttribute('aria-selected', i === idx ? 'true' : 'false'));
+      close(true);
+    };
+
+    trigger.addEventListener('click', () => {
+      wrap.hasAttribute('data-open') ? close(true) : open();
+    });
+    trigger.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        open();
+      }
+    });
+    menu.addEventListener('keydown', (e) => {
+      switch (e.key) {
+        case 'ArrowDown': e.preventDefault(); setActive(activeIndex + 1); break;
+        case 'ArrowUp': e.preventDefault(); setActive(activeIndex - 1); break;
+        case 'Home': e.preventDefault(); setActive(0); break;
+        case 'End': e.preventDefault(); setActive(options.length - 1); break;
+        case 'Enter':
+        case ' ': e.preventDefault(); choose(activeIndex); break;
+        case 'Escape': e.preventDefault(); close(true); break;
+        case 'Tab': close(false); break;
+        default: break;
+      }
+    });
+    options.forEach((li, i) => {
+      li.addEventListener('click', () => choose(i));
+      li.addEventListener('mousemove', () => { if (activeIndex !== i) setActive(i, false); });
+    });
+
+    wrap.append(trigger, menu);
+    select.classList.add('mtx-select-native');
+    select.setAttribute('tabindex', '-1');
+    select.setAttribute('aria-hidden', 'true');
+    select.parentNode.insertBefore(wrap, select.nextSibling);
+  });
+
+  document.addEventListener('mousedown', (e) => {
+    if (!e.target.closest('.mtx-select')) closeAll(null);
+  });
 })();
 </script>
 

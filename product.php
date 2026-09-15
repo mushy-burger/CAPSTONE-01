@@ -4,7 +4,8 @@ require_once __DIR__ . '/includes/header.php';
 
 $id = (int)($_GET['id'] ?? 0);
 $product = fetchOne(
-    "SELECT p.*, c.name AS category_name
+    "SELECT p.*, c.name AS category_name,
+            " . availableStockSql('p') . " AS available_stock
      FROM products p
      JOIN categories c ON c.id = p.category_id
      WHERE p.id = ?",
@@ -13,7 +14,19 @@ $product = fetchOne(
 
 if (!$product) {
     http_response_code(404);
-    echo '<section class="section container"><p class="empty-state">Product not found.</p></section>';
+    ?>
+    <section class="section container">
+      <div class="empty-state customer-empty-state">
+        <div class="empty-state-icon"><i class="fas fa-box-open" aria-hidden="true"></i></div>
+        <h1>Product not found</h1>
+        <p>This product may have been removed, or the link is out of date.</p>
+        <div class="empty-state-actions">
+          <a class="btn btn-primary" href="<?= baseUrl('shop.php') ?>">Browse products</a>
+          <a class="btn btn-outline" href="<?= baseUrl('index.php') ?>">Back to home</a>
+        </div>
+      </div>
+    </section>
+    <?php
     require_once __DIR__ . '/includes/footer.php';
     exit;
 }
@@ -21,11 +34,12 @@ if (!$product) {
 $related = fetchAllRows(
     "SELECT p.*, c.name AS category_name
      FROM products p JOIN categories c ON c.id = p.category_id
-     WHERE p.category_id = ? AND p.id != ? AND p.status != 'out_of_stock'
+     WHERE p.category_id = ? AND p.id != ? AND p.status != 'archived'
      ORDER BY p.featured DESC, p.id DESC LIMIT 4",
     [$product['category_id'], $product['id']]
 );
-$canAddToCart = $product['status'] !== 'out_of_stock' && (int)$product['stock'] > 0;
+$product['available_stock'] = getAvailableStock((int)$product['id']);
+$canAddToCart = $product['available_stock'] > 0;
 ?>
 
 <section class="section container product-detail">
@@ -42,15 +56,14 @@ $canAddToCart = $product['status'] !== 'out_of_stock' && (int)$product['stock'] 
     <p><?= htmlspecialchars($product['description'] ?? 'No description available.') ?></p>
     <dl class="meta-list">
       <div><dt>Brand</dt><dd><?= htmlspecialchars($product['brand'] ?? 'Generic') ?></dd></div>
-      <div><dt>Stock</dt><dd><?= (int)$product['stock'] ?> available</dd></div>
-      <div><dt>Status</dt><dd><?= htmlspecialchars(str_replace('_', ' ', $product['status'])) ?></dd></div>
+      <div><dt>Availability</dt><dd><?= $canAddToCart ? 'Available' : 'Unavailable' ?></dd></div>
     </dl>
     <?php if ($canAddToCart): ?>
       <form class="cart-add-row" method="post" action="<?= baseUrl('cart.php') ?>">
         <?= authContextField() ?>
         <input type="hidden" name="action" value="add">
         <input type="hidden" name="product_id" value="<?= (int)$product['id'] ?>">
-        <input type="number" name="quantity" min="1" max="<?= (int)$product['stock'] ?>" value="1">
+        <input type="number" name="quantity" min="1" value="1">
         <button class="btn btn-primary" type="submit">Add to cart</button>
       </form>
     <?php else: ?>

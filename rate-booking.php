@@ -1,62 +1,109 @@
 <?php
 /**
  * Customer-facing service rating page.
- *
  * URL: rate-booking.php?token=<64-char hex>
- *
- * The token is SHA-256(booking_id . secret_key . user_id), generated when the
- * job completes and sent via SMS/email. It is single-use: rating_token_used is
- * set to 1 on submission so the link cannot be replayed.
  */
 require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/auth.php';
 
-$token = trim($_GET['token'] ?? '');
-
+$appointmentBookingId = (int)($_GET['booking_id'] ?? $_POST['booking_id'] ?? 0);
+$isAppointmentRating = $appointmentBookingId > 0;
+$token = trim((string)($_GET['token'] ?? ''));
+$currentUser = null;
+if ($isAppointmentRating) {
+    requireLogin();
+    $currentUser = getCurrentUser();
+}
 $booking = null;
-$error   = '';
+$error = '';
 $success = false;
+$serviceRating = (int)($_POST['service_rating'] ?? 0);
+$mechanicRating = isset($_POST['mechanic_rating']) && $_POST['mechanic_rating'] !== ''
+    ? (int)$_POST['mechanic_rating']
+    : null;
+$comment = trim((string)($_POST['comment'] ?? ''));
 
-if ($token === '' || strlen($token) !== 64 || !ctype_xdigit($token)) {
-    $error = 'This rating link is invalid or has expired.';
+if ($isAppointmentRating) {
+    $booking = fetchOne(
+        "SELECT b.id, b.user_id, b.technician_id, b.status,
+                b.rating_token_used, b.scheduled_date,
+                EXISTS(SELECT 1 FROM booking_ratings r WHERE r.booking_id = b.id) AS has_rating,
+                u.name AS customer_name,
+                tech.name AS technician_name,
+                (SELECT GROUP_CONCAT(bs.service_name ORDER BY bs.id SEPARATOR ', ')
+                 FROM booking_services bs
+                 WHERE bs.booking_id = b.id) AS service_list
+         FROM bookings b
+         JOIN users u ON u.id = b.user_id
+         LEFT JOIN users tech ON tech.id = b.technician_id
+         WHERE b.id = ? AND b.user_id = ? AND b.status = 'completed'",
+        [$appointmentBookingId, (int)$currentUser['id']]
+    );
+
+    if (!$booking) {
+        $error = 'This completed appointment is unavailable for rating.';
+    } elseif ((int)$booking['rating_token_used'] === 1 || (int)$booking['has_rating'] === 1) {
+        $error = 'A rating was already submitted for this appointment. Thank you.';
+    }
+} elseif ($token === '' || strlen($token) !== 64 || !ctype_xdigit($token)) {
+    $error = 'This rating link is invalid.';
 } else {
     $booking = fetchOne(
         "SELECT b.id, b.user_id, b.technician_id, b.status,
                 b.rating_token_used, b.scheduled_date,
+                EXISTS(SELECT 1 FROM booking_ratings r WHERE r.booking_id = b.id) AS has_rating,
                 u.name AS customer_name,
                 tech.name AS technician_name,
-                GROUP_CONCAT(bs.service_name ORDER BY bs.id SEPARATOR ', ') AS service_list
+                (SELECT GROUP_CONCAT(bs.service_name ORDER BY bs.id SEPARATOR ', ')
+                 FROM booking_services bs
+                 WHERE bs.booking_id = b.id) AS service_list
          FROM bookings b
          JOIN users u ON u.id = b.user_id
          LEFT JOIN users tech ON tech.id = b.technician_id
-         LEFT JOIN booking_services bs ON bs.booking_id = b.id
-         WHERE b.rating_token = ? AND b.status = 'completed'
-         GROUP BY b.id",
+         WHERE b.rating_token = ? AND b.status = 'completed'",
         [$token]
     );
 
     if (!$booking) {
-        $error = 'This rating link is invalid, has already been used, or the booking is not yet complete.';
-    } elseif ((int)$booking['rating_token_used'] === 1) {
-        $error = 'You have already submitted a rating for this booking. Thank you!';
+        $error = 'This rating link is invalid, or the booking is not complete.';
+    } elseif ((int)$booking['rating_token_used'] === 1 || (int)$booking['has_rating'] === 1) {
+        $error = 'A rating was already submitted for this booking. Thank you.';
     }
 }
 
-// POST — submit the rating
 if (!$error && $booking && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $serviceRating  = (int)($_POST['service_rating']  ?? 0);
-    $mechanicRating = isset($_POST['mechanic_rating']) && $_POST['mechanic_rating'] !== ''
-                        ? (int)$_POST['mechanic_rating'] : null;
-    $comment        = trim($_POST['comment'] ?? '');
-
     if ($serviceRating < 1 || $serviceRating > 5) {
-        $error = 'Please select a service rating (1–5 stars).';
+        $error = 'Select an overall service rating from 1 to 5 stars.';
+    } elseif (!empty($booking['technician_id']) && !empty($booking['technician_name']) && $mechanicRating === null) {
+        $error = 'Select a mechanic rating from 1 to 5 stars.';
     } elseif ($mechanicRating !== null && ($mechanicRating < 1 || $mechanicRating > 5)) {
-        $error = 'Mechanic rating must be between 1 and 5 stars.';
+        $error = 'Select a mechanic rating from 1 to 5 stars.';
+    } elseif (mb_strlen($comment) > 800) {
+        $error = 'Keep feedback within 800 characters.';
     } else {
         $db = getDB();
         $db->beginTransaction();
         try {
+            if ($isAppointmentRating) {
+                $claim = $db->prepare(
+                    "UPDATE bookings
+                     SET rating_token_used = 1
+                     WHERE id = ? AND user_id = ? AND status = 'completed' AND rating_token_used = 0"
+                );
+                $claim->execute([$booking['id'], (int)$currentUser['id']]);
+            } else {
+                $claim = $db->prepare(
+                    "UPDATE bookings
+                     SET rating_token_used = 1
+                     WHERE id = ? AND rating_token = ? AND rating_token_used = 0"
+                );
+                $claim->execute([$booking['id'], $token]);
+            }
+            if ($claim->rowCount() !== 1) {
+                throw new RuntimeException('rating_already_used');
+            }
+
             $db->prepare(
                 "INSERT INTO booking_ratings
                     (booking_id, user_id, technician_id, service_rating, mechanic_rating, comment)
@@ -70,357 +117,364 @@ if (!$error && $booking && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 $comment !== '' ? $comment : null,
             ]);
 
-            // Invalidate the token
-            $db->prepare("UPDATE bookings SET rating_token_used = 1 WHERE id = ?")
-               ->execute([$booking['id']]);
-
             $db->commit();
             $success = true;
         } catch (Throwable $e) {
             if ($db->inTransaction()) {
                 $db->rollBack();
             }
-            $error = 'Something went wrong. Please try again.';
+            $error = $e->getMessage() === 'rating_already_used'
+                ? 'A rating was already submitted for this booking. Thank you.'
+                : 'Your rating could not be saved. Please try again.';
         }
     }
 }
 
-$pageTitle = 'Rate Your Service — MotoTrack';
+$pageTitle = 'Rate Your Service - MotoTrack';
+require_once __DIR__ . '/includes/header.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title><?= htmlspecialchars($pageTitle) ?></title>
-  <meta name="description" content="Rate your MotoTrack service experience and help us improve.">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --bg: #0f172a;
-      --surface: #1e293b;
-      --border: #334155;
-      --accent: #f59e0b;
-      --accent2: #2563eb;
-      --text: #f1f5f9;
-      --muted: #94a3b8;
-      --success: #22c55e;
-      --danger: #ef4444;
-      --radius: 16px;
-    }
-    body {
-      font-family: 'Inter', sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px 16px;
-      background-image: radial-gradient(ellipse at 20% 50%, rgba(37,99,235,.15) 0%, transparent 60%),
-                        radial-gradient(ellipse at 80% 20%, rgba(245,158,11,.1) 0%, transparent 50%);
-    }
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 40px 36px;
-      width: 100%;
-      max-width: 520px;
-      box-shadow: 0 24px 64px rgba(0,0,0,.4);
-    }
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 28px;
-    }
-    .brand-icon {
-      width: 42px;
-      height: 42px;
-      background: linear-gradient(135deg, #d71920, #f59e0b);
-      border-radius: 10px;
-      display: grid;
-      place-items: center;
-      font-size: 1.2rem;
-      color: #fff;
-    }
-    .brand-name { font-size: 1.3rem; font-weight: 800; color: var(--text); }
-    h1 { font-size: 1.5rem; font-weight: 800; margin-bottom: 6px; }
-    .subtitle { color: var(--muted); font-size: .9rem; margin-bottom: 28px; line-height: 1.5; }
-    .booking-meta {
-      background: rgba(255,255,255,.04);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 14px 18px;
-      margin-bottom: 28px;
-      font-size: .85rem;
-      color: var(--muted);
-      line-height: 1.7;
-    }
-    .booking-meta strong { color: var(--text); }
 
-    /* Star rating widget */
-    .rating-group { margin-bottom: 24px; }
-    .rating-label {
-      font-weight: 700;
-      font-size: .88rem;
-      margin-bottom: 10px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .rating-label i { color: var(--accent); }
-    .stars-wrap {
-      display: flex;
-      gap: 6px;
-      flex-direction: row-reverse;
-      justify-content: flex-end;
-    }
-    .stars-wrap input[type="radio"] { display: none; }
-    .stars-wrap label {
-      font-size: 2rem;
-      color: var(--border);
-      cursor: pointer;
-      transition: color .15s, transform .15s;
-      line-height: 1;
-    }
-    .stars-wrap label:hover,
-    .stars-wrap label:hover ~ label,
-    .stars-wrap input:checked ~ label { color: var(--accent); transform: scale(1.1); }
-    .stars-wrap input:checked + label { color: var(--accent); }
+<style>
+.page-rate-booking .rating-page {
+  min-height: calc(100vh - 76px);
+  padding: 84px 0 96px;
+  color: #f7f8fa;
+  background: #0b0e12;
+}
+.page-rate-booking .rating-shell { width: min(680px, calc(100% - 32px)); margin: 0 auto; }
+.page-rate-booking .rating-panel {
+  padding: clamp(24px, 5vw, 42px);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 16px;
+  background: #141920;
+  box-shadow: 0 24px 64px rgba(0,0,0,.34);
+}
+.page-rate-booking .rating-heading {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(2rem, 6vw, 3.2rem);
+  line-height: 1;
+  letter-spacing: -.03em;
+}
+.page-rate-booking .rating-intro {
+  max-width: 60ch;
+  margin: 14px 0 28px;
+  color: rgba(255,255,255,.66);
+}
+.page-rate-booking .rating-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin-bottom: 30px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 12px;
+  background: rgba(255,255,255,.1);
+}
+.page-rate-booking .rating-meta-item { min-width: 0; padding: 14px; background: #10151b; }
+.page-rate-booking .rating-meta-item span,
+.page-rate-booking .rating-meta-item strong { display: block; }
+.page-rate-booking .rating-meta-item span {
+  margin-bottom: 4px;
+  color: rgba(255,255,255,.5);
+  font-size: .72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.page-rate-booking .rating-meta-item strong {
+  overflow-wrap: anywhere;
+  color: #fff;
+  font-size: .9rem;
+}
+.page-rate-booking .rating-group { margin-bottom: 26px; }
+.page-rate-booking .rating-label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 11px;
+  color: #fff;
+  font-weight: 800;
+}
+.page-rate-booking .rating-label i { color: #ff6269; }
+.page-rate-booking .rating-required,
+.page-rate-booking .rating-optional {
+  color: rgba(255,255,255,.52);
+  font-size: .72rem;
+  font-weight: 700;
+}
+.page-rate-booking .rating-optional {
+  padding: 3px 8px;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 999px;
+}
+.page-rate-booking .rating-stars {
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.page-rate-booking .rating-stars input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}
+.page-rate-booking .rating-stars label {
+  color: rgba(255,255,255,.22);
+  font-size: 2.15rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 160ms ease, transform 160ms ease;
+}
+.page-rate-booking .rating-stars label:hover,
+.page-rate-booking .rating-stars label:hover ~ label,
+.page-rate-booking .rating-stars input:checked ~ label {
+  color: var(--gold);
+  transform: translateY(-2px);
+}
+.page-rate-booking .rating-stars input:focus-visible + label {
+  outline: 3px solid #ff6269;
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+.page-rate-booking .rating-feedback {
+  min-height: 20px;
+  margin-top: 8px;
+  color: rgba(255,255,255,.58);
+  font-size: .82rem;
+}
+.page-rate-booking .rating-feedback[data-tone="good"] { color: #7ee2ad; }
+.page-rate-booking .rating-feedback[data-tone="warn"] { color: #ffd073; }
+.page-rate-booking .rating-feedback[data-tone="bad"] { color: #ff8c92; }
+.page-rate-booking .rating-comment {
+  width: 100%;
+  min-height: 112px;
+  padding: 13px 14px;
+  resize: vertical;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 12px;
+  outline: none;
+  color: #fff;
+  background: #0f141a;
+  font: inherit;
+}
+.page-rate-booking .rating-comment::placeholder { color: rgba(255,255,255,.44); }
+.page-rate-booking .rating-comment:focus {
+  border-color: #ff6269;
+  box-shadow: 0 0 0 3px rgba(215,25,32,.18);
+}
+.page-rate-booking .rating-count {
+  margin-top: 6px;
+  color: rgba(255,255,255,.5);
+  font-size: .75rem;
+  text-align: right;
+}
+.page-rate-booking .rating-submit { width: 100%; }
+.page-rate-booking .rating-submit:disabled { cursor: wait; opacity: .68; }
+.page-rate-booking .rating-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 0 22px;
+  padding: 13px 14px;
+  border: 1px solid rgba(255,98,105,.34);
+  border-radius: 12px;
+  color: #ffd5d7;
+  background: rgba(215,25,32,.14);
+}
+.page-rate-booking .rating-state { text-align: center; }
+.page-rate-booking .rating-state-icon {
+  display: grid;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 22px;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--accent);
+  box-shadow: 0 14px 32px rgba(215,25,32,.28);
+  font-size: 1.8rem;
+}
+.page-rate-booking .rating-state h1 {
+  margin: 0 0 12px;
+  color: #fff;
+  font-size: clamp(1.8rem, 5vw, 2.6rem);
+  letter-spacing: -.025em;
+}
+.page-rate-booking .rating-state p {
+  max-width: 54ch;
+  margin: 0 auto 24px;
+  color: rgba(255,255,255,.64);
+}
+.page-rate-booking .rating-result-stars {
+  margin-bottom: 18px;
+  color: var(--gold);
+  font-size: 1.5rem;
+}
+@media (max-width: 640px) {
+  .page-rate-booking .rating-page { padding: 48px 0 64px; }
+  .page-rate-booking .rating-meta { grid-template-columns: 1fr; }
+  .page-rate-booking .rating-stars label { font-size: 1.95rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-rate-booking .rating-stars label { transition: none; }
+}
+</style>
 
-    .optional-badge {
-      font-size: .72rem;
-      background: rgba(148,163,184,.15);
-      color: var(--muted);
-      border-radius: 20px;
-      padding: 2px 8px;
-      font-weight: 600;
-    }
-    textarea {
-      width: 100%;
-      background: rgba(255,255,255,.04);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      color: var(--text);
-      font-family: inherit;
-      font-size: .88rem;
-      padding: 12px 14px;
-      resize: vertical;
-      min-height: 90px;
-      transition: border-color .2s;
-      margin-top: 10px;
-    }
-    textarea:focus { outline: none; border-color: var(--accent2); }
-    textarea::placeholder { color: var(--muted); }
+<section class="rating-page">
+  <div class="rating-shell">
+    <div class="rating-panel">
+      <?php if ($success): ?>
+        <div class="rating-state" role="status">
+          <div class="rating-state-icon"><i class="fas fa-star" aria-hidden="true"></i></div>
+          <h1>Thank you for your feedback</h1>
+          <div class="rating-result-stars" aria-label="<?= $serviceRating ?> out of 5 stars">
+            <?php for ($i = 1; $i <= 5; $i++): ?>
+              <i class="<?= $i <= $serviceRating ? 'fas' : 'far' ?> fa-star" aria-hidden="true"></i>
+            <?php endfor; ?>
+          </div>
+          <p>Your rating helps MotoTrack improve service and recognize excellent work.</p>
+          <a class="btn btn-primary" href="<?= $isAppointmentRating ? baseUrl('book-service.php?tab=appointments&ctx=' . urlencode(currentAuthContext())) : baseUrl('index.php') ?>"><?= $isAppointmentRating ? 'Back to My Appointments' : 'Return home' ?></a>
+        </div>
+      <?php elseif ($error && (!$booking || (int)($booking['rating_token_used'] ?? 0) === 1)): ?>
+        <div class="rating-state">
+          <div class="rating-state-icon"><i class="fas fa-link-slash" aria-hidden="true"></i></div>
+          <h1>Rating link unavailable</h1>
+          <div class="rating-alert" role="alert">
+            <i class="fas fa-circle-exclamation" aria-hidden="true"></i>
+            <span><?= htmlspecialchars($error) ?></span>
+          </div>
+          <p>Contact MotoTrack if you received this link for a completed service.</p>
+          <a class="btn btn-primary" href="<?= baseUrl('contact.php') ?>">Contact MotoTrack</a>
+        </div>
+      <?php else: ?>
+        <h1 class="rating-heading">Rate your service</h1>
+        <p class="rating-intro">Tell us how your MotoTrack visit went. Your feedback helps improve future service.</p>
 
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      width: 100%;
-      padding: 14px 24px;
-      background: linear-gradient(135deg, #d71920, #f59e0b);
-      color: #fff;
-      font-family: inherit;
-      font-size: 1rem;
-      font-weight: 800;
-      border: none;
-      border-radius: 12px;
-      cursor: pointer;
-      transition: opacity .2s, transform .15s;
-      margin-top: 8px;
-    }
-    .btn:hover { opacity: .92; transform: translateY(-1px); }
-    .btn:active { transform: translateY(0); }
+        <div class="rating-meta">
+          <div class="rating-meta-item">
+            <span>Service</span>
+            <strong><?= htmlspecialchars($booking['service_list'] ?: 'Motorcycle Service') ?></strong>
+          </div>
+          <div class="rating-meta-item">
+            <span>Date</span>
+            <strong><?= htmlspecialchars(date('F j, Y', strtotime($booking['scheduled_date']))) ?></strong>
+          </div>
+          <div class="rating-meta-item">
+            <span>Technician</span>
+            <strong><?= htmlspecialchars($booking['technician_name'] ?: 'MotoTrack team') ?></strong>
+          </div>
+        </div>
 
-    .alert {
-      padding: 14px 16px;
-      border-radius: 10px;
-      font-size: .88rem;
-      font-weight: 600;
-      margin-bottom: 20px;
-      display: flex;
-      align-items: flex-start;
-      gap: 10px;
-    }
-    .alert-error { background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.3); color: #fca5a5; }
-    .alert-info  { background: rgba(37,99,235,.12);  border: 1px solid rgba(37,99,235,.3);  color: #93c5fd; }
+        <?php if ($error): ?>
+          <div class="rating-alert" role="alert">
+            <i class="fas fa-circle-exclamation" aria-hidden="true"></i>
+            <span><?= htmlspecialchars($error) ?></span>
+          </div>
+        <?php endif; ?>
 
-    /* Success state */
-    .success-state { text-align: center; padding: 16px 0; }
-    .success-icon {
-      width: 80px;
-      height: 80px;
-      background: rgba(34,197,94,.12);
-      border-radius: 50%;
-      display: grid;
-      place-items: center;
-      margin: 0 auto 20px;
-      font-size: 2.2rem;
-      color: var(--success);
-      border: 2px solid rgba(34,197,94,.3);
-    }
-    .success-state h2 { font-size: 1.4rem; font-weight: 800; margin-bottom: 10px; }
-    .success-state p { color: var(--muted); font-size: .9rem; line-height: 1.6; }
-    .submitted-stars { font-size: 1.5rem; margin: 12px 0; color: var(--accent); }
+        <form method="post" id="ratingForm">
+          <?php if ($isAppointmentRating): ?>
+            <?= authContextField() ?>
+            <input type="hidden" name="booking_id" value="<?= (int)$booking['id'] ?>">
+          <?php endif; ?>
+          <div class="rating-group">
+            <div class="rating-label">
+              <i class="fas fa-star" aria-hidden="true"></i>
+              <span>Overall service</span>
+              <span class="rating-required">Required</span>
+            </div>
+            <div class="rating-stars" id="serviceStars">
+              <?php for ($i = 5; $i >= 1; $i--): ?>
+                <input type="radio" name="service_rating" id="sr<?= $i ?>" value="<?= $i ?>" required <?= $serviceRating === $i ? 'checked' : '' ?>>
+                <label for="sr<?= $i ?>" aria-label="<?= $i ?> star<?= $i === 1 ? '' : 's' ?>"><i class="fas fa-star" aria-hidden="true"></i></label>
+              <?php endfor; ?>
+            </div>
+            <div class="rating-feedback" id="serviceRatingText" aria-live="polite"></div>
+          </div>
 
-    hr.divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
-  </style>
-</head>
-<body>
-<div class="card">
+          <?php if ($booking['technician_name']): ?>
+            <div class="rating-group">
+              <div class="rating-label">
+                <i class="fas fa-user-cog" aria-hidden="true"></i>
+                <span>Your Mechanic: <?= htmlspecialchars($booking['technician_name']) ?></span>
+                <span class="rating-required">Required</span>
+              </div>
+              <div class="rating-stars" id="mechanicStars">
+                <?php for ($i = 5; $i >= 1; $i--): ?>
+                  <input type="radio" name="mechanic_rating" id="mr<?= $i ?>" value="<?= $i ?>" required <?= $mechanicRating === $i ? 'checked' : '' ?>>
+                  <label for="mr<?= $i ?>" aria-label="<?= $i ?> star<?= $i === 1 ? '' : 's' ?>"><i class="fas fa-star" aria-hidden="true"></i></label>
+                <?php endfor; ?>
+              </div>
+              <div class="rating-feedback" id="mechanicRatingText" aria-live="polite"></div>
+            </div>
+          <?php endif; ?>
 
-  <div class="brand">
-    <div class="brand-icon"><i class="fas fa-motorcycle"></i></div>
-    <span class="brand-name">MotoTrack</span>
+          <div class="rating-group">
+            <label class="rating-label" for="comment">
+              <i class="fas fa-comment-dots" aria-hidden="true"></i>
+              <span>Written feedback</span>
+              <span class="rating-optional">Optional</span>
+            </label>
+            <textarea class="rating-comment" name="comment" id="comment" placeholder="What went well? What could we improve?" maxlength="800"><?= htmlspecialchars($comment) ?></textarea>
+            <div class="rating-count"><span id="charCount"><?= mb_strlen($comment) ?></span>/800</div>
+          </div>
+
+          <button type="submit" class="btn btn-primary rating-submit" id="submitBtn">
+            <i class="fas fa-paper-plane" aria-hidden="true"></i> Submit rating
+          </button>
+        </form>
+      <?php endif; ?>
+    </div>
   </div>
-
-  <?php if ($success): ?>
-    <!-- SUCCESS STATE -->
-    <div class="success-state">
-      <div class="success-icon"><i class="fas fa-star"></i></div>
-      <h2>Thank You for Your Feedback!</h2>
-      <div class="submitted-stars">
-        <?php for ($i = 1; $i <= 5; $i++): ?>
-          <i class="fas fa-star<?= $i <= $serviceRating ? '' : '-o' ?>"></i>
-        <?php endfor; ?>
-      </div>
-      <p>Your rating has been submitted. It helps us improve our service and recognize our team members who go the extra mile.</p>
-      <hr class="divider">
-      <p style="font-size:.82rem;color:var(--muted);">This link is now expired. Thank you for choosing MotoTrack!</p>
-    </div>
-
-  <?php elseif ($error): ?>
-    <!-- ERROR STATE -->
-    <h1>Rate Your Service</h1>
-    <div class="alert alert-error" role="alert">
-      <i class="fas fa-circle-exclamation" style="margin-top:2px;flex-shrink:0;"></i>
-      <span><?= htmlspecialchars($error) ?></span>
-    </div>
-    <p class="subtitle">If you believe this is a mistake, please contact us directly.</p>
-
-  <?php else: ?>
-    <!-- RATING FORM -->
-    <h1>Rate Your Service</h1>
-    <p class="subtitle">
-      How was your experience at MotoTrack? Your honest feedback helps us serve you better.
-    </p>
-
-    <div class="booking-meta">
-      <div><strong>Service:</strong> <?= htmlspecialchars($booking['service_list'] ?: 'Motorcycle Service') ?></div>
-      <div><strong>Date:</strong> <?= htmlspecialchars(date('F j, Y', strtotime($booking['scheduled_date']))) ?></div>
-      <?php if ($booking['technician_name']): ?>
-        <div><strong>Technician:</strong> <?= htmlspecialchars($booking['technician_name']) ?></div>
-      <?php endif; ?>
-    </div>
-
-    <form method="post" id="ratingForm">
-
-      <!-- Overall Service Rating -->
-      <div class="rating-group">
-        <div class="rating-label">
-          <i class="fas fa-star"></i>
-          Overall Service Experience <span style="color:#ef4444;margin-left:2px;">*</span>
-        </div>
-        <div class="stars-wrap" id="serviceStars">
-          <?php for ($i = 5; $i >= 1; $i--): ?>
-            <input type="radio" name="service_rating" id="sr<?= $i ?>" value="<?= $i ?>" required>
-            <label for="sr<?= $i ?>" title="<?= $i ?> star<?= $i > 1 ? 's' : '' ?>">&#9733;</label>
-          <?php endfor; ?>
-        </div>
-        <div id="serviceRatingText" style="font-size:.8rem;color:var(--muted);margin-top:8px;min-height:18px;"></div>
-      </div>
-
-      <?php if ($booking['technician_name']): ?>
-      <!-- Mechanic Rating -->
-      <div class="rating-group">
-        <div class="rating-label">
-          <i class="fas fa-user-cog"></i>
-          Mechanic: <?= htmlspecialchars($booking['technician_name']) ?>
-          <span class="optional-badge">optional</span>
-        </div>
-        <div class="stars-wrap" id="mechanicStars">
-          <?php for ($i = 5; $i >= 1; $i--): ?>
-            <input type="radio" name="mechanic_rating" id="mr<?= $i ?>" value="<?= $i ?>">
-            <label for="mr<?= $i ?>" title="<?= $i ?> star<?= $i > 1 ? 's' : '' ?>">&#9733;</label>
-          <?php endfor; ?>
-        </div>
-        <div id="mechanicRatingText" style="font-size:.8rem;color:var(--muted);margin-top:8px;min-height:18px;"></div>
-      </div>
-      <?php endif; ?>
-
-      <!-- Comment -->
-      <div class="rating-group">
-        <div class="rating-label">
-          <i class="fas fa-comment-dots"></i>
-          Tell us more <span class="optional-badge">optional</span>
-        </div>
-        <textarea name="comment" id="comment" placeholder="Any specific feedback? What did we do well or where can we improve?" maxlength="800"></textarea>
-        <div style="font-size:.75rem;color:var(--muted);margin-top:6px;text-align:right;">
-          <span id="charCount">0</span>/800
-        </div>
-      </div>
-
-      <?php if ($error): ?>
-        <div class="alert alert-error"><i class="fas fa-circle-exclamation"></i> <?= htmlspecialchars($error) ?></div>
-      <?php endif; ?>
-
-      <button type="submit" class="btn" id="submitBtn">
-        <i class="fas fa-paper-plane"></i> Submit Rating
-      </button>
-    </form>
-  <?php endif; ?>
-
-</div>
+</section>
 
 <script>
-(function(){
+(function () {
   var labels = {
-    1: 'Poor — did not meet expectations',
-    2: 'Below average — needs improvement',
-    3: 'Average — acceptable but room to grow',
-    4: 'Good — satisfied with the service',
-    5: 'Excellent — exceeded expectations!'
+    1: 'Poor - did not meet expectations',
+    2: 'Below average - needs improvement',
+    3: 'Average - acceptable with room to improve',
+    4: 'Good - satisfied with the service',
+    5: 'Excellent - exceeded expectations'
   };
 
   function watchStars(groupId, textId) {
     var group = document.getElementById(groupId);
-    var text  = document.getElementById(textId);
-    if (!group || !text) return;
-    group.querySelectorAll('input[type="radio"]').forEach(function(input){
-      input.addEventListener('change', function(){
-        text.textContent = labels[this.value] || '';
-        text.style.color = this.value >= 4 ? '#4ade80' : (this.value <= 2 ? '#f87171' : '#fbbf24');
-      });
+    var output = document.getElementById(textId);
+    if (!group || !output) return;
+
+    function showRating(input) {
+      if (!input || !input.checked) return;
+      output.textContent = labels[input.value] || '';
+      output.dataset.tone = input.value >= 4 ? 'good' : (input.value <= 2 ? 'bad' : 'warn');
+    }
+
+    group.querySelectorAll('input[type="radio"]').forEach(function (input) {
+      input.addEventListener('change', function () { showRating(input); });
+      showRating(input);
     });
   }
+
   watchStars('serviceStars', 'serviceRatingText');
   watchStars('mechanicStars', 'mechanicRatingText');
 
-  // Character counter
-  var ta = document.getElementById('comment');
-  var cc = document.getElementById('charCount');
-  if (ta && cc) {
-    ta.addEventListener('input', function(){ cc.textContent = this.value.length; });
+  var comment = document.getElementById('comment');
+  var count = document.getElementById('charCount');
+  if (comment && count) {
+    comment.addEventListener('input', function () { count.textContent = comment.value.length; });
   }
 
-  // Prevent double-submit
   var form = document.getElementById('ratingForm');
-  var btn  = document.getElementById('submitBtn');
-  if (form && btn) {
-    form.addEventListener('submit', function(){
-      btn.disabled = true;
-      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Submitting…';
+  var button = document.getElementById('submitBtn');
+  if (form && button) {
+    form.addEventListener('submit', function () {
+      button.disabled = true;
+      button.innerHTML = '<i class="fas fa-spinner fa-spin" aria-hidden="true"></i> Submitting';
     });
   }
 })();
 </script>
-</body>
-</html>
+
+<?php require_once __DIR__ . '/includes/footer.php'; ?>

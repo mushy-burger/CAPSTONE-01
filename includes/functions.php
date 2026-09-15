@@ -123,7 +123,7 @@ function authContextField(): string {
         return '';
     }
 
-    return '<input type="hidden" name="ctx" value="' . htmlspecialchars($ctx, ENT_QUOTES, 'UTF-8') . '">';
+    return '<input type="hidden" name="ctx" value="' . htmlspecialchars($ctx, ENT_QUOTES, 'UTF-8') . '">' . (function_exists('csrfField') ? csrfField() : '');
 }
 
 function flashMessage(string $key, string $message): void {
@@ -228,7 +228,7 @@ function cleanMotorcycleLabel(string $text): string {
 
 function getProducts(int $limit = 8, ?int $categoryId = null, bool $featured = false, bool $discounted = false): array {
     require_once __DIR__ . '/db.php';
-    $where = ["p.status != 'out_of_stock'"];
+    $where = ["p.status != 'archived'"];
     $params = [];
 
     if ($categoryId) {
@@ -242,7 +242,8 @@ function getProducts(int $limit = 8, ?int $categoryId = null, bool $featured = f
         $where[] = 'p.original_price IS NOT NULL AND p.original_price > p.price';
     }
 
-    $sql = "SELECT p.*, c.name AS category_name
+    $sql = "SELECT p.*, c.name AS category_name,
+                   GREATEST(0, p.stock - COALESCE((SELECT SUM(pr.quantity) FROM parts_reservations pr WHERE pr.product_id = p.id AND pr.status = 'held'), 0)) AS available_stock
             FROM products p
             JOIN categories c ON c.id = p.category_id
             WHERE " . implode(' AND ', $where) . "
@@ -301,7 +302,13 @@ function productCard(array $product): string {
     $price = formatPrice((float)$product['price']);
     $oldPrice = !empty($product['original_price']) ? '<span class="old-price">' . formatPrice((float)$product['original_price']) . '</span>' : '';
 
-    return '<article class="product-card">
+    $available = max(0, (int)($product['available_stock'] ?? 0));
+    $availableLabel = $available > 0 ? 'Available' : 'Unavailable';
+    $button = $available > 0
+        ? '<button type="submit" class="btn btn-dark">Add to cart</button>'
+        : '<button type="submit" class="btn btn-dark" disabled aria-disabled="true">Unavailable</button>';
+
+    return '<article class="product-card mtx-tilt-card" data-tilt-card>
         <a href="' . $detailUrl . '" class="product-media">' . productImageHtml($product['image'] ?? '', $product['name'], '') . '</a>
         <div class="product-info">
             <span class="eyebrow">' . htmlspecialchars($product['category_name'] ?? $product['brand'] ?? 'Product') . '</span>
@@ -311,10 +318,51 @@ function productCard(array $product): string {
                 ' . authContextField() . '
                 <input type="hidden" name="action" value="add">
                 <input type="hidden" name="product_id" value="' . (int)$product['id'] . '">
-                <button type="submit" class="btn btn-dark">Add to cart</button>
+                <span class="product-status-badge ' . ($available > 0 ? 'is-available' : 'is-unavailable') . '">' . $availableLabel . '</span>
+                ' . $button . '
             </form>
         </div>
     </article>';
+}
+
+/** Physical stock minus held service-booking reservations. */
+function availableStockSql(string $productAlias = 'p'): string {
+    $alias = preg_replace('/[^a-zA-Z0-9_]/', '', $productAlias) ?: 'p';
+    return "GREATEST(0, {$alias}.stock - COALESCE((SELECT SUM(pr.quantity) FROM parts_reservations pr WHERE pr.product_id = {$alias}.id AND pr.status = 'held'), 0))";
+}
+
+function getAvailableStock(int $productId): int {
+    require_once __DIR__ . '/db.php';
+    $row = fetchOne(
+        "SELECT " . availableStockSql('p') . " AS available_stock
+         FROM products p WHERE p.id = ?",
+        [$productId]
+    );
+    return max(0, (int)($row['available_stock'] ?? 0));
+}
+
+/** Lock products and reject any order that exceeds current available stock. */
+function assertAvailableStockForItems(array $items, ?PDO $db = null): void {
+    require_once __DIR__ . '/db.php';
+    $db ??= getDB();
+    $byProduct = [];
+    foreach ($items as $item) {
+        $id = (int)($item['product_id'] ?? $item['id'] ?? 0);
+        $qty = max(0, (int)($item['quantity'] ?? 0));
+        if ($id > 0 && $qty > 0) $byProduct[$id] = ($byProduct[$id] ?? 0) + $qty;
+    }
+    ksort($byProduct);
+    foreach ($byProduct as $productId => $qty) {
+        $stmt = $db->prepare("SELECT id, name, stock FROM products WHERE id = ? AND status != 'archived' FOR UPDATE");
+        $stmt->execute([$productId]);
+        $product = $stmt->fetch();
+        if (!$product) throw new RuntimeException('One selected product is no longer available.');
+        $reservedStmt = $db->prepare("SELECT COALESCE(SUM(quantity), 0) FROM parts_reservations WHERE product_id = ? AND status = 'held'");
+        $reservedStmt->execute([$productId]);
+        $reserved = (int)ceil((float)$reservedStmt->fetchColumn());
+        $available = max(0, (int)$product['stock'] - $reserved);
+        if ($qty > $available) throw new RuntimeException($product['name'] . ' is no longer available in the requested quantity.');
+    }
 }
 
 function compatibleServices(int $typeId): array {
@@ -402,10 +450,11 @@ function getServiceProducts(int $serviceId, int $cc): array {
                 p.price,
                 p.image,
                 p.stock,
+                " . availableStockSql('p') . " AS available_stock,
                 c.name AS category_name
              FROM products p
              INNER JOIN categories c ON c.id = p.category_id
-             WHERE p.status != 'out_of_stock'
+             WHERE p.status != 'archived'
                AND p.category_id = ?
              ORDER BY p.name",
             [$requiredCategoryId]
@@ -424,10 +473,11 @@ function getServiceProducts(int $serviceId, int $cc): array {
                 p.price,
                 p.image,
                 p.stock,
+                " . availableStockSql('p') . " AS available_stock,
                 c.name AS category_name
              FROM products p
              INNER JOIN categories c ON c.id = p.category_id
-             WHERE p.status != 'out_of_stock'
+             WHERE p.status != 'archived'
                AND LOWER(c.name) = LOWER(?)
              ORDER BY p.name",
             [$requiredCategory]
@@ -447,6 +497,7 @@ function getServiceProducts(int $serviceId, int $cc): array {
             p.price,
             p.image,
             p.stock,
+            " . availableStockSql('p') . " AS available_stock,
             c.name AS category_name
          FROM service_products sp
          INNER JOIN products p ON p.id = sp.product_id
@@ -455,7 +506,7 @@ function getServiceProducts(int $serviceId, int $cc): array {
             ON r.service_id = sp.service_id
            AND r.product_id = sp.product_id
          WHERE sp.service_id = ?
-           AND p.status != 'out_of_stock'
+           AND p.status != 'archived'
            AND (r.id IS NULL OR ? BETWEEN r.cc_min AND r.cc_max)
          GROUP BY p.id, p.name, p.brand, p.description, p.price, p.image, p.stock, c.name
          ORDER BY p.name",
@@ -475,13 +526,14 @@ function getServiceProducts(int $serviceId, int $cc): array {
             p.price,
             p.image,
             p.stock,
+            " . availableStockSql('p') . " AS available_stock,
             c.name AS category_name
          FROM service_material_rules r
          INNER JOIN products p ON p.id = r.product_id
          LEFT JOIN categories c ON c.id = p.category_id
          WHERE r.service_id = ?
            AND ? BETWEEN r.cc_min AND r.cc_max
-           AND p.status != 'out_of_stock'
+           AND p.status != 'archived'
          ORDER BY p.name",
         [$serviceId, $cc]
     );
@@ -538,12 +590,20 @@ function calculateBookingSelection(array $catalog, array $selectedServiceIds, ar
                 $errors[] = 'Choose a compatible product for ' . $service['name'] . '.';
             } else {
                 $selectedProduct = $productOptions[$selectedProductId];
+                if (max(0, (int)($selectedProduct['available_stock'] ?? $selectedProduct['stock'] ?? 0)) <= 0) {
+                    $errors[] = $selectedProduct['name'] . ' is currently unavailable.';
+                    $selectedProduct = null;
+                }
+            }
+
+            if ($selectedProduct) {
                 $selectedProduct['price'] = (float)($selectedProduct['price'] ?? 0);
                 $productsTotal += $selectedProduct['price'];
                 $products[] = [
                     'service_id' => $serviceId,
                     'service_name' => $service['name'],
                     'product_id' => (int)$selectedProduct['id'],
+                    'quantity' => 1,
                     'product_name' => $selectedProduct['name'],
                     'product_brand' => $selectedProduct['brand'] ?? '',
                     'product_price' => (float)$selectedProduct['price'],

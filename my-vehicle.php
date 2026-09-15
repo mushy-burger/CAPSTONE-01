@@ -99,7 +99,14 @@ require_once __DIR__ . '/includes/header.php';
 ?>
 
 <section class="section container form-layout vehicle-page-layout">
-  <form class="form-panel" method="post">
+  <header class="customer-page-heading vehicle-page-heading">
+    <div>
+      <h1>My motorcycles</h1>
+      <p>Save motorcycle details once, then use them for compatible service booking.</p>
+    </div>
+  </header>
+
+  <form class="form-panel vehicle-editor" method="post">
     <?= authContextField() ?>
 
     <?php if ($editVehicle): ?>
@@ -115,7 +122,7 @@ require_once __DIR__ . '/includes/header.php';
     <?php if ($error): ?><div class="alert error"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
     <label>Motorcycle type
-      <select name="type_name" id="typeSelect" required>
+      <select name="type_name" id="typeSelect" required data-mtx-enhance>
         <option value="">Select type</option>
         <?php foreach ($typeOptions as $typeName): ?>
           <option value="<?= htmlspecialchars($typeName) ?>" <?= $editTypeName !== '' && strcasecmp($editTypeName, $typeName) === 0 ? 'selected' : '' ?>>
@@ -126,7 +133,7 @@ require_once __DIR__ . '/includes/header.php';
     </label>
 
     <label>Brand
-      <select name="brand_name" id="brandSelect" required>
+      <select name="brand_name" id="brandSelect" required data-mtx-enhance>
         <option value="">Select brand</option>
         <?php foreach ($brandOptions as $brandName): ?>
           <option value="<?= htmlspecialchars($brandName) ?>" <?= $editBrandName !== '' && strcasecmp($editBrandName, $brandName) === 0 ? 'selected' : '' ?>>
@@ -137,7 +144,7 @@ require_once __DIR__ . '/includes/header.php';
     </label>
 
     <label>Model
-      <select name="model_id" id="modelSelect" required>
+      <select name="model_id" id="modelSelect" required data-mtx-enhance>
         <option value="">Select model</option>
         <?php foreach ($catalogRows as $m): ?>
           <option value="<?= (int)$m['id'] ?>"
@@ -175,54 +182,58 @@ require_once __DIR__ . '/includes/header.php';
     </div>
   </form>
 
-  <aside class="summary-box">
+  <aside class="summary-box vehicle-collection">
     <h2>My Motorcycles</h2>
     <?php if ($vehicles): ?>
-      <div class="motorcycle-list">
+      <div class="mv-list">
         <?php foreach ($vehicles as $v): ?>
-          <article class="motorcycle-card <?= $editVehicle && (int)$editVehicle['id'] === (int)$v['id'] ? 'is-active' : '' ?>">
-            <div class="motorcycle-details">
-              <div class="detail-row">
-                <span class="label">BRAND</span>
-                <span class="value"><?= htmlspecialchars($v['brand_name']) ?></span>
+          <article class="mv-card <?= $editVehicle && (int)$editVehicle['id'] === (int)$v['id'] ? 'is-active' : '' ?>">
+            <div class="mv-details">
+              <div class="mv-detail">
+                <span class="mv-detail-label">Brand</span>
+                <span class="mv-detail-value"><?= htmlspecialchars($v['brand_name']) ?></span>
               </div>
-              <div class="detail-row">
-                <span class="label">MODEL</span>
-                <span class="value"><?= htmlspecialchars($v['model_name']) ?></span>
+              <div class="mv-detail">
+                <span class="mv-detail-label">Model</span>
+                <span class="mv-detail-value"><?= htmlspecialchars($v['model_name']) ?></span>
               </div>
-              <div class="detail-row">
-                <span class="label">TYPE</span>
-                <span class="value"><?= htmlspecialchars($v['type_name']) ?></span>
+              <div class="mv-detail">
+                <span class="mv-detail-label">Type</span>
+                <span class="mv-detail-value"><?= htmlspecialchars($v['type_name']) ?></span>
               </div>
-              <div class="detail-row">
-                <span class="label">ENGINE CC</span>
-                <span class="value"><?= (int)$v['cc'] ?>cc</span>
+              <div class="mv-detail">
+                <span class="mv-detail-label">Engine CC</span>
+                <span class="mv-detail-value"><?= (int)$v['cc'] ?>cc</span>
               </div>
-              <div class="detail-row">
-                <span class="label">YEAR</span>
-                <span class="value"><?= $v['year'] ? (int)$v['year'] : '-' ?></span>
+              <div class="mv-detail">
+                <span class="mv-detail-label">Year</span>
+                <span class="mv-detail-value"><?= $v['year'] ? (int)$v['year'] : '—' ?></span>
               </div>
-              <div class="detail-row">
-                <span class="label">PLATE</span>
-                <span class="value<?= $v['plate_number'] ? ' plate-badge' : '' ?>"><?= $v['plate_number'] ? htmlspecialchars($v['plate_number']) : '-' ?></span>
+              <div class="mv-detail">
+                <span class="mv-detail-label">Plate</span>
+                <?php if ($v['plate_number']): ?>
+                  <span class="mv-plate"><?= htmlspecialchars($v['plate_number']) ?></span>
+                <?php else: ?>
+                  <span class="mv-detail-value">—</span>
+                <?php endif; ?>
               </div>
             </div>
 
-            <div class="motorcycle-actions">
-              <a href="<?= baseUrl('book-service.php?vehicle_id=' . (int)$v['id']) ?>" class="book-btn">
-                <i class="fas fa-calendar-check"></i>
+            <div class="mv-actions">
+              <a href="<?= baseUrl('book-service.php?vehicle_id=' . (int)$v['id']) ?>" class="mv-btn mv-book">
+                <i class="fas fa-calendar-check" aria-hidden="true"></i>
                 <span>Book Service</span>
               </a>
-              <a href="<?= baseUrl('my-vehicle.php?edit=' . (int)$v['id']) ?>" class="edit-btn">
-                <i class="fas fa-pen"></i>
+              <a href="<?= baseUrl('my-vehicle.php?edit=' . (int)$v['id']) ?>" class="mv-btn mv-edit">
+                <i class="fas fa-pen" aria-hidden="true"></i>
                 <span>Edit</span>
               </a>
-              <form method="post" class="motorcycle-remove-form" onsubmit="return confirm('Remove this motorcycle?')">
+              <form method="post" class="mv-remove-form" onsubmit="return confirm('Remove this motorcycle?')">
                 <?= authContextField() ?>
                 <input type="hidden" name="action" value="delete">
                 <input type="hidden" name="vehicle_id" value="<?= (int)$v['id'] ?>">
-                <button type="submit" class="remove-btn">
-                  <i class="fas fa-trash"></i>
+                <button type="submit" class="mv-btn mv-remove">
+                  <i class="fas fa-trash" aria-hidden="true"></i>
                   <span>Remove</span>
                 </button>
               </form>
@@ -231,9 +242,188 @@ require_once __DIR__ . '/includes/header.php';
         <?php endforeach; ?>
       </div>
     <?php else: ?>
-      <p>No saved motorcycles yet.</p>
+      <div class="customer-empty-state vehicle-empty-state">
+        <h3>No saved motorcycles yet</h3>
+        <p>Use the form to add the motorcycle you want to service.</p>
+      </div>
     <?php endif; ?>
   </aside>
 </section>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>
+
+<script>
+(() => {
+  // Enhance the Type / Brand / Model <select>s with the shared custom listbox
+  // (same visual language as Shop and Book Service). The native <select> stays in
+  // the form as the source of truth, so names, values, selected value, `required`
+  // validation and the dependent Type->Brand->Model->CC logic in main.js are all
+  // preserved. This runs AFTER main.js, so our resync fires after filterVehicleModels.
+  const selects = document.querySelectorAll('select[data-mtx-enhance]');
+  if (!selects.length || !('closest' in Element.prototype)) return;
+  let counter = 0;
+  const wraps = [];
+
+  const closeAll = (except) => {
+    document.querySelectorAll('.mtx-select[data-open]').forEach((el) => {
+      if (el === except) return;
+      el.removeAttribute('data-open');
+      el.querySelector('.mtx-select-trigger').setAttribute('aria-expanded', 'false');
+      el.querySelector('.mtx-select-menu').hidden = true;
+    });
+  };
+
+  selects.forEach((select) => {
+    const uid = 'mtxmv-' + (counter++);
+    const lab = select.closest('label');
+    let lblId = '';
+    if (lab) { if (!lab.id) lab.id = uid + '-lbl'; lblId = lab.id; }
+
+    const wrap = document.createElement('div');
+    wrap.className = 'mtx-select';
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'mtx-select-trigger';
+    trigger.id = uid + '-trg';
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', 'false');
+
+    const valueEl = document.createElement('span');
+    valueEl.className = 'mtx-select-value';
+    valueEl.id = uid + '-val';
+
+    const chevron = document.createElement('i');
+    chevron.className = 'fas fa-chevron-down mtx-select-chevron';
+    chevron.setAttribute('aria-hidden', 'true');
+    trigger.append(valueEl, chevron);
+
+    const menu = document.createElement('ul');
+    menu.className = 'mtx-select-menu';
+    menu.id = uid + '-menu';
+    menu.setAttribute('role', 'listbox');
+    menu.tabIndex = -1;
+    menu.hidden = true;
+    if (lblId) menu.setAttribute('aria-labelledby', lblId);
+    trigger.setAttribute('aria-controls', menu.id);
+    trigger.setAttribute('aria-labelledby', (lblId ? lblId + ' ' : '') + valueEl.id);
+
+    const options = Array.from(select.options).map((opt, i) => {
+      const li = document.createElement('li');
+      li.className = 'mtx-select-option';
+      li.id = uid + '-opt-' + i;
+      li.setAttribute('role', 'option');
+      li.dataset.index = String(i);
+      const label = document.createElement('span');
+      label.className = 'mtx-select-option-label';
+      label.textContent = opt.text.trim();
+      const check = document.createElement('i');
+      check.className = 'fas fa-check mtx-select-check';
+      check.setAttribute('aria-hidden', 'true');
+      li.append(label, check);
+      menu.appendChild(li);
+      return li;
+    });
+
+    let activeIndex = select.selectedIndex < 0 ? 0 : select.selectedIndex;
+    const firstVisible = () => options.findIndex((o) => !o.hidden);
+    const lastVisible = () => { let last = -1; options.forEach((o, i) => { if (!o.hidden) last = i; }); return last; };
+
+    // Mirror native state (option.hidden, selected, trigger label) onto the custom UI.
+    const sync = () => {
+      options.forEach((li, i) => {
+        li.hidden = !!select.options[i].hidden;
+        li.setAttribute('aria-selected', select.options[i].selected ? 'true' : 'false');
+      });
+      const sel = select.options[select.selectedIndex];
+      valueEl.textContent = sel ? sel.text.trim() : '';
+    };
+
+    const setActive = (idx, scroll) => {
+      if (!options.length) return;
+      const n = options.length;
+      let j = ((idx % n) + n) % n, guard = 0;
+      while (options[j].hidden && guard < n) { j = (j + 1) % n; guard++; }
+      activeIndex = j;
+      options.forEach((o, i) => o.classList.toggle('is-active', i === activeIndex));
+      menu.setAttribute('aria-activedescendant', options[activeIndex].id);
+      if (scroll !== false) options[activeIndex].scrollIntoView({ block: 'nearest' });
+    };
+    const step = (dir) => {
+      const n = options.length;
+      let j = activeIndex, guard = 0;
+      do { j = ((j + dir) % n + n) % n; guard++; } while (options[j].hidden && guard <= n);
+      setActive(j);
+    };
+
+    const open = () => {
+      closeAll(wrap);
+      wrap.setAttribute('data-open', '');
+      trigger.setAttribute('aria-expanded', 'true');
+      menu.hidden = false;
+      const cur = select.selectedIndex;
+      const start = (cur >= 0 && !options[cur].hidden) ? cur : firstVisible();
+      setActive(start < 0 ? 0 : start, true);
+      menu.focus();
+    };
+    const close = (focusTrigger) => {
+      wrap.removeAttribute('data-open');
+      trigger.setAttribute('aria-expanded', 'false');
+      menu.hidden = true;
+      if (focusTrigger) trigger.focus();
+    };
+    const choose = (idx) => {
+      const opt = select.options[idx];
+      if (!opt || opt.hidden) return;
+      if (select.selectedIndex !== idx) {
+        select.selectedIndex = idx;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      sync();
+      close(true);
+    };
+
+    trigger.addEventListener('click', () => { wrap.hasAttribute('data-open') ? close(true) : open(); });
+    trigger.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    });
+    menu.addEventListener('keydown', (e) => {
+      switch (e.key) {
+        case 'ArrowDown': e.preventDefault(); step(1); break;
+        case 'ArrowUp': e.preventDefault(); step(-1); break;
+        case 'Home': e.preventDefault(); { const f = firstVisible(); if (f >= 0) setActive(f); } break;
+        case 'End': e.preventDefault(); { const l = lastVisible(); if (l >= 0) setActive(l); } break;
+        case 'Enter':
+        case ' ': e.preventDefault(); choose(activeIndex); break;
+        case 'Escape': e.preventDefault(); close(true); break;
+        case 'Tab': close(false); break;
+        default: break;
+      }
+    });
+    options.forEach((li, i) => {
+      li.addEventListener('click', () => choose(i));
+      li.addEventListener('mousemove', () => { if (!li.hidden && activeIndex !== i) setActive(i, false); });
+    });
+
+    wrap.append(trigger, menu);
+    select.classList.add('mtx-select-native');
+    select.setAttribute('tabindex', '-1');
+    select.setAttribute('aria-hidden', 'true');
+    select.parentNode.insertBefore(wrap, select.nextSibling);
+
+    // Native select changing programmatically (dependent filter clears the model,
+    // or toggles option visibility) must reflect on this control too.
+    select.addEventListener('change', sync);
+    sync();
+    wraps.push({ select, sync });
+  });
+
+  // A change on any enhanced select can affect another (Type/Brand -> Model options).
+  // Resync every control after the change so hidden options / cleared values show.
+  wraps.forEach(({ select }) => {
+    select.addEventListener('change', () => { wraps.forEach((w) => w.sync()); });
+  });
+
+  document.addEventListener('mousedown', (e) => { if (!e.target.closest('.mtx-select')) closeAll(null); });
+})();
+</script>

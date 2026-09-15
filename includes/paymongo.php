@@ -31,6 +31,18 @@ function appUrl(string $path = ''): string {
     return rtrim($scheme . '://' . $host . baseUrl($path), '/');
 }
 
+/** PayMongo return URLs must preserve the tab-scoped login context. */
+function appAuthReturnUrl(string $path = ''): string {
+    $url = appUrl($path);
+    if (function_exists('currentAuthContext')) {
+        $ctx = currentAuthContext();
+        if ($ctx !== 'default' && !str_contains((string)parse_url($url, PHP_URL_QUERY), 'ctx=')) {
+            $url .= (str_contains($url, '?') ? '&' : '?') . 'ctx=' . rawurlencode($ctx);
+        }
+    }
+    return $url;
+}
+
 function paymongoApiRequest(string $method, string $path, ?array $payload = null): array {
     $config = paymongoConfig();
     if (empty($config['secret_key'])) {
@@ -137,8 +149,8 @@ function paymongoCreateCheckoutSession(array $order, array $items, array $custom
                 'show_description' => true,
                 'show_line_items' => true,
                 'statement_descriptor' => 'MotoTrack',
-                'success_url' => appUrl('payment-success.php?order_id=' . (int)$order['id']),
-                'cancel_url' => appUrl('payment-cancelled.php?order_id=' . (int)$order['id']),
+                'success_url' => appAuthReturnUrl('payment-success.php?order_id=' . (int)$order['id']),
+                'cancel_url' => appAuthReturnUrl('payment-cancelled.php?order_id=' . (int)$order['id']),
             ],
         ],
     ];
@@ -193,8 +205,8 @@ function paymongoCreateBookingDepositSession(
                 'show_description'   => true,
                 'show_line_items'    => true,
                 'statement_descriptor' => 'MotoTrack',
-                'success_url' => appUrl('booking-deposit.php?booking_id=' . $bookingId . '&result=success'),
-                'cancel_url'  => appUrl('booking-deposit.php?booking_id=' . $bookingId . '&result=cancelled'),
+                'success_url' => appAuthReturnUrl('booking-deposit.php?booking_id=' . $bookingId . '&result=success'),
+                'cancel_url'  => appAuthReturnUrl('booking-deposit.php?booking_id=' . $bookingId . '&result=cancelled'),
             ],
         ],
     ];
@@ -267,6 +279,8 @@ function fulfillPaidOrder(int $orderId, string $checkoutSessionId = ''): void {
              WHERE oi.order_id = ?",
             [$orderId]
         );
+
+        assertAvailableStockForItems($items, $db);
 
         $stockStmt = $db->prepare("UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?");
         $statusStmt = $db->prepare(
