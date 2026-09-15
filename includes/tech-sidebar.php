@@ -3,6 +3,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/functions.php';
 requireTechnician();
 $currentUser = getCurrentUser();
+$_isQA = $currentUser['role'] === 'qa';
 $techPage = basename($_SERVER['PHP_SELF'], '.php');
 $unreadCount = getUnreadNotificationCount((int)$currentUser['id']);
 ?>
@@ -23,7 +24,9 @@ $unreadCount = getUnreadNotificationCount((int)$currentUser['id']);
       <i class="fas fa-motorcycle"></i>
       <span>MotoTrack</span>
     </div>
-    <div class="role-badge role-tech">Technician</div>
+    <div class="role-badge role-tech">
+      <?php if ($_isQA): ?><i class="fas fa-vial" aria-hidden="true"></i> QA / Tech View<?php else: ?>Technician<?php endif; ?>
+    </div>
     <nav class="sidebar-nav">
       <a href="<?= baseUrl('tech/index.php') ?>" class="<?= $techPage === 'index' ? 'active' : '' ?> nav-notif-wrap">
         <span><i class="fas fa-wrench"></i> Work Queue</span>
@@ -33,6 +36,9 @@ $unreadCount = getUnreadNotificationCount((int)$currentUser['id']);
       </a>
       <a href="<?= baseUrl('tech/history.php') ?>" class="<?= $techPage === 'history' ? 'active' : '' ?>">
         <i class="fas fa-history"></i> Job History
+      </a>
+      <a href="<?= baseUrl('tech/ratings.php') ?>" class="<?= $techPage === 'ratings' ? 'active' : '' ?>">
+        <i class="fas fa-star"></i> My Ratings
       </a>
     </nav>
     <div style="padding:16px 20px;border-top:1px solid rgba(255,255,255,.1);margin-top:auto;">
@@ -72,6 +78,7 @@ $unreadCount = getUnreadNotificationCount((int)$currentUser['id']);
     </header>
 
     <main class="admin-content">
+<?php require_once __DIR__ . '/qa-banner.php'; ?>
 
 <script>
 (function(){

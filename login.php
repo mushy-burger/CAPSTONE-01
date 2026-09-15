@@ -37,6 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'admin'      => baseUrl('admin/index.php'),
             'staff'      => baseUrl('staff/index.php'),
             'technician' => baseUrl('tech/index.php'),
+            'qa'         => baseUrl('qa/index.php'),
         ];
         // Staff-type roles go to their dashboards; customers return to the
         // page they were headed to (if any) instead of the homepage.

@@ -96,6 +96,7 @@ $destinations = [
     'admin'      => baseUrl('admin/index.php'),
     'staff'      => baseUrl('staff/index.php'),
     'technician' => baseUrl('tech/index.php'),
+    'qa'         => baseUrl('qa/index.php'),
 ];
 // Customers return to the page they originally requested (if any); staff-type
 // roles go to their dashboards, unchanged.

@@ -5,3 +5,26 @@
 # The directory itself is kept via storage/logs/.gitignore.
 storage/logs/*
 !storage/logs/.gitignore
+
+# Keep safe environment templates tracked; never commit populated local files.
+.env.*
+!.env.example
+!.env.*.example
+
+# OAuth credentials, tokens, and machine-local integration config.
+client_secret*.json
+**/client_secret*.json
+*gmail*token*.json
+**/*gmail*token*.json
+config/gmail.php
+config/*.local.php
+
+# Database backups may contain private operational data.
+database/backups/*.sql
+
+# Runtime logs may contain provider responses.
+*.log
+
+# Local tooling and one-off diagnostics.
+.impeccable/
+_live*_probe.php

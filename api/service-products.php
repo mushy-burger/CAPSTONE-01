@@ -3,6 +3,9 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 
 header('Content-Type: application/json');
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
 
 requireLogin();
 ensureMultiServiceBookingSchema();
@@ -59,7 +62,7 @@ $products = array_map(static function (array $product): array {
         'brand' => (string)($product['brand'] ?? ''),
         'description' => (string)($product['description'] ?? ''),
         'price' => (float)($product['price'] ?? 0),
-        'stock' => (int)($product['stock'] ?? 0),
+        'available_stock' => max(0, (int)($product['available_stock'] ?? 0)),
         'category_name' => (string)($product['category_name'] ?? ''),
         'image_url' => $imageUrl,
     ];

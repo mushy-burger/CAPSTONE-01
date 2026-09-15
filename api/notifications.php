@@ -21,7 +21,7 @@ if (isset($_GET['mark_read'])) {
 $count = getUnreadNotificationCount($userId);
 
 $notifications = fetchAllRows(
-    "SELECT id, type, message, booking_id, is_read, created_at
+    "SELECT id, type, message, booking_id, action_url, is_read, created_at
      FROM notifications
      WHERE user_id = ?
      ORDER BY created_at DESC

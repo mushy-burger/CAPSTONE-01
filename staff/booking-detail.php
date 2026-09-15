@@ -4,6 +4,8 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/NotificationService.php';
 require_once __DIR__ . '/../includes/BookingDeposit.php';
+require_once __DIR__ . '/../includes/PartsReservationService.php';
+require_once __DIR__ . '/../includes/TechnicianService.php';
 
 $bookingId = (int)($_GET['id'] ?? 0);
 if ($bookingId <= 0) {
@@ -75,6 +77,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'cancel_booking') {
         if (in_array($booking['status'], ['pending', 'confirmed'], true)) {
             getDB()->prepare("UPDATE bookings SET status = 'cancelled' WHERE id = ?")->execute([$bookingId]);
+            // Release any held parts reservations
+            try { partsReleaseForBooking($bookingId); } catch (Throwable $e) {}
             flashMessage('bk_success', "Booking #$bookingId has been cancelled.");
         } else {
             flashMessage('bk_error', 'Cannot cancel an in-progress or completed booking.');
@@ -95,8 +99,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Deposit gate — mirrors the bookings list so neither path can skip it.
             flashMessage('bk_error', "This booking cannot be confirmed — the customer's reservation deposit has not been paid.");
         } else {
-            // assigned_at is set here too, matching the bookings list confirm paths.
-            getDB()->prepare("UPDATE bookings SET status = 'confirmed', technician_id = ?, assigned_at = NOW() WHERE id = ?")->execute([$techId, $bookingId]);
+            getDB()->prepare("UPDATE bookings SET status = 'confirmed', technician_id = ?, assigned_at = NOW() WHERE id = ? AND status = 'pending'")->execute([$techId, $bookingId]);
             $scheduledDate = date('M j, Y', strtotime($booking['scheduled_date']));
             createNotification(
                 $techId,
@@ -148,6 +151,14 @@ $booking = fetchOne(
 
 $flash    = getFlash('bk_success');
 $flashErr = getFlash('bk_error');
+
+// Qualification data for the technician dropdown (Feature 5)
+$bookingServiceIds = techBookingServiceIds($bookingId);
+$qualMap           = techQualificationMap();
+$autoSuggest       = techAutoAssignCandidate($bookingId);
+
+// Load reservation data for the parts card (Feature 4)
+$reservedParts = partsGetForBooking($bookingId);
 
 $statusColor = [
     'pending'     => '#6b7280',
@@ -295,7 +306,7 @@ $pageTitle = 'Booking #' . $bookingId;
   <!-- RIGHT COLUMN: Actions -->
   <div class="mtx-stack">
 
-    <!-- Technician assignment card -->
+    <!-- Technician assignment card (Feature 5 — Specialization UI) -->
     <section class="mtx-card">
       <div class="mtx-card-head"><div><h2><i class="fas fa-user-cog"></i> Technician</h2></div></div>
 
@@ -306,29 +317,57 @@ $pageTitle = 'Booking #' . $bookingId;
             <div style="font-weight:800;"><?= htmlspecialchars($booking['technician_name']) ?></div>
             <div class="subtext"><?= htmlspecialchars($booking['technician_email'] ?? '') ?></div>
           </div>
+          <?php
+            $assignedTechId = (int)($booking['technician_id'] ?? 0);
+            $techQuals = $qualMap[$assignedTechId] ?? [];
+            $allMatch  = !$bookingServiceIds || count(array_intersect(array_keys($techQuals), $bookingServiceIds)) === count($bookingServiceIds);
+          ?>
+          <span style="margin-left:auto;font-size:.8rem;font-weight:700;padding:4px 10px;border-radius:20px;
+            background:<?= $allMatch ? 'rgba(21,128,61,.15)' : 'rgba(217,119,6,.15)' ?>;
+            color:<?= $allMatch ? '#15803d' : '#d97706' ?>">
+            <i class="fas fa-<?= $allMatch ? 'circle-check' : 'triangle-exclamation' ?>" aria-hidden="true"></i>
+            <?= $allMatch ? 'Fully Qualified' : 'Partial Match' ?>
+          </span>
         </div>
       <?php else: ?>
         <p class="subtext" style="margin:0 0 14px;">No technician assigned yet.</p>
       <?php endif; ?>
 
       <?php if (in_array($booking['status'], ['pending', 'confirmed'], true)): ?>
+        <?php if ($autoSuggest): ?>
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(37,99,235,.07);border:1px dashed rgba(37,99,235,.3);border-radius:10px;margin-bottom:12px;font-size:.83rem;">
+            <i class="fas fa-wand-magic-sparkles" style="color:#2563eb;"></i>
+            <span>Best match: <strong><?= htmlspecialchars($autoSuggest['name']) ?></strong></span>
+            <button type="button" class="mtx-btn mtx-btn--ghost mtx-btn--xs" id="autoSuggestBtn"
+                    data-tech-id="<?= (int)$autoSuggest['id'] ?>">
+              Use Suggestion
+            </button>
+          </div>
+        <?php endif; ?>
+
         <form method="post">
           <?= authContextField() ?>
           <input type="hidden" name="action" value="<?= $booking['status'] === 'pending' ? 'confirm_booking' : 'reassign_tech' ?>">
           <label class="mtx-field" style="margin-bottom:10px;">
-            <span><?= $booking['status'] === 'pending' ? 'Assign & Confirm' : 'Reassign Technician' ?></span>
-            <select name="technician_id" required>
+            <span><?= $booking['status'] === 'pending' ? 'Assign &amp; Confirm' : 'Reassign Technician' ?></span>
+            <select name="technician_id" id="techSelect" required>
               <option value="">— Select Technician —</option>
-              <?php foreach ($technicians as $t): ?>
-                <option value="<?= (int)$t['id'] ?>" <?= (int)($booking['technician_id'] ?? 0) === (int)$t['id'] ? 'selected' : '' ?>>
-                  <?= htmlspecialchars($t['name']) ?>
+              <?php foreach ($technicians as $t):
+                $tid   = (int)$t['id'];
+                $quals = $qualMap[$tid] ?? [];
+                $match = !$bookingServiceIds || count(array_intersect(array_keys($quals), $bookingServiceIds)) === count($bookingServiceIds);
+                $badge = $match ? ' - Fully qualified' : ' - Partial match';
+              ?>
+                <option value="<?= $tid ?>" <?= (int)($booking['technician_id'] ?? 0) === $tid ? 'selected' : '' ?>>
+                  <?= htmlspecialchars($t['name']) . $badge ?>
                 </option>
               <?php endforeach; ?>
             </select>
           </label>
+          <p style="font-size:.75rem;color:var(--muted);margin:-4px 0 10px;">Qualification labels compare each technician with every service on this booking.</p>
           <button type="submit" class="mtx-btn mtx-btn--primary" style="width:100%;">
             <?php if ($booking['status'] === 'pending'): ?>
-              <i class="fas fa-check"></i> Confirm & Assign
+              <i class="fas fa-check"></i> Confirm &amp; Assign
             <?php else: ?>
               <i class="fas fa-sync-alt"></i> Reassign Tech
             <?php endif; ?>
@@ -336,6 +375,43 @@ $pageTitle = 'Booking #' . $bookingId;
         </form>
       <?php endif; ?>
     </section>
+
+    <!-- Reserved Parts card (Feature 4) -->
+    <?php if ($reservedParts): ?>
+    <section class="mtx-card" style="border-color:rgba(217,119,6,.32);">
+      <div class="mtx-card-head">
+        <div><h2><i class="fas fa-boxes-stacked" style="color:#d97706;"></i> Reserved Parts</h2></div>
+        <?php
+          $heldCount = count(array_filter($reservedParts, fn($r) => $r['status'] === 'held'));
+        ?>
+        <span class="mtx-pill" style="--pill-color:<?= $heldCount > 0 ? '#d97706' : '#15803d' ?>;">
+          <?= $heldCount > 0 ? $heldCount . ' on hold' : 'All consumed' ?>
+        </span>
+      </div>
+      <?php foreach ($reservedParts as $rp):
+        $statusIcons = ['held' => 'lock', 'consumed' => 'circle-check', 'released' => 'lock-open'];
+        $statusColors = ['held' => '#d97706', 'consumed' => '#15803d', 'released' => '#6b7280'];
+      ?>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);">
+          <span style="font-size:.85rem;">
+            <i class="fas fa-<?= $statusIcons[$rp['status']] ?? 'circle-info' ?>" aria-hidden="true"></i>
+            <strong><?= htmlspecialchars($rp['product_name']) ?></strong>
+            <span style="color:var(--muted);">× <?= (int)$rp['quantity'] ?></span>
+          </span>
+          <span style="font-size:.75rem;font-weight:700;color:<?= $statusColors[$rp['status']] ?? '#6b7280' ?>;">
+            <?= ucfirst($rp['status']) ?>
+            <?php if ($rp['status'] === 'held'): ?>
+              <span style="color:var(--muted);font-weight:400;">| stock: <?= (int)$rp['current_stock'] ?></span>
+            <?php endif; ?>
+          </span>
+        </div>
+      <?php endforeach; ?>
+      <p style="font-size:.75rem;color:var(--muted);margin-top:10px;">
+        <i class="fas fa-info-circle"></i>
+        Parts are released if booking is cancelled, consumed when the job is completed.
+      </p>
+    </section>
+    <?php endif; ?>
 
     <!-- Status card -->
     <section class="mtx-card">
@@ -400,4 +476,19 @@ $pageTitle = 'Booking #' . $bookingId;
 </div><!-- /.mtx-shell -->
 
 <?= authContextScriptTag() ?>
+<script>
+(function(){
+  var btn = document.getElementById('autoSuggestBtn');
+  var sel = document.getElementById('techSelect');
+  if (btn && sel) {
+    btn.addEventListener('click', function(){
+      sel.value = this.dataset.techId;
+      sel.focus();
+      // Highlight selection
+      sel.style.outline = '2px solid #2563eb';
+      setTimeout(function(){ sel.style.outline = ''; }, 1200);
+    });
+  }
+})();
+</script>
 </main></div></div></body></html>

@@ -13,7 +13,7 @@ $validSorts = ['featured','price_asc','price_desc','newest'];
 $sort       = in_array($sort, $validSorts, true) ? $sort : 'featured';
 $categories = getCategories();
 
-$where  = ["p.status != 'out_of_stock'"];
+$where  = ["p.status != 'archived'"];
 $params = [];
 if ($categoryId) {
     $where[]  = 'p.category_id = ?';
@@ -33,7 +33,8 @@ $orderBy = match($sort) {
 };
 
 $products = fetchAllRows(
-    "SELECT p.*, c.name AS category_name
+    "SELECT p.*, c.name AS category_name,
+            " . availableStockSql('p') . " AS available_stock
      FROM products p
      JOIN categories c ON c.id = p.category_id
      WHERE " . implode(' AND ', $where) . "
@@ -46,7 +47,7 @@ $products = fetchAllRows(
   <header class="customer-page-heading shop-page-heading">
     <div>
       <h1>Shop motorcycle parts</h1>
-      <p>Search available products, narrow the catalog, and compare options.</p>
+      <p>Search products, narrow the catalog, and compare options.</p>
     </div>
     <span class="shop-result-count"><?= count($products) ?> product<?= count($products) !== 1 ? 's' : '' ?></span>
   </header>
@@ -108,12 +109,7 @@ $products = fetchAllRows(
   <div class="product-grid">
     <?php foreach ($products as $product): ?>
       <?php
-        // Add low-stock badge dynamically
         $stockBadge = '';
-        $stock = (int)$product['stock'];
-        if ($stock <= 5 && $stock > 0) {
-            $stockBadge = '<span class="product-status-badge is-low-stock">Only ' . $stock . ' left</span>';
-        }
         if ($product['featured']) {
             $stockBadge .= '<span class="product-status-badge is-featured">Featured</span>';
         }

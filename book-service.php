@@ -59,13 +59,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($pageAction, ['delete_appo
 
 $appointments = fetchAllRows(
     "SELECT b.*, v.plate_number, t.name AS type_name, br.name AS brand_name, m.name AS model_name,
-            tech.name AS technician_name
+            tech.name AS technician_name,
+            r.service_rating AS submitted_service_rating, r.mechanic_rating AS submitted_mechanic_rating
      FROM bookings b
      LEFT JOIN customer_vehicles v ON v.id = b.vehicle_id
      LEFT JOIN motorcycle_types t ON t.id = v.type_id
      LEFT JOIN motorcycle_brands br ON br.id = v.brand_id
      LEFT JOIN motorcycle_models m ON m.id = v.model_id
      LEFT JOIN users tech ON tech.id = b.technician_id
+     LEFT JOIN booking_ratings r ON r.booking_id = b.id
+     WHERE b.user_id = ?
+     ORDER BY b.created_at DESC, b.id DESC",
+    [$user['id']]
+);
+if ($message !== '' && str_contains($message, 'Please pay')) {
+    if (preg_match('/Booking #(\d+)/', $message, $match) && depositIsSettled((int)$match[1])) {
+        $message = 'Reservation deposit paid. Your booking is awaiting staff confirmation and mechanic assignment.';
+    }
+}
+// Re-check pending deposit sessions so eventual PayMongo success is reflected
+// when the customer returns to Appointment Details, even if the first callback
+// arrived before PayMongo exposed the paid payment.
+foreach ($appointments as $appointment) {
+    if ((string)$appointment['status'] === 'pending') {
+        try { depositVerifyLatest((int)$appointment['id']); } catch (Throwable $e) {}
+    }
+}
+$appointments = fetchAllRows(
+    "SELECT b.*, v.plate_number, t.name AS type_name, br.name AS brand_name, m.name AS model_name,
+            tech.name AS technician_name,
+            r.service_rating AS submitted_service_rating, r.mechanic_rating AS submitted_mechanic_rating
+     FROM bookings b
+     LEFT JOIN customer_vehicles v ON v.id = b.vehicle_id
+     LEFT JOIN motorcycle_types t ON t.id = v.type_id
+     LEFT JOIN motorcycle_brands br ON br.id = v.brand_id
+     LEFT JOIN motorcycle_models m ON m.id = v.model_id
+     LEFT JOIN users tech ON tech.id = b.technician_id
+     LEFT JOIN booking_ratings r ON r.booking_id = b.id
      WHERE b.user_id = ?
      ORDER BY b.created_at DESC, b.id DESC",
     [$user['id']]
@@ -179,6 +209,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pageAction === 'submit_booking') {
         $db = getDB();
         $db->beginTransaction();
         try {
+            assertAvailableStockForItems($selection['products'], $db);
             if ($editBooking) {
                 $bookingId = (int)$editBooking['id'];
                 $db->prepare(
@@ -280,6 +311,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pageAction === 'submit_booking') {
 $pageTitle = 'Book Service - MotoTrack';
 require_once __DIR__ . '/includes/header.php';
 ?>
+
+<style>
+  .page-book-service .appointment-rating-action { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:16px; padding:14px 0 2px; border-top:1px solid rgba(255,255,255,.09); }
+  .page-book-service .appointment-rating-action > div { display:grid; gap:3px; }
+  .page-book-service .appointment-rating-action > div strong { color:#fff; font-size:.9rem; }
+  .page-book-service .appointment-rating-action > div span { color:rgba(255,255,255,.62); font-size:.8rem; }
+  .page-book-service .appointment-rating-action__done { color:#8ee0ad; font-size:.84rem; font-weight:800; }
+  .page-book-service .appointment-rating-action__stars { margin-left:auto; color:#f4b740; font-size:.88rem; letter-spacing:.08em; }
+  .page-book-service .appointment-rating-action .btn { flex:0 0 auto; }
+  @media (max-width:560px) { .page-book-service .appointment-rating-action { align-items:flex-start; flex-wrap:wrap; } .page-book-service .appointment-rating-action .btn { width:100%; } .page-book-service .appointment-rating-action__stars { margin-left:0; } }
+</style>
 
 <section class="section container form-layout booking-layout">
   <header class="customer-page-heading booking-page-heading">
@@ -550,6 +592,23 @@ require_once __DIR__ . '/includes/header.php';
               <strong><?= formatPrice((float)$appointment['total_amount']) ?></strong>
             </div>
 
+            <?php if ($status === 'completed'): ?>
+              <div class="appointment-rating-action">
+                <?php if ($appointment['submitted_service_rating'] !== null): ?>
+                  <span class="appointment-rating-action__done"><i class="fas fa-circle-check" aria-hidden="true"></i> Review submitted</span>
+                  <span class="appointment-rating-action__stars" aria-label="<?= (int)$appointment['submitted_service_rating'] ?> out of 5 service stars">
+                    <?php for ($i = 1; $i <= 5; $i++): ?><i class="<?= $i <= (int)$appointment['submitted_service_rating'] ? 'fas' : 'far' ?> fa-star" aria-hidden="true"></i><?php endfor; ?>
+                  </span>
+                <?php elseif ((int)($appointment['rating_token_used'] ?? 0) === 0): ?>
+                  <div>
+                    <strong>Service completed</strong>
+                    <span>Tell us about your MotoTrack experience.</span>
+                  </div>
+                  <a class="btn btn-primary btn-small" href="<?= baseUrl('rate-booking.php?booking_id=' . $bookingId . '&ctx=' . urlencode(currentAuthContext())) ?>"><i class="fas fa-star" aria-hidden="true"></i> Rate Service</a>
+                <?php endif; ?>
+              </div>
+            <?php endif; ?>
+
             <div class="history-actions">
               <?php if ($canEdit && $isPending): ?>
                 <a class="btn btn-outline" href="<?= baseUrl('book-service.php?tab=book&edit_booking_id=' . $bookingId) ?>">Edit</a>
@@ -666,15 +725,18 @@ require_once __DIR__ . '/includes/header.php';
 
   const productCardMarkup = (serviceId, product) => {
     const isSelected = selectedProducts.get(serviceId) === Number(product.id);
+    const available = Number(product.available_stock ?? 0) > 0;
+    const isDisabled = !available;
     const description = product.description || product.category_name || 'Compatible product';
     return `
       <button
         type="button"
-        class="booking-product-card mtx-tilt-card${isSelected ? ' is-selected' : ''}"
+        class="booking-product-card mtx-tilt-card${isSelected ? ' is-selected' : ''}${isDisabled ? ' is-unavailable' : ''}"
         data-product-card
         data-tilt-card
         data-service-id="${serviceId}"
         data-product-id="${Number(product.id)}"
+        ${isDisabled ? 'disabled aria-disabled="true"' : ''}
       >
         <span class="booking-product-check"><i class="fas fa-check"></i></span>
         <span class="booking-product-image">${getProductImageMarkup(product)}</span>
@@ -682,9 +744,9 @@ require_once __DIR__ . '/includes/header.php';
           <strong>${escapeHtml(product.name)}</strong>
           <small>${escapeHtml(product.brand || 'MotoTrack')}</small>
           <em>${escapeHtml(description)}</em>
-          <b>${formatMoney(product.price)}</b>
+          <b>${formatMoney(product.price)}</b><small>${available ? 'Available' : 'Unavailable'}</small>
         </span>
-        <span class="booking-product-action">${isSelected ? 'Selected' : 'Select Product'}</span>
+        <span class="booking-product-action">${isDisabled ? 'Unavailable' : (isSelected ? 'Selected' : 'Select Product')}</span>
       </button>
     `;
   };
@@ -740,17 +802,12 @@ require_once __DIR__ . '/includes/header.php';
     const service = serviceLookup.get(serviceId);
     if (!service || !serviceProductSections) return;
 
-    if (productCache.has(serviceId)) {
-      renderProductSection(service, productCache.get(serviceId));
-      updateBookingUi();
-      return;
-    }
-
     renderProductSection(service, [], 'loading');
 
     const url = new URL(productEndpoint, window.location.href);
     url.searchParams.set('service_id', String(serviceId));
     url.searchParams.set('vehicle_id', String(vehicleId));
+    url.searchParams.set('_availability', String(Date.now()));
 
     try {
       const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });

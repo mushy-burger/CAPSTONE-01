@@ -4895,3 +4895,149 @@ body {
   .page-book-service .booking-summary-slot { align-self: start; }
   .page-book-service .booking-summary { position: static; top: auto; }
 }
+
+/* Reservation deposit — a compact customer checkout, intentionally scoped to
+   the payment step so shared booking and PayMongo behavior stay untouched. */
+.page-booking-deposit .deposit-page {
+  min-height: calc(100vh - 88px);
+  padding: 136px 0 76px;
+  background:
+    radial-gradient(840px 460px at 77% 16%, rgba(215, 25, 32, 0.1), transparent 68%),
+    #050608;
+}
+
+.page-booking-deposit .deposit-page__container { max-width: 1120px; }
+.page-booking-deposit .deposit-page__heading { max-width: 650px; margin-bottom: 30px; }
+.page-booking-deposit .deposit-booking-id {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 11px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.page-booking-deposit .deposit-page__heading h1 {
+  margin: 12px 0 9px;
+  color: #fff;
+  font-size: clamp(2.2rem, 4.5vw, 3.75rem);
+  line-height: 0.98;
+  letter-spacing: -0.035em;
+}
+.page-booking-deposit .deposit-page__heading p { margin: 0; color: rgba(255, 255, 255, 0.62); font-size: 1rem; }
+.page-booking-deposit .deposit-alert { max-width: 1120px; margin: 0 0 18px; }
+
+.page-booking-deposit .deposit-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.18fr) minmax(330px, 0.82fr);
+  gap: 22px;
+  align-items: start;
+}
+.page-booking-deposit .deposit-summary-panel,
+.page-booking-deposit .deposit-payment-panel {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background: #0a0c10;
+  box-shadow: 0 22px 44px rgba(0, 0, 0, 0.22);
+}
+.page-booking-deposit .deposit-summary-panel { padding: 28px; }
+.page-booking-deposit .deposit-payment-panel {
+  position: sticky;
+  top: 104px;
+  padding: 28px;
+  background: linear-gradient(160deg, rgba(215, 25, 32, 0.1), transparent 44%), #0a0c10;
+}
+.page-booking-deposit .deposit-panel-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 19px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.page-booking-deposit .deposit-panel-heading h2,
+.page-booking-deposit .deposit-payment-copy h2 { margin: 0; color: #fff; }
+.page-booking-deposit .deposit-panel-heading h2 { font-size: 1.35rem; letter-spacing: -0.02em; }
+.page-booking-deposit .deposit-panel-heading span,
+.page-booking-deposit .deposit-payment-label {
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.page-booking-deposit .deposit-summary-list { margin: 0; }
+.page-booking-deposit .deposit-summary-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.36fr) minmax(0, 0.64fr);
+  gap: 18px;
+  padding: 17px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.page-booking-deposit .deposit-summary-row dt,
+.page-booking-deposit .deposit-payment-details dt { color: rgba(255, 255, 255, 0.5); font-size: 0.87rem; }
+.page-booking-deposit .deposit-summary-row dd,
+.page-booking-deposit .deposit-payment-details dd { min-width: 0; margin: 0; color: #fff; font-size: 0.94rem; font-weight: 700; line-height: 1.4; text-align: right; overflow-wrap: anywhere; }
+.page-booking-deposit .deposit-summary-row--total { margin-top: 3px; padding: 21px 0 0; border: 0; }
+.page-booking-deposit .deposit-summary-row--total dd { color: #ff5a61; font-size: 1.18rem; font-variant-numeric: tabular-nums; }
+
+.page-booking-deposit .deposit-payment-copy { padding-bottom: 22px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+.page-booking-deposit .deposit-payment-label { display: block; margin-bottom: 10px; color: #ff8e93; }
+.page-booking-deposit .deposit-payment-copy h2 { font-size: clamp(2rem, 4vw, 2.7rem); line-height: 1; letter-spacing: -0.035em; font-variant-numeric: tabular-nums; }
+.page-booking-deposit .deposit-payment-copy p { margin: 12px 0 0; color: rgba(255, 255, 255, 0.62); font-size: 0.92rem; line-height: 1.55; }
+.page-booking-deposit .deposit-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 20px 0;
+  padding: 13px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+}
+.page-booking-deposit .deposit-status span { color: rgba(255, 255, 255, 0.54); font-size: 0.76rem; font-weight: 700; }
+.page-booking-deposit .deposit-status strong { font-size: 0.74rem; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; }
+.page-booking-deposit .deposit-status--unpaid strong { color: #f4b740; }
+.page-booking-deposit .deposit-status--paid strong { color: #72d491; }
+.page-booking-deposit .deposit-payment-details { margin: 0 0 20px; }
+.page-booking-deposit .deposit-payment-details > div { display: grid; grid-template-columns: 1fr minmax(0, 1.3fr); gap: 16px; padding: 10px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.page-booking-deposit .deposit-payment-details > div:last-child { border-bottom: 0; }
+.page-booking-deposit .deposit-reference { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.76rem; }
+.page-booking-deposit .deposit-action-form { margin: 0; }
+.page-booking-deposit .deposit-primary-action { display: inline-flex; align-items: center; justify-content: center; width: 100%; min-height: 52px; margin: 0; }
+.page-booking-deposit .deposit-primary-action:focus-visible,
+.page-booking-deposit .deposit-back-link a:focus-visible { outline: 2px solid #ff5a61; outline-offset: 3px; }
+.page-booking-deposit .deposit-secure-note { margin: 12px 0 0; color: rgba(255, 255, 255, 0.48); font-size: 0.78rem; line-height: 1.45; text-align: center; }
+.page-booking-deposit .deposit-secure-note i { margin-right: 4px; color: rgba(255, 255, 255, 0.65); }
+.page-booking-deposit .deposit-inline-alert { margin: 0 0 16px; }
+.page-booking-deposit .deposit-staff-note { margin: 0; color: rgba(255, 255, 255, 0.7); font-size: 0.9rem; line-height: 1.55; }
+.page-booking-deposit .deposit-back-link { margin-top: 22px; text-align: center; }
+.page-booking-deposit .deposit-back-link a { color: rgba(255, 255, 255, 0.6); font-size: 0.88rem; font-weight: 700; text-decoration: none; }
+.page-booking-deposit .deposit-back-link a:hover { color: #fff; }
+.page-booking-deposit .deposit-back-link i { margin-right: 6px; font-size: 0.78rem; }
+
+@media (max-width: 860px) {
+  .page-booking-deposit .deposit-page { padding-top: 112px; }
+  .page-booking-deposit .deposit-layout { grid-template-columns: 1fr; }
+  .page-booking-deposit .deposit-payment-panel { position: static; }
+}
+@media (max-width: 560px) {
+  .page-booking-deposit .deposit-page { padding: 102px 0 44px; }
+  .page-booking-deposit .deposit-page__heading { margin-bottom: 24px; }
+  .page-booking-deposit .deposit-page__heading h1 { font-size: clamp(2rem, 11vw, 2.8rem); }
+  .page-booking-deposit .deposit-summary-panel,
+  .page-booking-deposit .deposit-payment-panel { padding: 21px 18px; border-radius: 14px; }
+  .page-booking-deposit .deposit-panel-heading { display: block; padding-bottom: 16px; }
+  .page-booking-deposit .deposit-panel-heading span { display: block; margin-top: 7px; }
+  .page-booking-deposit .deposit-summary-row { grid-template-columns: 1fr; gap: 5px; padding: 14px 0; }
+  .page-booking-deposit .deposit-summary-row dd { text-align: left; }
+  .page-booking-deposit .deposit-summary-row--total { padding-top: 17px; }
+  .page-booking-deposit .deposit-payment-details > div { grid-template-columns: 1fr; gap: 4px; }
+  .page-booking-deposit .deposit-payment-details dd { text-align: left; }
+}

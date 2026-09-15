@@ -60,8 +60,37 @@ require_once __DIR__ . '/includes/header.php';
   </div>
 </section>
 
-<section class="section container">
-  <div class="auth-card" style="max-width:600px;">
+<style>
+  /* Payment confirmation is intentionally compact beneath its page heading. */
+  .page-payment-success .payment-confirmation-section {
+    padding-top: 24px;
+    padding-bottom: 48px;
+  }
+
+  .page-payment-success .payment-confirmation-card {
+    max-width: 600px;
+    margin-inline: auto;
+  }
+
+  .page-payment-success .payment-status p { color: rgba(255, 255, 255, 0.78); }
+  .page-payment-success .payment-receipt-row span,
+  .page-payment-success .payment-items-title { color: rgba(255, 255, 255, 0.72); }
+  .page-payment-success .payment-receipt-item { color: rgba(255, 255, 255, 0.94); }
+  .page-payment-success .payment-receipt-item .qty { color: rgba(255, 255, 255, 0.68); }
+  .page-payment-success .payment-receipt-total strong:first-child { color: #fff; }
+  .page-payment-success .payment-actions .btn-primary { color: #fff; }
+  .page-payment-success .payment-actions .btn-outline { color: rgba(255, 255, 255, 0.9); }
+
+  @media (max-width: 620px) {
+    .page-payment-success .payment-confirmation-section { padding-top: 18px; }
+    .page-payment-success .payment-confirmation-card { padding: 22px 18px; }
+    .page-payment-success .payment-actions { display: grid; grid-template-columns: 1fr; }
+    .page-payment-success .payment-actions .btn { width: 100%; }
+  }
+</style>
+
+<section class="section container payment-confirmation-section">
+  <div class="auth-card payment-confirmation-card">
     <?php if (!$order): ?>
       <div class="alert error">We could not find that order. Please check your order history.</div>
       <a class="btn btn-outline" href="<?= baseUrl('cart.php?tab=orders') ?>">My Orders</a>
