@@ -24,7 +24,9 @@ $unreadCount = getUnreadNotificationCount((int)$currentUser['id']);
       <i class="fas fa-motorcycle"></i>
       <span>MotoTrack</span>
     </div>
-    <div class="role-badge role-staff"><?= $_isQA ? '🟣 QA → Staff View' : 'Staff' ?></div>
+    <div class="role-badge role-staff">
+      <?php if ($_isQA): ?><i class="fas fa-vial" aria-hidden="true"></i> QA / Staff View<?php else: ?>Staff<?php endif; ?>
+    </div>
     <nav class="sidebar-nav">
       <a href="<?= baseUrl('staff/index.php') ?>" class="<?= $staffPage === 'index' ? 'active' : '' ?>">
         <i class="fas fa-tachometer-alt"></i> Dashboard

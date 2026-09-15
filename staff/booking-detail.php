@@ -99,8 +99,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Deposit gate — mirrors the bookings list so neither path can skip it.
             flashMessage('bk_error', "This booking cannot be confirmed — the customer's reservation deposit has not been paid.");
         } else {
-            // assigned_at is set here too, matching the bookings list confirm paths.
-            getDB()->prepare("UPDATE bookings SET status = 'confirmed', technician_id = ?, assigned_at = NOW() WHERE id = ?")->execute([$techId, $bookingId]);
+            getDB()->prepare("UPDATE bookings SET status = 'confirmed', technician_id = ?, assigned_at = NOW() WHERE id = ? AND status = 'pending'")->execute([$techId, $bookingId]);
             $scheduledDate = date('M j, Y', strtotime($booking['scheduled_date']));
             createNotification(
                 $techId,
@@ -127,9 +126,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 smsLogLine("Confirmation notification failed for booking {$bookingId}: " . $e->getMessage());
                 $note = ' Customer notification could not be sent (logged).';
             }
-
-            // Reserve parts for this booking (non-fatal)
-            try { partsReserveForBooking($bookingId); } catch (Throwable $e) {}
 
             flashMessage('bk_success', "Booking #$bookingId confirmed and assigned to {$tech['name']}." . $note);
         }
@@ -329,7 +325,8 @@ $pageTitle = 'Booking #' . $bookingId;
           <span style="margin-left:auto;font-size:.8rem;font-weight:700;padding:4px 10px;border-radius:20px;
             background:<?= $allMatch ? 'rgba(21,128,61,.15)' : 'rgba(217,119,6,.15)' ?>;
             color:<?= $allMatch ? '#15803d' : '#d97706' ?>">
-            <?= $allMatch ? '✓ Fully Qualified' : '⚠ Partial Match' ?>
+            <i class="fas fa-<?= $allMatch ? 'circle-check' : 'triangle-exclamation' ?>" aria-hidden="true"></i>
+            <?= $allMatch ? 'Fully Qualified' : 'Partial Match' ?>
           </span>
         </div>
       <?php else: ?>
@@ -359,7 +356,7 @@ $pageTitle = 'Booking #' . $bookingId;
                 $tid   = (int)$t['id'];
                 $quals = $qualMap[$tid] ?? [];
                 $match = !$bookingServiceIds || count(array_intersect(array_keys($quals), $bookingServiceIds)) === count($bookingServiceIds);
-                $badge = $match ? ' ✓' : ' ⚠';
+                $badge = $match ? ' - Fully qualified' : ' - Partial match';
               ?>
                 <option value="<?= $tid ?>" <?= (int)($booking['technician_id'] ?? 0) === $tid ? 'selected' : '' ?>>
                   <?= htmlspecialchars($t['name']) . $badge ?>
@@ -367,7 +364,7 @@ $pageTitle = 'Booking #' . $bookingId;
               <?php endforeach; ?>
             </select>
           </label>
-          <p style="font-size:.75rem;color:var(--muted);margin:-4px 0 10px;">✓ = qualified for all services on this booking &nbsp;⚠ = partial match</p>
+          <p style="font-size:.75rem;color:var(--muted);margin:-4px 0 10px;">Qualification labels compare each technician with every service on this booking.</p>
           <button type="submit" class="mtx-btn mtx-btn--primary" style="width:100%;">
             <?php if ($booking['status'] === 'pending'): ?>
               <i class="fas fa-check"></i> Confirm &amp; Assign
@@ -381,7 +378,7 @@ $pageTitle = 'Booking #' . $bookingId;
 
     <!-- Reserved Parts card (Feature 4) -->
     <?php if ($reservedParts): ?>
-    <section class="mtx-card" style="border-left:4px solid #d97706;">
+    <section class="mtx-card" style="border-color:rgba(217,119,6,.32);">
       <div class="mtx-card-head">
         <div><h2><i class="fas fa-boxes-stacked" style="color:#d97706;"></i> Reserved Parts</h2></div>
         <?php
@@ -392,12 +389,12 @@ $pageTitle = 'Booking #' . $bookingId;
         </span>
       </div>
       <?php foreach ($reservedParts as $rp):
-        $statusIcons = ['held' => '🔒', 'consumed' => '✅', 'released' => '🔓'];
+        $statusIcons = ['held' => 'lock', 'consumed' => 'circle-check', 'released' => 'lock-open'];
         $statusColors = ['held' => '#d97706', 'consumed' => '#15803d', 'released' => '#6b7280'];
       ?>
         <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);">
           <span style="font-size:.85rem;">
-            <?= $statusIcons[$rp['status']] ?? '' ?>
+            <i class="fas fa-<?= $statusIcons[$rp['status']] ?? 'circle-info' ?>" aria-hidden="true"></i>
             <strong><?= htmlspecialchars($rp['product_name']) ?></strong>
             <span style="color:var(--muted);">× <?= (int)$rp['quantity'] ?></span>
           </span>

@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS `purchase_order_items` (
   `quantity`   INT UNSIGNED NOT NULL,
   `unit_cost`  DECIMAL(10,2) DEFAULT NULL,
   PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_po_product` (`po_id`,`product_id`),
   KEY `po_id` (`po_id`),
   KEY `product_id` (`product_id`),
   CONSTRAINT `fk_po_items_po`
@@ -51,3 +52,6 @@ CREATE TABLE IF NOT EXISTS `purchase_order_items` (
   CONSTRAINT `fk_po_items_product`
     FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+ALTER TABLE `purchase_order_items`
+  ADD UNIQUE INDEX IF NOT EXISTS `uniq_po_product` (`po_id`, `product_id`);

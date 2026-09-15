@@ -9,6 +9,9 @@ ALTER TABLE `bookings`
   ADD COLUMN IF NOT EXISTS `rating_token` VARCHAR(64) DEFAULT NULL AFTER `tech_notes`,
   ADD COLUMN IF NOT EXISTS `rating_token_used` TINYINT(1) NOT NULL DEFAULT 0 AFTER `rating_token`;
 
+ALTER TABLE `bookings`
+  ADD UNIQUE INDEX IF NOT EXISTS `uniq_bookings_rating_token` (`rating_token`);
+
 -- 2) Ratings table
 CREATE TABLE IF NOT EXISTS `booking_ratings` (
   `id`               INT UNSIGNED NOT NULL AUTO_INCREMENT,

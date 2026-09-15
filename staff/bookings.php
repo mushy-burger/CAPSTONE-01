@@ -6,6 +6,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/TechnicianService.php';
 require_once __DIR__ . '/../includes/NotificationService.php';
 require_once __DIR__ . '/../includes/BookingDeposit.php';
+require_once __DIR__ . '/../includes/PartsReservationService.php';
 requireStaff();
 
 /** Short, honest summary of what actually reached the customer. */
@@ -74,9 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect(baseUrl('staff/bookings.php'));
         }
 
-        getDB()->prepare(
-            "UPDATE bookings SET status = 'confirmed', technician_id = ?, assigned_at = NOW() WHERE id = ?"
-        )->execute([$techId, $bookingId]);
+        getDB()->prepare("UPDATE bookings SET status = 'confirmed', technician_id = ?, assigned_at = NOW() WHERE id = ? AND status = 'pending'")->execute([$techId, $bookingId]);
 
         // Notify the assigned technician
         $scheduledDate = date('M j, Y', strtotime($booking['scheduled_date']));
@@ -112,9 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect(baseUrl('staff/bookings.php'));
         }
 
-        getDB()->prepare(
-            "UPDATE bookings SET status = 'confirmed', technician_id = ?, assigned_at = NOW() WHERE id = ?"
-        )->execute([$tech['id'], $bookingId]);
+        getDB()->prepare("UPDATE bookings SET status = 'confirmed', technician_id = ?, assigned_at = NOW() WHERE id = ? AND status = 'pending'")->execute([$tech['id'], $bookingId]);
 
         $scheduledDate = date('M j, Y', strtotime($booking['scheduled_date']));
         createNotification(
@@ -134,6 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $booking = fetchOne("SELECT * FROM bookings WHERE id = ?", [$bookingId]);
         if ($booking && in_array($booking['status'], ['pending', 'confirmed'], true)) {
             getDB()->prepare("UPDATE bookings SET status = 'cancelled' WHERE id = ?")->execute([$bookingId]);
+            try { partsReleaseForBooking($bookingId); } catch (Throwable $e) {}
             flashMessage('bk_success', "Booking #$bookingId has been cancelled.");
         } else {
             flashMessage('bk_error', 'Only pending or confirmed bookings can be cancelled.');
@@ -145,13 +143,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'update_status' && $bookingId > 0) {
         $newStatus = $_POST['status'] ?? '';
         if (in_array($newStatus, $validStatuses, true)) {
-            if ($newStatus === 'completed') {
-                getDB()->prepare("UPDATE bookings SET status = ?, completed_at = COALESCE(completed_at, NOW()) WHERE id = ?")
-                       ->execute([$newStatus, $bookingId]);
-            } else {
-                getDB()->prepare("UPDATE bookings SET status = ? WHERE id = ?")->execute([$newStatus, $bookingId]);
+            $db = getDB();
+            $db->beginTransaction();
+            try {
+                if ($newStatus === 'completed') {
+                    partsConsumeForBooking($bookingId);
+                } elseif ($newStatus === 'cancelled') {
+                    partsReleaseForBooking($bookingId);
+                }
+                if ($newStatus === 'completed') {
+                    $db->prepare("UPDATE bookings SET status = ?, completed_at = COALESCE(completed_at, NOW()) WHERE id = ?")->execute([$newStatus, $bookingId]);
+                } else {
+                    $db->prepare("UPDATE bookings SET status = ? WHERE id = ?")->execute([$newStatus, $bookingId]);
+                }
+                $db->commit();
+                flashMessage('bk_success', 'Booking status updated.');
+            } catch (Throwable $e) {
+                if ($db->inTransaction()) $db->rollBack();
+                flashMessage('bk_error', $e->getMessage());
             }
-            flashMessage('bk_success', 'Booking status updated.');
         } else {
             flashMessage('bk_error', 'Invalid status.');
         }
@@ -412,7 +422,8 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
                     <span style="font-size:.72rem;font-weight:700;padding:2px 7px;border-radius:20px;width:fit-content;
                       background:<?= $fullyQualified ? 'rgba(21,128,61,.1)' : 'rgba(217,119,6,.1)' ?>;
                       color:<?= $fullyQualified ? '#15803d' : '#d97706' ?>;">
-                      <?= $fullyQualified ? '✓ Qualified' : '⚠ Partial Match' ?>
+                      <i class="fas fa-<?= $fullyQualified ? 'circle-check' : 'triangle-exclamation' ?>" aria-hidden="true"></i>
+                      <?= $fullyQualified ? 'Qualified' : 'Partial Match' ?>
                     </span>
                   </div>
                 <?php else: ?>
@@ -451,7 +462,7 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
                               if (!isset($techQualifications[$tid][$sid])) { $qualified = false; break; }
                           }
                           $marks = [];
-                          if (!$qualified) $marks[] = '⚠ not qualified';
+                          if (!$qualified) $marks[] = 'not qualified';
                           if (($t['availability_status'] ?? 'off_duty') !== 'ready') $marks[] = 'off duty';
                         ?>
                         <option value="<?= $tid ?>"><?= htmlspecialchars($t['name'] . ($marks ? ' (' . implode(', ', $marks) . ')' : '')) ?></option>

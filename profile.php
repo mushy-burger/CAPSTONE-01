@@ -87,7 +87,6 @@ require_once __DIR__ . '/includes/header.php';
 
 <section class="page-hero">
   <div class="container">
-    <span class="eyebrow">My Account</span>
     <h1>My Profile</h1>
     <p>Manage your account details and keep your login secure.</p>
   </div>
@@ -97,93 +96,99 @@ require_once __DIR__ . '/includes/header.php';
   <?php if ($flash): ?><div class="alert success"><?= htmlspecialchars($flash) ?></div><?php endif; ?>
   <?php if ($flashErr): ?><div class="alert error"><?= htmlspecialchars($flashErr) ?></div><?php endif; ?>
 
-  <!-- Account overview -->
-  <div class="profile-overview">
-    <div class="profile-overview-avatar"><?= htmlspecialchars(strtoupper(substr(trim($account['name']), 0, 1))) ?></div>
-    <div class="profile-overview-copy">
-      <strong><?= htmlspecialchars($account['name']) ?></strong>
-      <span><?= htmlspecialchars($account['email']) ?></span>
-    </div>
-    <div class="profile-overview-tags">
-      <span class="profile-tag"><i class="fas fa-calendar"></i> Member since <?= htmlspecialchars(date('F Y', strtotime($account['created_at']))) ?></span>
-      <?php if ($isGoogleAccount): ?>
-        <span class="profile-tag"><i class="fab fa-google"></i> Google sign-in</span>
-      <?php else: ?>
-        <span class="profile-tag"><i class="fas fa-lock"></i> Password sign-in</span>
-      <?php endif; ?>
-      <?php if ($account['phone']): ?>
-        <span class="profile-tag"><i class="fas fa-phone"></i> <?= htmlspecialchars($account['phone']) ?></span>
-      <?php endif; ?>
-    </div>
-  </div>
-
-  <div class="profile-grid <?= $isGoogleAccount ? 'profile-grid--single' : '' ?>">
-    <!-- Account information -->
-    <div class="form-panel profile-panel">
-      <div class="profile-panel-head">
-        <span class="profile-panel-icon"><i class="fas fa-user"></i></span>
-        <div>
-          <h2>Personal Information</h2>
-          <p class="fine-print">Your name, email, and contact number.</p>
+  <!-- Account overview + settings -->
+  <div class="profile-layout">
+    <!-- Identity anchor -->
+    <aside class="profile-aside">
+      <div class="profile-overview">
+        <div class="profile-overview-avatar"><?= htmlspecialchars(strtoupper(substr(trim($account['name']), 0, 1))) ?></div>
+        <div class="profile-overview-copy">
+          <strong><?= htmlspecialchars($account['name']) ?></strong>
+          <span><?= htmlspecialchars($account['email']) ?></span>
         </div>
-      </div>
-
-      <form method="post">
-        <?= authContextField() ?>
-        <input type="hidden" name="action" value="update_profile">
-
-        <label>Full name
-          <input type="text" name="name" required maxlength="100" value="<?= htmlspecialchars($account['name']) ?>">
-        </label>
-
-        <label>Email address
-          <input type="email" name="email" <?= $isGoogleAccount ? 'disabled' : 'required' ?> value="<?= htmlspecialchars($account['email']) ?>">
+        <div class="profile-overview-tags" aria-label="Account details">
+          <span class="profile-tag"><i class="fas fa-calendar" aria-hidden="true"></i> Member since <?= htmlspecialchars(date('F Y', strtotime($account['created_at']))) ?></span>
           <?php if ($isGoogleAccount): ?>
-            <span class="profile-field-note">
-              <i class="fab fa-google"></i> This email is managed by your Google account and cannot be changed.
-            </span>
+            <span class="profile-tag"><i class="fab fa-google" aria-hidden="true"></i> Google sign-in</span>
+          <?php else: ?>
+            <span class="profile-tag"><i class="fas fa-lock" aria-hidden="true"></i> Password sign-in</span>
           <?php endif; ?>
-        </label>
-
-        <label>Contact number
-          <input type="tel" name="phone" value="<?= htmlspecialchars($account['phone'] ?? '') ?>" placeholder="e.g. 09171234567" pattern="[0-9+\-\s()]{7,20}">
-        </label>
-
-        <button type="submit" class="btn btn-primary">Save changes</button>
-      </form>
-    </div>
-
-    <?php if (!$isGoogleAccount): ?>
-    <!-- Change password -->
-    <div class="form-panel profile-panel">
-      <div class="profile-panel-head">
-        <span class="profile-panel-icon"><i class="fas fa-lock"></i></span>
-        <div>
-          <h2>Security</h2>
-          <p class="fine-print">Change your password — at least 6 characters. You'll stay logged in.</p>
+          <?php if ($account['phone']): ?>
+            <span class="profile-tag"><i class="fas fa-phone" aria-hidden="true"></i> <?= htmlspecialchars($account['phone']) ?></span>
+          <?php endif; ?>
         </div>
       </div>
+    </aside>
 
-      <form method="post">
-        <?= authContextField() ?>
-        <input type="hidden" name="action" value="change_password">
+    <!-- Settings -->
+    <div class="profile-main">
+      <!-- Account information -->
+      <div class="form-panel profile-panel">
+        <div class="profile-panel-head">
+          <span class="profile-panel-icon"><i class="fas fa-user"></i></span>
+          <div>
+            <h2>Personal Information</h2>
+            <p class="fine-print">Your name, email, and contact number.</p>
+          </div>
+        </div>
 
-        <label>Current password
-          <input type="password" name="current_password" required autocomplete="current-password">
-        </label>
+        <form method="post" data-validate>
+          <?= authContextField() ?>
+          <input type="hidden" name="action" value="update_profile">
 
-        <label>New password
-          <input type="password" name="new_password" required minlength="6" autocomplete="new-password">
-        </label>
+          <label class="field-wide">Full name
+            <input type="text" name="name" required maxlength="100" value="<?= htmlspecialchars($account['name']) ?>">
+          </label>
 
-        <label>Confirm new password
-          <input type="password" name="confirm_password" required minlength="6" autocomplete="new-password">
-        </label>
+          <label>Email address
+            <input type="email" name="email" <?= $isGoogleAccount ? 'disabled' : 'required' ?> value="<?= htmlspecialchars($account['email']) ?>">
+            <?php if ($isGoogleAccount): ?>
+              <span class="profile-field-note">
+                <i class="fab fa-google"></i> This email is managed by your Google account and cannot be changed.
+              </span>
+            <?php endif; ?>
+          </label>
 
-        <button type="submit" class="btn btn-primary">Update password</button>
-      </form>
+          <label>Contact number
+            <input type="tel" name="phone" value="<?= htmlspecialchars($account['phone'] ?? '') ?>" placeholder="e.g. 09171234567" pattern="[0-9+\-\s()]{7,20}">
+          </label>
+
+          <button type="submit" class="btn btn-primary">Save changes</button>
+        </form>
+      </div>
+
+      <?php if (!$isGoogleAccount): ?>
+      <!-- Change password -->
+      <div class="form-panel profile-panel">
+        <div class="profile-panel-head">
+          <span class="profile-panel-icon"><i class="fas fa-lock"></i></span>
+          <div>
+            <h2>Security</h2>
+            <p class="fine-print">Change your password — at least 6 characters. You'll stay logged in.</p>
+          </div>
+        </div>
+
+        <form method="post" data-validate>
+          <?= authContextField() ?>
+          <input type="hidden" name="action" value="change_password">
+
+          <label class="field-wide">Current password
+            <input type="password" name="current_password" required autocomplete="current-password">
+          </label>
+
+          <label>New password
+            <input type="password" name="new_password" required minlength="6" autocomplete="new-password">
+          </label>
+
+          <label>Confirm new password
+            <input type="password" name="confirm_password" required minlength="6" autocomplete="new-password" data-match="new_password">
+          </label>
+
+          <button type="submit" class="btn btn-primary">Update password</button>
+        </form>
+      </div>
+      <?php endif; ?>
     </div>
-    <?php endif; ?>
   </div>
 </section>
 

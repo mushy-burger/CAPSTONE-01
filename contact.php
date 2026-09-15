@@ -42,16 +42,21 @@ $pageTitle = 'Contact - MotoTrack';
 require_once __DIR__ . '/includes/header.php';
 ?>
 
-<section class="page-hero">
+<section class="page-hero page-hero--feature">
   <div class="container">
-    <span class="eyebrow">Contact Us</span>
-    <h1>Need help with parts or service?</h1>
-    <p>Send us a message and our team will get back to you shortly.</p>
+    <div class="page-hero-text">
+      <span class="eyebrow">Contact Us</span>
+      <h1>Need help with parts or service?</h1>
+      <p>Send us a message and our team will get back to you shortly.</p>
+    </div>
+    <div class="page-hero-motif" aria-hidden="true">
+      <i class="fas fa-headset"></i>
+    </div>
   </div>
 </section>
 
 <section class="section container form-layout">
-  <form class="form-panel" method="post" id="contactForm">
+  <form class="form-panel" method="post" id="contactForm" data-validate>
     <?= authContextField() ?>
     <h2>Send a Message</h2>
 

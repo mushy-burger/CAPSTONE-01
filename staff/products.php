@@ -1,11 +1,17 @@
-<?php
+  <?php
 $pageTitle = 'Products';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/ProductCodes.php';
 require_once __DIR__ . '/../includes/PurchaseOrderService.php';
-requireStaff();
+$isAdminProducts = defined('MOTOTRACK_ADMIN_PRODUCTS') && MOTOTRACK_ADMIN_PRODUCTS === true;
+if ($isAdminProducts) {
+    requireAdminOnly();
+} else {
+    requireStaff();
+}
+$productPage = $isAdminProducts ? 'admin/products.php' : 'staff/products.php';
 $currentUser = getCurrentUser();
 
 function buildUniqueCategorySlug(string $name, ?int $ignoreId = null): string {
@@ -43,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($categoryName === '') {
             flashMessage('prod_error', 'Category name is required.');
-            redirect(baseUrl('staff/products.php') . '#tab-categories');
+            redirect(baseUrl($productPage) . '#tab-categories');
         }
 
         $slugValue = buildUniqueCategorySlug($categoryName, $categoryId ?: null);
@@ -58,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flashMessage('prod_success', 'Category added.');
         }
 
-        redirect(baseUrl('staff/products.php') . '#tab-categories');
+        redirect(baseUrl($productPage) . '#tab-categories');
     }
 
     if ($action === 'delete_category') {
@@ -71,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flashMessage('prod_success', 'Category deleted.');
         }
 
-        redirect(baseUrl('staff/products.php') . '#tab-categories');
+        redirect(baseUrl($productPage) . '#tab-categories');
     }
 
     if ($action === 'delete_product') {
@@ -85,7 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ((int)($linked['order_refs'] ?? 0) > 0 || (int)($linked['booking_refs'] ?? 0) > 0) {
             flashMessage('prod_error', 'This product cannot be deleted because it is used in orders or service bookings. Set it to Out of Stock instead.');
-            redirect(baseUrl('staff/products.php') . '#tab-list');
+            redirect(baseUrl($productPage) . '#tab-list');
         }
 
         $row = fetchOne("SELECT image FROM products WHERE id = ?", [$pid]);
@@ -94,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         getDB()->prepare("DELETE FROM products WHERE id = ?")->execute([$pid]);
         flashMessage('prod_success', 'Product deleted.');
-        redirect(baseUrl('staff/products.php') . '#tab-list');
+        redirect(baseUrl($productPage) . '#tab-list');
     }
 
     if ($action === 'save_product') {
@@ -107,12 +113,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $origPrice   = ($_POST['original_price'] ?? '') !== '' ? (float)$_POST['original_price'] : null;
         $stock       = (int)($_POST['stock'] ?? 0);
         $minStock    = max(0, (int)($_POST['min_stock'] ?? 10));
+        $supplierId  = (int)($_POST['supplier_id'] ?? 0);
+        $supplierId  = $supplierId > 0 ? $supplierId : null;
+        $reorderQty  = max(1, (int)($_POST['reorder_qty'] ?? 20));
         $status      = in_array($_POST['status'] ?? '', ['available', 'low_stock', 'out_of_stock'], true) ? $_POST['status'] : 'available';
         $featured    = isset($_POST['featured']) ? 1 : 0;
 
         if (!$name || !$categoryId || $price <= 0) {
             flashMessage('prod_error', 'Name, category, and a valid price are required.');
-            redirect(baseUrl('staff/products.php' . ($pid ? '?edit=' . $pid : '')) . '#product-form');
+            redirect(baseUrl($productPage . ($pid ? '?edit=' . $pid : '')) . '#product-form');
+        }
+
+        if ($supplierId !== null && !fetchOne("SELECT id FROM suppliers WHERE id = ?", [$supplierId])) {
+            flashMessage('prod_error', 'Select a valid supplier.');
+            redirect(baseUrl($productPage . ($pid ? '?edit=' . $pid : '')) . '#product-form');
         }
 
         // --- Product identification (barcode / QR) ---
@@ -129,7 +143,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $codeError = mtxValidateCode($existingCode, $pid);
             if ($codeError !== '') {
                 flashMessage('prod_error', $codeError);
-                redirect(baseUrl('staff/products.php' . ($pid ? '?edit=' . $pid : '')) . '#product-form');
+                redirect(baseUrl($productPage . ($pid ? '?edit=' . $pid : '')) . '#product-form');
             }
         }
 
@@ -139,7 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
             if (!in_array($file['type'], $allowed, true)) {
                 flashMessage('prod_error', 'Invalid image type.');
-                redirect(baseUrl('staff/products.php' . ($pid ? '?edit=' . $pid : '')) . '#product-form');
+                redirect(baseUrl($productPage . ($pid ? '?edit=' . $pid : '')) . '#product-form');
             }
 
             $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
@@ -158,18 +172,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($pid) {
             getDB()->prepare(
-                "UPDATE products SET name=?,category_id=?,brand=?,description=?,price=?,original_price=?,stock=?,min_stock=?,status=?,featured=?,image=? WHERE id=?"
-            )->execute([$name, $categoryId, $brand, $description, $price, $origPrice, $stock, $minStock, $status, $featured, $imageName, $pid]);
+                "UPDATE products
+                 SET name=?,category_id=?,brand=?,description=?,price=?,original_price=?,stock=?,min_stock=?,
+                     supplier_id=?,reorder_qty=?,status=?,featured=?,image=?
+                 WHERE id=?"
+            )->execute([$name, $categoryId, $brand, $description, $price, $origPrice, $stock, $minStock, $supplierId, $reorderQty, $status, $featured, $imageName, $pid]);
             flashMessage('prod_success', 'Product updated.');
         } else {
             getDB()->prepare(
-                "INSERT INTO products (name,category_id,brand,description,price,original_price,stock,min_stock,status,featured,image) VALUES (?,?,?,?,?,?,?,?,?,?,?)"
-            )->execute([$name, $categoryId, $brand, $description, $price, $origPrice, $stock, $minStock, $status, $featured, $imageName]);
+                "INSERT INTO products
+                    (name,category_id,brand,description,price,original_price,stock,min_stock,supplier_id,reorder_qty,status,featured,image)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            )->execute([$name, $categoryId, $brand, $description, $price, $origPrice, $stock, $minStock, $supplierId, $reorderQty, $status, $featured, $imageName]);
             // A new product has no id until now, and the MotoTrack code is
             // derived from it, so the code is attached after the insert.
             $pid = (int)getDB()->lastInsertId();
             flashMessage('prod_success', 'Product added.');
         }
+
+        poCheckAndGenerateForProduct($pid);
 
         $savedCode = '';
         if ($codeMode === 'generate') {
@@ -188,14 +209,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect(baseUrl('staff/product-label.php?id=' . $pid . '&code=' . rawurlencode($savedCode) . '&autoprint=1'));
         }
 
-        redirect(baseUrl('staff/products.php') . '#tab-list');
+        redirect(baseUrl($productPage) . '#tab-list');
     }
 
     // Adjust stock level only (quick +/- from product list)
     if ($action === 'adjust_stock') {
         $pid   = (int)($_POST['product_id'] ?? 0);
         $delta = (int)($_POST['delta'] ?? 0);
-        if ($pid > 0 && $delta !== 0) {
+        if ($pid > 0 && in_array($delta, [-1, 1], true)) {
             getDB()->prepare(
                 "UPDATE products
                  SET stock = GREATEST(0, stock + ?),
@@ -207,8 +228,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  WHERE id = ?"
             )->execute([$delta, $delta, $delta, $pid]);
             try { poCheckAndGenerateForProduct($pid); } catch (Throwable $e) {}
+            flashMessage('prod_success', $delta > 0 ? 'Stock increased by one.' : 'Stock decreased by one.');
         }
-        redirect(baseUrl('staff/products.php') . '#tab-list');
+        redirect(baseUrl($productPage) . '#tab-list');
     }
 }
 
@@ -223,6 +245,9 @@ $categories = fetchAllRows(
        GROUP BY category_id
      ) pc ON pc.category_id = c.id
      ORDER BY c.name"
+);
+$suppliers = fetchAllRows(
+    "SELECT id, name, is_active FROM suppliers ORDER BY is_active DESC, name"
 );
 
 $search = trim($_GET['q'] ?? '');
@@ -241,8 +266,10 @@ if ($catFilter) {
 }
 
 $products = fetchAllRows(
-    "SELECT p.*, c.name AS category_name
-     FROM products p JOIN categories c ON c.id = p.category_id
+    "SELECT p.*, c.name AS category_name, s.name AS supplier_name
+     FROM products p
+     JOIN categories c ON c.id = p.category_id
+     LEFT JOIN suppliers s ON s.id = p.supplier_id
      WHERE " . implode(' AND ', $where) . "
      ORDER BY p.created_at DESC, p.id DESC",
     $params
@@ -290,7 +317,7 @@ if ($editCategory) {
     $activeTab = 'categories';
 }
 
-require_once __DIR__ . '/../includes/staff-sidebar.php';
+require_once __DIR__ . '/../includes/' . ($isAdminProducts ? 'admin-sidebar.php' : 'staff-sidebar.php');
 ?>
 
 <div class="prodx-page">
@@ -391,7 +418,7 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
         </select>
         <button type="submit" class="prodx-btn prodx-btn--dark">Filter</button>
         <?php if ($search || $catFilter): ?>
-          <a href="<?= baseUrl('staff/products.php?tab=list') ?>" class="prodx-btn prodx-btn--ghost">Clear</a>
+          <a href="<?= baseUrl($productPage . '?tab=list') ?>" class="prodx-btn prodx-btn--ghost">Clear</a>
         <?php endif; ?>
       </form>
     </div>
@@ -434,6 +461,7 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
               <div class="prodx-row-meta">
                 <span class="prodx-badge"><?= htmlspecialchars($p['category_name']) ?></span>
                 <?php if ($p['brand']): ?><span class="prodx-brand"><?= htmlspecialchars($p['brand']) ?></span><?php endif; ?>
+                <?php if ($p['supplier_name']): ?><span class="prodx-brand"><i class="fas fa-truck" aria-hidden="true"></i> <?= htmlspecialchars($p['supplier_name']) ?></span><?php endif; ?>
                 <?php foreach (($codesByProduct[(int)$p['id']] ?? []) as $codeRow): ?>
                   <span class="prodx-codechip <?= $codeRow['code_type'] === 'mototrack' ? 'is-mtx' : '' ?>"
                         title="<?= $codeRow['code_type'] === 'mototrack' ? 'MotoTrack generated code' : 'Manufacturer code' ?>">
@@ -464,10 +492,24 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
               </button>
               <div class="prodx-menu" hidden>
                 <a href="<?= baseUrl('product.php?id=' . (int)$p['id']) ?>" target="_blank"><i class="fas fa-eye"></i> Preview</a>
-                <a href="<?= baseUrl('staff/products.php?tab=list&edit=' . (int)$p['id']) ?>#product-form"><i class="fas fa-pen"></i> Edit</a>
+                <a href="<?= baseUrl($productPage . '?tab=list&edit=' . (int)$p['id']) ?>#product-form"><i class="fas fa-pen"></i> Edit</a>
                 <?php if (!empty($codesByProduct[(int)$p['id']])): ?>
                   <a href="<?= baseUrl('staff/product-label.php?id=' . (int)$p['id']) ?>" target="_blank"><i class="fas fa-print"></i> Print label</a>
                 <?php endif; ?>
+                <form method="post">
+                  <?= authContextField() ?>
+                  <input type="hidden" name="action" value="adjust_stock">
+                  <input type="hidden" name="product_id" value="<?= (int)$p['id'] ?>">
+                  <input type="hidden" name="delta" value="1">
+                  <button type="submit" class="prodx-menu-action"><i class="fas fa-plus" aria-hidden="true"></i> Add one to stock</button>
+                </form>
+                <form method="post">
+                  <?= authContextField() ?>
+                  <input type="hidden" name="action" value="adjust_stock">
+                  <input type="hidden" name="product_id" value="<?= (int)$p['id'] ?>">
+                  <input type="hidden" name="delta" value="-1">
+                  <button type="submit" class="prodx-menu-action" <?= (int)$p['stock'] === 0 ? 'disabled' : '' ?>><i class="fas fa-minus" aria-hidden="true"></i> Remove one from stock</button>
+                </form>
                 <form method="post" onsubmit="return confirm('Delete \'<?= htmlspecialchars(addslashes($p['name'])) ?>\'?')">
                   <?= authContextField() ?>
                   <input type="hidden" name="action" value="delete_product">
@@ -487,7 +529,7 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
         <i class="fas fa-box-open"></i>
         <h3>No products <?= ($search || $catFilter) ? 'matched your search' : 'yet' ?>.</h3>
         <?php if ($search || $catFilter): ?>
-          <a href="<?= baseUrl('staff/products.php?tab=list') ?>" class="prodx-btn prodx-btn--ghost">Clear filters</a>
+          <a href="<?= baseUrl($productPage . '?tab=list') ?>" class="prodx-btn prodx-btn--ghost">Clear filters</a>
         <?php else: ?>
           <p>Add your first product to start building the catalog.</p>
           <button type="button" class="prodx-btn prodx-btn--primary" data-open-wizard>Add First Product</button>
@@ -564,6 +606,21 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
             <label class="prodx-label">
               <span>Minimum stock level</span>
               <input type="number" name="min_stock" min="0" value="<?= isset($editProd) ? (int)$editProd['min_stock'] : '10' ?>">
+            </label>
+            <label class="prodx-label">
+              <span>Preferred supplier</span>
+              <select name="supplier_id">
+                <option value="">No supplier assigned</option>
+                <?php foreach ($suppliers as $supplier): ?>
+                  <option value="<?= (int)$supplier['id'] ?>" <?= $editProd && (int)($editProd['supplier_id'] ?? 0) === (int)$supplier['id'] ? 'selected' : '' ?>>
+                    <?= htmlspecialchars($supplier['name']) ?><?= (int)$supplier['is_active'] === 1 ? '' : ' (inactive)' ?>
+                  </option>
+                <?php endforeach; ?>
+              </select>
+            </label>
+            <label class="prodx-label">
+              <span>Reorder quantity</span>
+              <input type="number" name="reorder_qty" min="1" value="<?= isset($editProd) ? (int)($editProd['reorder_qty'] ?? 20) : '20' ?>">
             </label>
             <label class="prodx-label">
               <span>Status</span>
@@ -724,7 +781,7 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
           <button type="button" class="prodx-btn prodx-btn--ghost" id="prodxPrevBtn" disabled><i class="fas fa-arrow-left"></i> Previous</button>
           <div class="prodx-wizard-actions-right">
             <?php if ($editProd): ?>
-              <a href="<?= baseUrl('staff/products.php?tab=list') ?>" class="prodx-btn prodx-btn--ghost">Cancel</a>
+              <a href="<?= baseUrl($productPage . '?tab=list') ?>" class="prodx-btn prodx-btn--ghost">Cancel</a>
             <?php endif; ?>
             <button type="button" class="prodx-btn prodx-btn--primary" id="prodxNextBtn">Next <i class="fas fa-arrow-right"></i></button>
             <button type="submit" class="prodx-btn prodx-btn--primary" id="prodxFinishBtn" hidden>
@@ -756,7 +813,7 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
               <i class="fas fa-<?= $editCategory ? 'check' : 'plus' ?>"></i> <?= $editCategory ? 'Update category' : 'Add category' ?>
             </button>
             <?php if ($editCategory): ?>
-              <a href="<?= baseUrl('staff/products.php?tab=categories') ?>" class="prodx-btn prodx-btn--ghost">Cancel</a>
+              <a href="<?= baseUrl($productPage . '?tab=categories') ?>" class="prodx-btn prodx-btn--ghost">Cancel</a>
             <?php endif; ?>
           </div>
         </form>
@@ -774,7 +831,7 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
                   <span><?= (int)$cat['product_count'] ?> product<?= (int)$cat['product_count'] === 1 ? '' : 's' ?></span>
                 </div>
                 <div class="prodx-cat-actions">
-                  <a href="<?= baseUrl('staff/products.php?tab=categories&edit_category=' . (int)$cat['id']) ?>#tab-categories" class="prodx-btn prodx-btn--ghost prodx-btn--sm">
+                  <a href="<?= baseUrl($productPage . '?tab=categories&edit_category=' . (int)$cat['id']) ?>#tab-categories" class="prodx-btn prodx-btn--ghost prodx-btn--sm">
                     <i class="fas fa-pen"></i> Edit
                   </a>
                   <form method="post" onsubmit="return confirm('Delete category \'<?= htmlspecialchars(addslashes($cat['name'])) ?>\'?')">

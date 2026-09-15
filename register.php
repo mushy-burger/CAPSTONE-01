@@ -32,7 +32,9 @@ require_once __DIR__ . '/includes/header.php';
 ?>
 
 <section class="auth-section">
-  <form class="auth-card" method="post">
+  <div class="auth-layout">
+  <?php require __DIR__ . '/includes/auth-aside.php'; ?>
+  <form class="auth-card" method="post" data-validate>
     <?= authContextField() ?>
     <span class="eyebrow">Customer access</span>
     <h1>Create your account</h1>
@@ -51,6 +53,7 @@ require_once __DIR__ . '/includes/header.php';
     <button class="btn btn-primary" type="submit">Register</button>
     <p>Already have an account? <a href="<?= baseUrl('login.php') ?>">Login</a></p>
   </form>
+  </div>
 </section>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

@@ -50,7 +50,9 @@ require_once __DIR__ . '/includes/header.php';
 ?>
 
 <section class="auth-section">
-  <form class="auth-card" method="post">
+  <div class="auth-layout">
+  <?php require __DIR__ . '/includes/auth-aside.php'; ?>
+  <form class="auth-card" method="post" data-validate>
     <?= authContextField() ?>
     <span class="eyebrow">New password</span>
     <h1>Reset password</h1>
@@ -63,12 +65,13 @@ require_once __DIR__ . '/includes/header.php';
     </label>
     <label>Confirm password
       <span class="password-field">
-        <input type="password" name="confirm_password" minlength="6" required>
+        <input type="password" name="confirm_password" minlength="6" required data-match="password">
         <button type="button" class="password-toggle" aria-label="Show password"><i class="fas fa-eye"></i></button>
       </span>
     </label>
     <button class="btn btn-primary" type="submit">Change password</button>
   </form>
+  </div>
 </section>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

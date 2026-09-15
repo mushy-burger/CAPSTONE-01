@@ -37,7 +37,8 @@ function chatbotFindProducts(array $keywords, int $limit = 5): array {
     $params[] = $limit;
 
     return fetchAllRows(
-        "SELECT p.name, p.brand, p.price, p.stock, c.name AS category_name
+        "SELECT p.name, p.brand, p.price, p.stock, c.name AS category_name,
+                " . availableStockSql('p') . " AS available_stock
          FROM products p
          JOIN categories c ON c.id = p.category_id
          WHERE p.status != 'out_of_stock' AND (" . implode(' OR ', $conditions) . ")
@@ -165,7 +166,7 @@ function chatbotGetReply(string $userMessage, array $history = []): string {
 
     $matchLines = [];
     foreach ($products as $p) {
-        $stockNote = (int)$p['stock'] > 0 ? (int)$p['stock'] . ' in stock' : 'currently out of stock';
+        $stockNote = (int)($p['available_stock'] ?? 0) > 0 ? 'Available' : 'Unavailable';
         $matchLines[] = "Product: {$p['name']} ({$p['brand']}, {$p['category_name']}) - " . formatPrice((float)$p['price']) . ", {$stockNote}.";
     }
     foreach ($models as $m) {

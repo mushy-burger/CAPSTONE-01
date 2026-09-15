@@ -5,6 +5,7 @@ require_once __DIR__ . '/../includes/db.php';
 
 // --- POST ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    requireCsrfToken();
     $action = $_POST['action'] ?? '';
 
     if ($action === 'save_supplier') {
@@ -17,6 +18,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($name === '') {
             flashMessage('sup_error', 'Supplier name is required.');
+        } elseif ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            flashMessage('sup_error', 'Supplier email is invalid.');
         } else {
             if ($id > 0) {
                 getDB()->prepare(

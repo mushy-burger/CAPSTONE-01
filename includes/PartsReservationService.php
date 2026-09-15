@@ -3,7 +3,7 @@
  * Parts reservation service.
  *
  * Lifecycle:
- *  Booking confirmed  → partsReserveForBooking()  → status = 'held'
+ *  Deposit paid       → partsReserveForBooking()  → status = 'held'
  *  Booking cancelled  → partsReleaseForBooking()  → status = 'released'
  *  Job completed      → partsConsumeForBooking()  → deducts real stock, status = 'consumed'
  *
@@ -18,7 +18,7 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/functions.php';
 
 /**
- * Reserve parts for a confirmed booking.
+ * Reserve parts for a successfully paid booking.
  *
  * Reads service_material_rules filtered by the vehicle's CC and the booking's
  * services. Falls back to booking_products if no rules match.
@@ -76,13 +76,30 @@ function partsReserveForBooking(int $bookingId): int {
         return 0;
     }
 
-    $stmt = getDB()->prepare(
-        "INSERT INTO parts_reservations (booking_id, product_id, quantity, status)
-         VALUES (?, ?, ?, 'held')
-         ON DUPLICATE KEY UPDATE quantity = VALUES(quantity), status = 'held'"
-    );
-    foreach ($reservations as $productId => $qty) {
-        $stmt->execute([$bookingId, $productId, $qty]);
+    $db = getDB();
+    $ownsTransaction = !$db->inTransaction();
+    if ($ownsTransaction) $db->beginTransaction();
+    try {
+        ksort($reservations, SORT_NUMERIC);
+        foreach ($reservations as $productId => $qty) {
+            $productStmt = $db->prepare("SELECT id, name, stock FROM products WHERE id = ? AND status != 'archived' FOR UPDATE");
+            $productStmt->execute([$productId]);
+            $product = $productStmt->fetch();
+            if (!$product) throw new RuntimeException('Reserved product no longer exists.');
+            $heldStmt = $db->prepare("SELECT COALESCE(SUM(quantity), 0) FROM parts_reservations WHERE product_id = ? AND status = 'held' AND booking_id <> ?");
+            $heldStmt->execute([$productId, $bookingId]);
+            $available = max(0, (int)$product['stock'] - (int)ceil((float)$heldStmt->fetchColumn()));
+            if ((int)$qty > $available) throw new RuntimeException($product['name'] . ' has only ' . $available . ' available for reservation.');
+            $db->prepare(
+                "INSERT INTO parts_reservations (booking_id, product_id, quantity, status)
+                 VALUES (?, ?, ?, 'held')
+                 ON DUPLICATE KEY UPDATE quantity = IF(status = 'held', VALUES(quantity), quantity)"
+            )->execute([$bookingId, $productId, $qty]);
+        }
+        if ($ownsTransaction) $db->commit();
+    } catch (Throwable $e) {
+        if ($ownsTransaction && $db->inTransaction()) $db->rollBack();
+        throw $e;
     }
     return count($reservations);
 }
@@ -109,49 +126,75 @@ function partsReleaseForBooking(int $bookingId): int {
  * @return int  Number of products whose stock was decremented.
  */
 function partsConsumeForBooking(int $bookingId): int {
-    $reservations = fetchAllRows(
-        "SELECT product_id, quantity FROM parts_reservations
-         WHERE booking_id = ? AND status = 'held'",
-        [$bookingId]
-    );
-
-    if (!$reservations) {
-        return 0;
+    $db = getDB();
+    $ownsTransaction = !$db->inTransaction();
+    if ($ownsTransaction) {
+        $db->beginTransaction();
     }
 
-    $count = 0;
-    foreach ($reservations as $r) {
-        $pid = (int)$r['product_id'];
-        $qty = max(1, (int)ceil((float)$r['quantity']));
+    try {
+        $stmt = $db->prepare(
+            "SELECT product_id, quantity FROM parts_reservations
+             WHERE booking_id = ? AND status = 'held'
+             FOR UPDATE"
+        );
+        $stmt->execute([$bookingId]);
+        $reservations = $stmt->fetchAll();
 
-        getDB()->prepare(
-            "UPDATE products
-             SET stock = GREATEST(0, stock - ?),
-                 status = CASE
-                   WHEN GREATEST(0, stock - ?) = 0 THEN 'out_of_stock'
-                   WHEN GREATEST(0, stock - ?) <= min_stock THEN 'low_stock'
-                   ELSE 'available'
-                 END
-             WHERE id = ?"
-        )->execute([$qty, $qty, $qty, $pid]);
-
-        // Trigger PO auto-generation check (silently)
-        try {
-            require_once __DIR__ . '/PurchaseOrderService.php';
-            poCheckAndGenerateForProduct($pid);
-        } catch (Throwable $e) {
-            // Never let PO generation fail a job completion
+        if (!$reservations) {
+            if ($ownsTransaction) {
+                $db->rollBack();
+            }
+            return 0;
         }
 
-        $count++;
+        $productIds = [];
+        foreach ($reservations as $reservation) {
+            $productId = (int)$reservation['product_id'];
+            $quantity = max(1, (int)ceil((float)$reservation['quantity']));
+            $stockStmt = $db->prepare(
+                "UPDATE products
+                 SET stock = stock - ?,
+                     status = CASE
+                       WHEN stock = 0 THEN 'out_of_stock'
+                       WHEN stock <= min_stock THEN 'low_stock'
+                       ELSE 'available'
+                     END
+                 WHERE id = ? AND stock >= ?"
+            );
+            $stockStmt->execute([$quantity, $productId, $quantity]);
+            if ($stockStmt->rowCount() !== 1) throw new RuntimeException('Insufficient physical stock for a reserved part.');
+            $productIds[] = $productId;
+        }
+
+        $stmt = $db->prepare(
+            "UPDATE parts_reservations
+             SET status = 'consumed'
+             WHERE booking_id = ? AND status = 'held'"
+        );
+        $stmt->execute([$bookingId]);
+
+        if ($ownsTransaction) {
+            $db->commit();
+        }
+    } catch (Throwable $e) {
+        if ($ownsTransaction && $db->inTransaction()) {
+            $db->rollBack();
+        }
+        throw $e;
     }
 
-    // Mark rows consumed
-    getDB()->prepare(
-        "UPDATE parts_reservations SET status = 'consumed' WHERE booking_id = ? AND status = 'held'"
-    )->execute([$bookingId]);
+    // PO generation is intentionally non-fatal and runs after stock is durable.
+    require_once __DIR__ . '/PurchaseOrderService.php';
+    foreach (array_unique($productIds) as $productId) {
+        try {
+            poCheckAndGenerateForProduct($productId);
+        } catch (Throwable $e) {
+            error_log("PO generation failed for product {$productId}: " . $e->getMessage());
+        }
+    }
 
-    return $count;
+    return count($reservations);
 }
 
 /**

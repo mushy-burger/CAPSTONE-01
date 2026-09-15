@@ -46,6 +46,7 @@ function createPosSale(array $requestedItems, array $customer, string $paymentMe
 
     try {
         $ids = array_keys($quantities);
+        sort($ids, SORT_NUMERIC);
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
         $products = fetchAllRows(
             "SELECT *
@@ -62,18 +63,15 @@ function createPosSale(array $requestedItems, array $customer, string $paymentMe
 
         $lineItems = [];
         $subtotal = 0.0;
+        assertAvailableStockForItems(array_map(
+            static fn(int $id, int $qty): array => ['id' => $id, 'quantity' => $qty],
+            array_keys($quantities), array_values($quantities)
+        ), $db);
         foreach ($quantities as $productId => $qty) {
             $product = $productsById[$productId] ?? null;
             if (!$product) {
                 throw new RuntimeException('One of the selected products no longer exists.');
             }
-            if (($product['status'] ?? '') === 'out_of_stock' || (int)$product['stock'] <= 0) {
-                throw new RuntimeException($product['name'] . ' is out of stock.');
-            }
-            if ((int)$product['stock'] < $qty) {
-                throw new RuntimeException($product['name'] . ' only has ' . (int)$product['stock'] . ' left in stock.');
-            }
-
             $price = (float)$product['price'];
             $subtotal += $price * $qty;
             $lineItems[] = [

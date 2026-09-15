@@ -25,7 +25,9 @@ $unreadCount = getUnreadNotificationCount((int)$currentUser['id']);
       <i class="fas fa-motorcycle"></i>
       <span>MotoTrack</span>
     </div>
-    <div class="role-badge role-admin"><?= $_isQA ? '🟣 QA → Admin View' : 'Admin' ?></div>
+    <div class="role-badge role-admin">
+      <?php if ($_isQA): ?><i class="fas fa-vial" aria-hidden="true"></i> QA / Admin View<?php else: ?>Admin<?php endif; ?>
+    </div>
     <nav class="sidebar-nav">
       <a href="<?= baseUrl('admin/index.php') ?>" class="<?= $adminPage === 'index' ? 'active' : '' ?>">
         <i class="fas fa-tachometer-alt"></i> Dashboard
@@ -64,6 +66,16 @@ $unreadCount = getUnreadNotificationCount((int)$currentUser['id']);
       </div>
       <div class="topbar-right">
         <a href="<?= baseUrl('index.php') ?>" class="topbar-icon" title="View Site"><i class="fas fa-external-link-alt"></i></a>
+        <div class="notif-dropdown-wrap" id="notifWrap">
+          <button class="topbar-icon topbar-notif" id="notifBtn" type="button" title="Notifications">
+            <i class="fas fa-bell"></i>
+            <?php if ($unreadCount > 0): ?><span class="notif-badge-sm"><?= $unreadCount > 99 ? '99+' : $unreadCount ?></span><?php endif; ?>
+          </button>
+          <div class="notif-dropdown" id="notifDropdown" hidden>
+            <div class="notif-dropdown-head"><strong>Notifications</strong><?php if ($unreadCount > 0): ?><a href="<?= baseUrl('api/notifications.php?mark_read=1') ?>" class="notif-mark-all">Mark all read</a><?php endif; ?></div>
+            <div class="notif-list" id="notifList"><div class="notif-item"><span>Loading...</span></div></div>
+          </div>
+        </div>
         <span class="topbar-welcome">Welcome, <?= htmlspecialchars($currentUser['name']) ?>!</span>
         <a href="<?= baseUrl('logout.php') ?>" class="topbar-icon" title="Logout"><i class="fas fa-sign-out-alt"></i></a>
       </div>
@@ -71,3 +83,45 @@ $unreadCount = getUnreadNotificationCount((int)$currentUser['id']);
 
     <main class="admin-content">
 <?php require_once __DIR__ . '/qa-banner.php'; ?>
+
+<script>
+(function(){
+  var btn = document.getElementById('notifBtn');
+  var drop = document.getElementById('notifDropdown');
+  var list = document.getElementById('notifList');
+  if (!btn || !drop) return;
+  var loaded = false;
+  var esc = function(value){ return String(value || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); };
+  btn.addEventListener('click', function(e){
+    e.stopPropagation();
+    var hidden = drop.hidden;
+    drop.hidden = !hidden;
+    if (hidden && !loaded) {
+      loaded = true;
+      fetch('<?= baseUrl('api/notifications.php') ?>')
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+          var notifs = data.notifications || [];
+          if (!notifs.length) { list.innerHTML = '<div class="notif-empty">No notifications yet.</div>'; return; }
+          list.innerHTML = notifs.map(function(n){
+            var cls = n.is_read == 0 ? 'notif-item unread' : 'notif-item';
+            var t = n.created_at ? new Date(n.created_at).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+            var inner = '<span class="notif-msg">'+esc(n.message)+'</span><span class="notif-time">'+esc(t)+'</span>';
+            return n.action_url ? '<a class="'+cls+'" href="'+esc(n.action_url)+'">'+inner+'</a>' : '<div class="'+cls+'">'+inner+'</div>';
+          }).join('');
+        }).catch(function(){ list.innerHTML = '<div class="notif-empty">Could not load notifications.</div>'; });
+    }
+  });
+  document.addEventListener('click', function(){ drop.hidden = true; });
+  drop.addEventListener('click', function(e){ e.stopPropagation(); });
+  var markAll = drop.querySelector('.notif-mark-all');
+  if (markAll) markAll.addEventListener('click', function(e){
+    e.preventDefault();
+    fetch(markAll.href).then(function(r){ return r.json(); }).then(function(){
+      document.querySelectorAll('.notif-badge, .notif-badge-sm').forEach(function(el){ el.remove(); });
+      list.querySelectorAll('.notif-item.unread').forEach(function(el){ el.classList.remove('unread'); });
+      markAll.remove();
+    });
+  });
+})();
+</script>
