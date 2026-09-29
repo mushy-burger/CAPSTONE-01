@@ -987,21 +987,113 @@ require_once __DIR__ . '/../includes/' . ($isAdminProducts ? 'admin-sidebar.php'
   }
 
   /* ---------- Row action menus ---------- */
-  document.querySelectorAll('.prodx-menu-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const menu = btn.nextElementSibling;
-      const isOpen = !menu.hidden;
-      document.querySelectorAll('.prodx-menu').forEach(m => { m.hidden = true; });
-      document.querySelectorAll('.prodx-menu-btn').forEach(b => b.setAttribute('aria-expanded', 'false'));
-      menu.hidden = isOpen;
-      btn.setAttribute('aria-expanded', String(!isOpen));
+  const productMenuButtons = Array.from(document.querySelectorAll('.prodx-menu-btn'));
+  const productMenuViewportMargin = 12;
+  const productMenuGap = 6;
+  let activeProductMenu = null;
+  let productMenuFrame = null;
+
+  productMenuButtons.forEach(button => {
+    const menu = button.nextElementSibling;
+    if (!menu || !menu.classList.contains('prodx-menu')) return;
+    menu._prodxMenuHome = button.parentElement;
+    button._prodxMenu = menu;
+  });
+
+  function clearProductMenuPlacement(menu) {
+    menu.classList.remove('prodx-menu--floating', 'prodx-menu--downward', 'prodx-menu--upward');
+    ['left', 'top', 'width', 'maxHeight'].forEach(property => menu.style.removeProperty(property));
+  }
+
+  function closeProductMenu() {
+    if (!activeProductMenu) return;
+
+    const { button, menu } = activeProductMenu;
+    menu.hidden = true;
+    clearProductMenuPlacement(menu);
+    if (menu.parentElement !== menu._prodxMenuHome) {
+      menu._prodxMenuHome.appendChild(menu);
+    }
+    button.setAttribute('aria-expanded', 'false');
+    activeProductMenu = null;
+  }
+
+  function positionProductMenu() {
+    if (!activeProductMenu) return;
+
+    const { button, menu } = activeProductMenu;
+    const trigger = button.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    clearProductMenuPlacement(menu);
+    menu.classList.add('prodx-menu--floating');
+    const naturalWidth = Math.min(Math.max(menu.offsetWidth, 160), viewportWidth - (productMenuViewportMargin * 2));
+    menu.style.width = `${naturalWidth}px`;
+
+    const naturalHeight = menu.offsetHeight;
+    const spaceBelow = Math.max(0, viewportHeight - trigger.bottom - productMenuGap - productMenuViewportMargin);
+    const spaceAbove = Math.max(0, trigger.top - productMenuGap - productMenuViewportMargin);
+    const opensUpward = naturalHeight > spaceBelow;
+
+    const availableHeight = opensUpward ? spaceAbove : spaceBelow;
+    if (naturalHeight > availableHeight) {
+      menu.style.maxHeight = `${availableHeight}px`;
+    }
+
+    const menuWidth = menu.offsetWidth;
+    const menuHeight = menu.offsetHeight;
+    const left = Math.min(
+      Math.max(productMenuViewportMargin, trigger.right - menuWidth),
+      viewportWidth - productMenuViewportMargin - menuWidth
+    );
+    const top = opensUpward
+      ? Math.max(productMenuViewportMargin, trigger.top - productMenuGap - menuHeight)
+      : Math.min(viewportHeight - productMenuViewportMargin - menuHeight, trigger.bottom + productMenuGap);
+
+    menu.classList.add(opensUpward ? 'prodx-menu--upward' : 'prodx-menu--downward');
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+  }
+
+  function scheduleProductMenuPlacement() {
+    if (!activeProductMenu || productMenuFrame) return;
+    productMenuFrame = requestAnimationFrame(() => {
+      productMenuFrame = null;
+      positionProductMenu();
+    });
+  }
+
+  productMenuButtons.forEach(button => {
+    button.addEventListener('click', event => {
+      event.stopPropagation();
+      const menu = button._prodxMenu;
+      const isCurrentMenu = activeProductMenu && activeProductMenu.menu === menu;
+      closeProductMenu();
+      if (isCurrentMenu) return;
+
+      document.body.appendChild(menu);
+      menu.hidden = false;
+      activeProductMenu = { button, menu };
+      button.setAttribute('aria-expanded', 'true');
+      positionProductMenu();
     });
   });
-  document.addEventListener('click', () => {
-    document.querySelectorAll('.prodx-menu').forEach(m => { m.hidden = true; });
-    document.querySelectorAll('.prodx-menu-btn').forEach(b => b.setAttribute('aria-expanded', 'false'));
+
+  document.addEventListener('click', event => {
+    if (!activeProductMenu) return;
+    const { button, menu } = activeProductMenu;
+    if (!button.contains(event.target) && !menu.contains(event.target)) closeProductMenu();
   });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && activeProductMenu) {
+      const { button } = activeProductMenu;
+      closeProductMenu();
+      button.focus();
+    }
+  });
+  window.addEventListener('resize', scheduleProductMenuPlacement);
+  window.addEventListener('scroll', scheduleProductMenuPlacement, true);
 
   /* ---------- Client-side status filter + sort ---------- */
   const list = document.getElementById('prodxList');
@@ -1011,6 +1103,7 @@ require_once __DIR__ . '/../includes/' . ($isAdminProducts ? 'admin-sidebar.php'
 
   function applyListView() {
     if (!list) return;
+    closeProductMenu();
     const rows = Array.from(list.querySelectorAll('.prodx-row'));
     const status = statusFilter.value;
     let visible = 0;
@@ -1044,15 +1137,25 @@ require_once __DIR__ . '/../includes/' . ($isAdminProducts ? 'admin-sidebar.php'
       const src = button.dataset.previewSrc;
       if (!src) return;
       modalImg.src = src;
-      modal.classList.add('is-open');
+      modal.classList.remove('is-closing');
+      modal.classList.add('is-opening');
+      requestAnimationFrame(() => {
+        modal.classList.remove('is-opening');
+        modal.classList.add('is-open');
+      });
       modal.setAttribute('aria-hidden', 'false');
     });
   });
   document.querySelectorAll('[data-close-modal]').forEach(close => {
     close.addEventListener('click', () => {
-      modal.classList.remove('is-open');
+      modal.classList.remove('is-opening', 'is-open');
+      modal.classList.add('is-closing');
       modal.setAttribute('aria-hidden', 'true');
-      modalImg.src = '';
+      setTimeout(() => {
+        if (!modal.classList.contains('is-closing')) return;
+        modal.classList.remove('is-closing');
+        modalImg.src = '';
+      }, 220);
     });
   });
 

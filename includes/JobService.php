@@ -48,14 +48,20 @@ function jobParseDuration(string $hoursRaw, string $minutesRaw): array {
     $hoursRaw   = trim($hoursRaw);
     $minutesRaw = trim($minutesRaw);
 
-    if ($hoursRaw === '' && $minutesRaw === '') {
-        return ['ok' => false, 'minutes' => 0, 'error' => 'Enter an estimated service duration before starting the job.'];
+    if ($hoursRaw === '' || $minutesRaw === '') {
+        return ['ok' => false, 'minutes' => 0, 'error' => 'Enter both hours and minutes before starting the job.'];
     }
     if (($hoursRaw !== '' && !ctype_digit($hoursRaw)) || ($minutesRaw !== '' && !ctype_digit($minutesRaw))) {
         return ['ok' => false, 'minutes' => 0, 'error' => 'Estimated duration must use whole positive numbers.'];
     }
 
-    $total = ((int)$hoursRaw * 60) + (int)$minutesRaw;
+    $hours = (int)$hoursRaw;
+    $minutes = (int)$minutesRaw;
+    if ($minutes > 59) {
+        return ['ok' => false, 'minutes' => 0, 'error' => 'Minutes must be between 0 and 59.'];
+    }
+
+    $total = ($hours * 60) + $minutes;
 
     if ($total < JOB_MIN_DURATION) {
         return ['ok' => false, 'minutes' => 0, 'error' => 'Please enter an estimated duration of at least 1 minute.'];
@@ -90,7 +96,7 @@ function jobSaveEstimate(int $bookingId, int $technicianId, int $minutes): array
 /**
  * START JOB: confirmed -> in_progress.
  *
- * Requires an estimate (either already saved or supplied with this request).
+ * Requires a validated estimate from this start request.
  * `actual_start_time` is set from NOW() — the technician cannot supply it.
  *
  * @return array{ok:bool,error:string,started_at:?string}
@@ -108,8 +114,9 @@ function jobStart(int $bookingId, int $technicianId, ?int $estimateMinutes = nul
         return ['ok' => false, 'error' => 'Only a confirmed job can be started.', 'started_at' => null];
     }
 
-    // An estimate must exist before work begins.
-    $minutes = $estimateMinutes ?? ($job['estimated_duration_minutes'] !== null ? (int)$job['estimated_duration_minutes'] : null);
+    // Every start request carries its duration. A previously saved estimate can
+    // prefill the form, but cannot let a crafted blank POST bypass validation.
+    $minutes = $estimateMinutes;
     if ($minutes === null || $minutes < JOB_MIN_DURATION || $minutes > JOB_MAX_DURATION) {
         return ['ok' => false, 'error' => 'Enter an estimated service duration before starting the job.', 'started_at' => null];
     }

@@ -32,7 +32,9 @@ $booking = fetchOne(
      LEFT JOIN motorcycle_models mm ON mm.id = cv.model_id
      LEFT JOIN motorcycle_types mt ON mt.id = cv.type_id
      LEFT JOIN users tech ON tech.id = b.technician_id
-     WHERE b.id = ?",
+     WHERE b.id = ?" . (depositIsRequired()
+        ? " AND EXISTS (SELECT 1 FROM booking_deposits bd WHERE bd.booking_id = b.id AND bd.status = 'paid')"
+        : ''),
     [$bookingId]
 );
 
@@ -86,12 +88,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect(baseUrl('staff/booking-detail.php?id=' . $bookingId));
     }
 
-    // CONFIRM + ASSIGN
+    // CONFIRM BOOKING — technician assignment is optional and independent.
     if ($action === 'confirm_booking') {
         $techId = (int)($_POST['technician_id'] ?? 0);
         $tech = $techId ? fetchOne("SELECT id, name FROM users WHERE id = ? AND role = 'technician' AND is_active = 1", [$techId]) : null;
 
-        if (!$tech) {
+        if ($techId > 0 && !$tech) {
             flashMessage('bk_error', 'Please select a valid technician.');
         } elseif ($booking['status'] !== 'pending') {
             flashMessage('bk_error', 'Only pending bookings can be confirmed.');
@@ -99,14 +101,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Deposit gate — mirrors the bookings list so neither path can skip it.
             flashMessage('bk_error', "This booking cannot be confirmed — the customer's reservation deposit has not been paid.");
         } else {
-            getDB()->prepare("UPDATE bookings SET status = 'confirmed', technician_id = ?, assigned_at = NOW() WHERE id = ? AND status = 'pending'")->execute([$techId, $bookingId]);
-            $scheduledDate = date('M j, Y', strtotime($booking['scheduled_date']));
-            createNotification(
-                $techId,
-                "New job assigned: Booking #$bookingId for {$booking['customer_name']} on $scheduledDate.",
-                'assignment',
-                $bookingId
-            );
+            $confirm = $tech
+                ? getDB()->prepare("UPDATE bookings SET status = 'confirmed', technician_id = ?, assigned_at = NOW() WHERE id = ? AND status = 'pending'")
+                : getDB()->prepare("UPDATE bookings SET status = 'confirmed' WHERE id = ? AND status = 'pending'");
+            $confirm->execute($tech ? [$techId, $bookingId] : [$bookingId]);
+            if ($confirm->rowCount() !== 1) {
+                flashMessage('bk_error', 'This booking was already processed.');
+                redirect(baseUrl('staff/booking-detail.php?id=' . $bookingId));
+            }
+
+            if ($tech) {
+                $scheduledDate = date('M j, Y', strtotime($booking['scheduled_date']));
+                createNotification(
+                    $techId,
+                    "New job assigned: Booking #$bookingId for {$booking['customer_name']} on $scheduledDate.",
+                    'assignment',
+                    $bookingId
+                );
+            }
 
             // Tell the customer. Delivery failure must not undo the confirmation.
             $note = '';
@@ -127,7 +139,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $note = ' Customer notification could not be sent (logged).';
             }
 
-            flashMessage('bk_success', "Booking #$bookingId confirmed and assigned to {$tech['name']}." . $note);
+            flashMessage('bk_success', $tech
+                ? "Booking #$bookingId confirmed and assigned to {$tech['name']}." . $note
+                : "Booking #$bookingId confirmed. Technician assignment can be completed separately." . $note);
         }
         redirect(baseUrl('staff/booking-detail.php?id=' . $bookingId));
     }
@@ -155,7 +169,6 @@ $flashErr = getFlash('bk_error');
 // Qualification data for the technician dropdown (Feature 5)
 $bookingServiceIds = techBookingServiceIds($bookingId);
 $qualMap           = techQualificationMap();
-$autoSuggest       = techAutoAssignCandidate($bookingId);
 
 // Load reservation data for the parts card (Feature 4)
 $reservedParts = partsGetForBooking($bookingId);
@@ -349,8 +362,8 @@ $pageTitle = 'Booking #' . $bookingId;
           <?= authContextField() ?>
           <input type="hidden" name="action" value="<?= $booking['status'] === 'pending' ? 'confirm_booking' : 'reassign_tech' ?>">
           <label class="mtx-field" style="margin-bottom:10px;">
-            <span><?= $booking['status'] === 'pending' ? 'Assign &amp; Confirm' : 'Reassign Technician' ?></span>
-            <select name="technician_id" id="techSelect" required>
+            <span><?= $booking['status'] === 'pending' ? 'Assign technician (optional)' : 'Reassign Technician' ?></span>
+            <select name="technician_id" id="techSelect" <?= $booking['status'] === 'pending' ? '' : 'required' ?>>
               <option value="">— Select Technician —</option>
               <?php foreach ($technicians as $t):
                 $tid   = (int)$t['id'];
@@ -367,7 +380,7 @@ $pageTitle = 'Booking #' . $bookingId;
           <p style="font-size:.75rem;color:var(--muted);margin:-4px 0 10px;">Qualification labels compare each technician with every service on this booking.</p>
           <button type="submit" class="mtx-btn mtx-btn--primary" style="width:100%;">
             <?php if ($booking['status'] === 'pending'): ?>
-              <i class="fas fa-check"></i> Confirm &amp; Assign
+              <i class="fas fa-check"></i> Confirm Booking
             <?php else: ?>
               <i class="fas fa-sync-alt"></i> Reassign Tech
             <?php endif; ?>

@@ -228,6 +228,51 @@ function userInitials(string $name): string {
 ?>
 
 <section class="usrx-page">
+  <?php if ($view === 'customers'): ?>
+  <form method="get" class="usrx-customer-filter-panel">
+    <input type="hidden" name="view" value="customers">
+    <div class="usrx-customer-filter-panel__intro">
+      <div class="usrx-customer-filter-panel__icon"><i class="fas fa-users"></i></div>
+      <div>
+        <h1>Customers</h1>
+        <p>Manage customer accounts, activity, and access.</p>
+      </div>
+    </div>
+    <div class="usrx-customer-filter-panel__controls">
+      <div class="usrx-customer-filter-panel__top-row">
+        <label class="usrx-customer-filter-panel__search">
+          <span class="usrx-sr-only">Search customers</span>
+          <i class="fas fa-magnifying-glass"></i>
+          <input type="search" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Search customers">
+        </label>
+        <a href="<?= baseUrl('admin/users.php?view=customers') ?>" class="usrx-btn usrx-btn--ghost"><i class="fas fa-rotate-left"></i> Reset</a>
+        <button type="submit" class="usrx-btn usrx-btn--primary"><i class="fas fa-sliders"></i> Apply Filters<?php if ($activeFilterCount > 0): ?> <span class="usrx-customer-filter-panel__count"><?= $activeFilterCount ?></span><?php endif; ?></button>
+      </div>
+      <div class="usrx-customer-filter-panel__fields">
+        <label class="usrx-customer-filter-panel__field">
+          <span>Sign-in method</span><i class="fas fa-key"></i>
+          <select name="auth"><option value="">All methods</option><option value="local" <?= $authFilter === 'local' ? 'selected' : '' ?>>Password</option><option value="google" <?= $authFilter === 'google' ? 'selected' : '' ?>>Google</option></select>
+        </label>
+        <label class="usrx-customer-filter-panel__field">
+          <span>Orders</span><i class="fas fa-bag-shopping"></i>
+          <select name="orders"><option value="">Any activity</option><option value="with" <?= $ordersFilter === 'with' ? 'selected' : '' ?>>Has orders</option><option value="without" <?= $ordersFilter === 'without' ? 'selected' : '' ?>>No orders</option></select>
+        </label>
+        <label class="usrx-customer-filter-panel__field">
+          <span>Bookings</span><i class="fas fa-clipboard-list"></i>
+          <select name="bookings"><option value="">Any activity</option><option value="with" <?= $bookingsFilter === 'with' ? 'selected' : '' ?>>Has bookings</option><option value="without" <?= $bookingsFilter === 'without' ? 'selected' : '' ?>>No bookings</option></select>
+        </label>
+        <label class="usrx-customer-filter-panel__field usrx-customer-filter-panel__field--dates">
+          <span>Date range</span>
+          <div class="usrx-customer-filter-panel__date-range"><i class="fas fa-calendar-days" aria-hidden="true"></i><input type="date" name="joined_from" value="<?= htmlspecialchars($joinedFrom) ?>" aria-label="Joined from"><b>&ndash;</b><input type="date" name="joined_to" value="<?= htmlspecialchars($joinedTo) ?>" aria-label="Joined until"><i class="fas fa-calendar-days" aria-hidden="true"></i></div>
+        </label>
+        <label class="usrx-customer-filter-panel__field">
+          <span>Sort by</span><i class="fas fa-arrow-down-wide-short"></i>
+          <select name="sort"><option value="newest" <?= $sortOption === 'newest' ? 'selected' : '' ?>>Newest first</option><option value="oldest" <?= $sortOption === 'oldest' ? 'selected' : '' ?>>Oldest first</option><option value="name_az" <?= $sortOption === 'name_az' ? 'selected' : '' ?>>Name A–Z</option><option value="name_za" <?= $sortOption === 'name_za' ? 'selected' : '' ?>>Name Z–A</option></select>
+        </label>
+      </div>
+    </div>
+  </form>
+  <?php else: ?>
   <div class="usrx-hero">
     <div class="usrx-hero-copy">
       <div class="usrx-hero-icon"><i class="fas fa-users-gear"></i></div>
@@ -318,6 +363,7 @@ function userInitials(string $name): string {
       <?php endif; ?>
     </form>
   </div>
+  <?php endif; ?>
 
   <!-- Customers / Team tabs -->
   <div class="mtx-seg" role="tablist" aria-label="User views" style="background:#fff;border:1px solid var(--line);">

@@ -7,18 +7,28 @@ requireLogin();
 
 $currentUser = getCurrentUser();
 $userId = $currentUser['id'];
+$authContext = currentAuthContext();
+$action = $_POST['action'] ?? '';
 $selectedCartIds = array_values(array_unique(array_filter(array_map(
     'intval',
-    (array)($_POST['selected_cart_ids'] ?? $_SESSION['checkout_cart_ids'][currentAuthContext()] ?? [])
+    (array)($_POST['selected_cart_ids'] ?? $_SESSION['checkout_cart_ids'][$authContext] ?? [])
 ))));
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    $_SESSION['checkout_cart_ids'][currentAuthContext()] = [];
+    $_SESSION['checkout_cart_ids'][$authContext] = [];
+    unset($_SESSION['checkout_attempt_keys'][$authContext]);
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['selected_cart_ids'])) {
-    $_SESSION['checkout_cart_ids'][currentAuthContext()] = $selectedCartIds;
+    $_SESSION['checkout_cart_ids'][$authContext] = $selectedCartIds;
+    // A cart submission begins a new checkout attempt. Its key is later
+    // persisted on the order so duplicate Pay clicks can only reuse it.
+    if ($action === 'prepare_checkout') {
+        $_SESSION['checkout_attempt_keys'][$authContext] = bin2hex(random_bytes(32));
+    }
 }
+
+$checkoutAttemptKey = (string)($_SESSION['checkout_attempt_keys'][$authContext] ?? '');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $selectedCartIds && isset($_POST['qty'])) {
     foreach ((array)$_POST['qty'] as $cartId => $qty) {
@@ -59,7 +69,6 @@ $message = '';
 $error = '';
 $paymongoReady = paymongoIsConfigured();
 $paymongoTestMode = $paymongoReady && paymongoIsTestMode();
-$action = $_POST['action'] ?? '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'create_checkout' && $items) {
     $payment = sanitize($_POST['payment_method'] ?? 'paymongo');
@@ -102,17 +111,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'create_checkout' && $i
     } elseif (!$paymongoReady) {
         $error = 'Online payment is temporarily unavailable. Please try again later or contact the shop.';
     } else {
+        $postedAttemptKey = trim((string)($_POST['checkout_attempt_key'] ?? ''));
+        if ($checkoutAttemptKey === '' || !hash_equals($checkoutAttemptKey, $postedAttemptKey)) {
+            $error = 'Your checkout session expired. Return to your cart and start checkout again.';
+        } else {
         try {
-            getDB()->beginTransaction();
-            assertAvailableStockForItems($items, getDB());
-            $stmt = getDB()->prepare(
-                "INSERT INTO orders (user_id, subtotal, total, payment_method, payment_status, status)
-                 VALUES (?, ?, ?, ?, ?, 'pending')"
-            );
-            $stmt->execute([$userId, $subtotal, $subtotal, 'paymongo', 'awaiting_payment']);
-            $orderId = (int)getDB()->lastInsertId();
+            $db = getDB();
+            $db->beginTransaction();
+            $existingOrder = null;
 
-            $itemStmt = getDB()->prepare("INSERT INTO order_items (order_id, cart_item_id, product_id, quantity, price) VALUES (?, ?, ?, ?, ?)");
+            try {
+                $stmt = $db->prepare(
+                    "INSERT INTO orders (user_id, subtotal, total, payment_method, payment_status, checkout_attempt_key, status)
+                     VALUES (?, ?, ?, ?, ?, ?, 'pending')"
+                );
+                $stmt->execute([$userId, $subtotal, $subtotal, 'paymongo', 'awaiting_payment', $checkoutAttemptKey]);
+                $orderId = (int)$db->lastInsertId();
+            } catch (PDOException $e) {
+                // The unique attempt key makes a repeated POST (double-click,
+                // refresh, or delayed retry) reuse its original order.
+                if ($e->getCode() !== '23000') {
+                    throw $e;
+                }
+
+                $existingOrder = fetchOne(
+                    "SELECT * FROM orders WHERE user_id = ? AND checkout_attempt_key = ? FOR UPDATE",
+                    [$userId, $checkoutAttemptKey]
+                );
+                if (!$existingOrder) {
+                    throw new RuntimeException('Unable to recover the existing checkout order.');
+                }
+                $orderId = (int)$existingOrder['id'];
+            }
+
+            if ($existingOrder) {
+                $db->commit();
+
+                if (($existingOrder['payment_status'] ?? '') === 'paid') {
+                    redirect(baseUrl('payment-success.php?order_id=' . $orderId));
+                }
+
+                $existingSessionId = trim((string)($existingOrder['checkout_session_id'] ?? ''));
+                if ($existingSessionId === '') {
+                    throw new RuntimeException('The existing checkout is still being prepared. Please try again in a moment.');
+                }
+
+                $existingSession = paymongoRetrieveCheckoutSession($existingSessionId);
+                $sessionOrderId = paymongoCheckoutSessionOrderId($existingSession);
+                if ($sessionOrderId > 0 && $sessionOrderId !== $orderId) {
+                    throw new RuntimeException('PayMongo checkout session does not match this order.');
+                }
+                if (paymongoCheckoutSessionIsPaid($existingSession)) {
+                    fulfillPaidOrder($orderId, $existingSessionId);
+                    redirect(baseUrl('payment-success.php?order_id=' . $orderId));
+                }
+
+                $existingCheckoutUrl = trim((string)($existingSession['data']['attributes']['checkout_url'] ?? ''));
+                if ($existingCheckoutUrl === '') {
+                    throw new RuntimeException('The existing PayMongo checkout is unavailable. Return to your cart to start a new checkout.');
+                }
+
+                $_SESSION['checkout_cart_ids'][$authContext] = [];
+                redirect($existingCheckoutUrl);
+            }
+
+            assertAvailableStockForItems($items, $db);
+
+            $itemStmt = $db->prepare("INSERT INTO order_items (order_id, cart_item_id, product_id, quantity, price) VALUES (?, ?, ?, ?, ?)");
             foreach ($items as $item) {
                 $itemStmt->execute([$orderId, $item['cart_id'], $item['id'], $item['quantity'], $item['price']]);
             }
@@ -137,20 +202,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'create_checkout' && $i
                 throw new RuntimeException('PayMongo did not return a checkout URL.');
             }
 
-            getDB()->prepare(
+            $db->prepare(
                 "UPDATE orders
                  SET checkout_session_id = ?, payment_reference = ?, payment_status = ?
                  WHERE id = ?"
             )->execute([$checkoutSessionId, 'MT-' . $orderId, 'checkout_created', $orderId]);
 
-            getDB()->commit();
-            $_SESSION['checkout_cart_ids'][currentAuthContext()] = [];
+            $db->commit();
+            $_SESSION['checkout_cart_ids'][$authContext] = [];
             redirect($checkoutUrl);
         } catch (Throwable $e) {
             if (getDB()->inTransaction()) {
                 getDB()->rollBack();
             }
             $error = $e->getMessage();
+        }
         }
     }
 } elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'create_checkout' && !$items) {
@@ -222,6 +288,7 @@ require_once __DIR__ . '/includes/header.php';
       <a class="btn btn-primary" href="<?= baseUrl('cart.php?tab=cart') ?>">Back to Cart</a>
     <?php else: ?>
     <input type="hidden" name="action" value="create_checkout">
+    <input type="hidden" name="checkout_attempt_key" value="<?= htmlspecialchars($checkoutAttemptKey, ENT_QUOTES, 'UTF-8') ?>">
     <?php foreach ($items as $item): ?>
       <input type="hidden" name="selected_cart_ids[]" value="<?= (int)$item['cart_id'] ?>">
     <?php endforeach; ?>

@@ -20,24 +20,32 @@ twice at the same moment — will not send a customer two reminders.
 
 ## Register the task
 
+Use paths for your own checkout. Do not copy another developer's repository
+path. Set these values before creating a task:
+
+```powershell
+$projectRoot = 'C:\path\to\your\CAPSTONE-01'
+$phpExe = 'C:\xampp\php\php.exe'
+$worker = Join-Path $projectRoot 'database\reminder_worker.php'
+```
+
 Quoting differs between the two shells — use the matching version.
 
 **Command Prompt (cmd.exe)** — one line:
 
 ```
-schtasks /Create /TN "MotoTrack Appointment Reminders" /SC MINUTE /MO 15 /TR "\"C:\xampp\php\php.exe\" \"C:\xampp\htdocs\CAPSTONE-01\CAPSTONE-01\database\reminder_worker.php\"" /RL LIMITED /F
+schtasks /Create /TN "MotoTrack Appointment Reminders" /SC MINUTE /MO 15 /TR "\"C:\path\to\php.exe\" \"C:\path\to\your\CAPSTONE-01\database\reminder_worker.php\"" /RL LIMITED /F
 ```
 
 **PowerShell** — build the command string first (the inline `\"` form above is
 rejected by PowerShell's parser):
 
 ```powershell
-$tr = '"C:\xampp\php\php.exe" "C:\xampp\htdocs\CAPSTONE-01\CAPSTONE-01\database\reminder_worker.php"'
+$tr = '"' + $phpExe + '" "' + $worker + '"'
 schtasks /Create /TN "MotoTrack Appointment Reminders" /SC MINUTE /MO 15 /TR $tr /RL LIMITED /F
 ```
 
-Both forms were verified on this machine: the task registered, ran, and
-reported `Last Result: 0`.
+Verify task result on your own machine after registration.
 
 - `/SC MINUTE /MO 15` — run every 15 minutes.
 - `/RL LIMITED` — no admin rights needed; the worker only reads the database and sends messages.
@@ -54,11 +62,15 @@ schtasks /Run    /TN "MotoTrack Appointment Reminders"
 
 ## Run it by hand
 
-```
-cd C:\xampp\htdocs\CAPSTONE-01\CAPSTONE-01
-php database\reminder_worker.php --dry        list what would be sent, send nothing
-php database\reminder_worker.php              send the due reminders
-php database\reminder_worker.php --hours=48   widen the look-ahead window
+```powershell
+Set-Location $projectRoot
+& $phpExe database\reminder_worker.php --dry        # list; send nothing
+& $phpExe database\reminder_worker.php              # send due reminders
+& $phpExe database\reminder_worker.php --hours=48   # wider look-ahead
+
+# Optional workers. Run dry checks before registering separate tasks.
+& $phpExe database\pms_reminder_worker.php --dry
+& $phpExe database\supplier_reply_worker.php
 ```
 
 ## Remove it

@@ -84,7 +84,6 @@ if ($user) {
     $stmt = getDB()->prepare("UPDATE users SET google_id = ?, auth_provider = 'google', name = COALESCE(NULLIF(name, ''), ?) WHERE id = ?");
     $stmt->execute([$googleId, $name, $user['id']]);
     $user = fetchOne("SELECT * FROM users WHERE id = ?", [$user['id']]);
-    $user = fetchOne("SELECT * FROM users WHERE id = ?", [$user['id']]);
 } else {
     $stmt = getDB()->prepare("INSERT INTO users (name, email, password, google_id, auth_provider, role) VALUES (?, ?, ?, ?, 'google', 'customer')");
     $stmt->execute([$name, $email, password_hash(bin2hex(random_bytes(16)), PASSWORD_DEFAULT), $googleId]);

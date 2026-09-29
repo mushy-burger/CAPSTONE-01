@@ -5,21 +5,53 @@ require_once __DIR__ . '/functions.php';
 
 final class GmailService
 {
+    private const LIST_MESSAGES_MAX_PAGES = 20;
+
     private array $config;
 
     public function __construct()
     {
-        $this->config = require __DIR__ . '/../config/gmail.php';
+        $defaults = [
+            'client_secret_path' => (string)envValue('GMAIL_OAUTH_CLIENT_SECRET_PATH', ''),
+            'token_path' => (string)envValue('GMAIL_OAUTH_TOKEN_PATH', ''),
+            'redirect_uri' => (string)envValue('GMAIL_OAUTH_REDIRECT_URI', appUrl('admin/gmail-callback.php')),
+            'sender_email' => (string)envValue('GMAIL_SENDER_EMAIL', ''),
+            'sender_name' => (string)envValue('GMAIL_SENDER_NAME', 'MotoTrack'),
+            'scopes' => [
+                'https://www.googleapis.com/auth/gmail.readonly',
+                'https://www.googleapis.com/auth/gmail.send',
+            ],
+        ];
+        $configPath = __DIR__ . '/../config/gmail.php';
+        $localConfig = is_file($configPath) ? require $configPath : [];
+        $this->config = array_replace($defaults, is_array($localConfig) ? $localConfig : []);
     }
 
     public function isConfigured(): bool
     {
-        return is_file($this->config['client_secret_path']);
+        return $this->configurationError() === null;
+    }
+
+    public function configurationError(): ?string
+    {
+        $path = trim((string)($this->config['client_secret_path'] ?? ''));
+        if ($path === '' || !is_file($path)) {
+            return 'Gmail is not configured. Set GMAIL_OAUTH_CLIENT_SECRET_PATH to your local OAuth client JSON file.';
+        }
+        if (trim((string)($this->config['redirect_uri'] ?? '')) === '') {
+            return 'Gmail is not configured. Set GMAIL_OAUTH_REDIRECT_URI to the local Gmail callback URL.';
+        }
+        if (trim((string)($this->config['token_path'] ?? '')) === '') {
+            return 'Gmail is not configured. Set GMAIL_OAUTH_TOKEN_PATH to a local writable token file path.';
+        }
+        return null;
     }
 
     public function isConnected(): bool
     {
-        return is_file($this->config['token_path']) && $this->loadToken() !== null;
+        return $this->isConfigured()
+            && is_file((string)($this->config['token_path'] ?? ''))
+            && $this->loadToken() !== null;
     }
 
     public function authorizationUrl(string $state): string
@@ -74,12 +106,15 @@ final class GmailService
         if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
             throw new InvalidArgumentException('Supplier email is invalid.');
         }
+        if (!filter_var((string)($this->config['sender_email'] ?? ''), FILTER_VALIDATE_EMAIL)) {
+            throw new RuntimeException('Gmail sender email is not configured. Set GMAIL_SENDER_EMAIL locally.');
+        }
         $headers = [
             'From' => $this->config['sender_name'] . ' <' . $this->config['sender_email'] . '>',
             'To' => $to,
             'Subject' => $this->sanitizeHeader($subject),
             'Date' => gmdate('D, d M Y H:i:s O'),
-            'Message-ID' => '<' . bin2hex(random_bytes(16)) . '.mototrack@localhost>',
+            'Message-ID' => '<' . bin2hex(random_bytes(16)) . '.mototrack@' . $this->messageIdDomain() . '>',
             'MIME-Version' => '1.0',
             'Content-Type' => 'text/plain; charset=UTF-8',
             'Content-Transfer-Encoding' => '8bit',
@@ -102,7 +137,18 @@ final class GmailService
     {
         $messages = [];
         $pageToken = null;
+        $seenPageTokens = [];
+        $pageCount = 0;
         do {
+            if (++$pageCount > self::LIST_MESSAGES_MAX_PAGES) {
+                throw new RuntimeException('Gmail message listing exceeded the safety page limit.');
+            }
+            if ($pageToken !== null) {
+                if (isset($seenPageTokens[$pageToken])) {
+                    throw new RuntimeException('Gmail message listing repeated a page token.');
+                }
+                $seenPageTokens[$pageToken] = true;
+            }
             $queryString = http_build_query(array_filter([
                 'q' => $query,
                 'maxResults' => 100,
@@ -117,6 +163,29 @@ final class GmailService
             $pageToken = $page['nextPageToken'] ?? null;
         } while ($pageToken !== null);
         return $messages;
+    }
+
+    private function messageIdDomain(): string
+    {
+        $configured = strtolower(trim((string)envValue('GMAIL_MESSAGE_ID_DOMAIN', '')));
+        if ($configured !== '' && preg_match('/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/', $configured)) {
+            return $configured;
+        }
+
+        $host = strtolower((string)(parse_url(appUrl(), PHP_URL_HOST) ?? ''));
+        if ($host !== '' && preg_match('/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/', $host)) {
+            return $host;
+        }
+
+        return 'localhost';
+    }
+
+    public function getThread(string $threadId): array
+    {
+        if (trim($threadId) === '') {
+            throw new InvalidArgumentException('Gmail thread ID is required.');
+        }
+        return $this->gmailRequest('GET', '/users/me/threads/' . rawurlencode($threadId) . '?format=full');
     }
 
     public function getMessage(string $messageId): array
@@ -242,8 +311,9 @@ final class GmailService
 
     private function clientCredentials(): array
     {
-        if (!$this->isConfigured()) {
-            throw new RuntimeException('Google OAuth credentials file is missing.');
+        $configurationError = $this->configurationError();
+        if ($configurationError !== null) {
+            throw new RuntimeException($configurationError);
         }
         $raw = json_decode((string)file_get_contents($this->config['client_secret_path']), true);
         $client = $raw['web'] ?? $raw['installed'] ?? null;
@@ -296,20 +366,41 @@ final class GmailService
             CURLOPT_CUSTOMREQUEST => $method,
             CURLOPT_HTTPHEADER => $headers,
             CURLOPT_POSTFIELDS => $body,
+            CURLOPT_CONNECTTIMEOUT => 10,
             CURLOPT_TIMEOUT => 30,
+            CURLOPT_NOSIGNAL => true,
         ]);
+        $startedAt = microtime(true);
         $raw = curl_exec($ch);
         $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $errno = curl_errno($ch);
         $error = curl_error($ch);
         curl_close($ch);
+        $durationMs = (int)round((microtime(true) - $startedAt) * 1000);
+        $urlParts = parse_url($url);
+        $endpoint = (string)($urlParts['host'] ?? '') . (string)($urlParts['path'] ?? '');
+        $logFailure = static function (string $reason) use ($method, $endpoint, $httpCode, $errno, $durationMs): void {
+            error_log(sprintf(
+                'Gmail HTTP failure: reason=%s method=%s endpoint=%s http_status=%d curl_errno=%d duration_ms=%d',
+                $reason,
+                $method,
+                $endpoint,
+                $httpCode,
+                $errno,
+                $durationMs
+            ));
+        };
         if ($raw === false) {
+            $logFailure('curl');
             throw new RuntimeException('Google request failed: ' . $error);
         }
         $decoded = json_decode($raw, true);
         if (!is_array($decoded)) {
+            $logFailure('invalid_json');
             throw new RuntimeException('Google returned invalid JSON.');
         }
         if ($httpCode >= 400) {
+            $logFailure('http_error');
             throw new RuntimeException((string)($decoded['error_description'] ?? $decoded['error']['message'] ?? 'Google request failed.'));
         }
         return $decoded;

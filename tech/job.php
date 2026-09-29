@@ -337,17 +337,17 @@ $pageTitle = 'Job #' . $bookingId;
             <div style="display:flex;gap:10px;">
               <label class="mtx-field" style="flex:1;">
                 <span>Hours</span>
-                <input type="number" name="duration_hours" min="0" max="24" step="1"
+                <input type="number" name="duration_hours" min="0" max="24" step="1" required
                        value="<?= $estMins !== null ? intdiv($estMins, 60) : '' ?>" placeholder="0">
               </label>
               <label class="mtx-field" style="flex:1;">
                 <span>Minutes</span>
-                <input type="number" name="duration_minutes" min="0" max="59" step="1"
+                <input type="number" name="duration_minutes" min="0" max="59" step="1" required
                        value="<?= $estMins !== null ? $estMins % 60 : '' ?>" placeholder="0">
               </label>
             </div>
             <p class="subtext" style="margin:8px 0 0;font-size:.78rem;">
-              <i class="fas fa-circle-info"></i> Required. The start time is recorded automatically when you begin.
+              <i class="fas fa-circle-info"></i> Enter an estimated service duration before starting this job. Start time records automatically.
             </p>
           </div>
           <button type="submit" class="mtx-btn mtx-btn--primary" style="width:100%;margin-top:12px;">
@@ -362,13 +362,11 @@ $pageTitle = 'Job #' . $bookingId;
           <div class="detail-row"><span>Started</span><strong><?= htmlspecialchars(notifyFormatTime($booking['actual_start_time'] ?? null)) ?></strong></div>
           <div class="detail-row"><span>Estimated finish</span><strong><?= htmlspecialchars(notifyFormatTime($estFinish)) ?></strong></div>
         </div>
-        <form method="post" style="margin-top:14px;" onsubmit="return confirm('Mark this job as Completed? The customer will be notified.');">
-          <?= authContextField() ?>
-          <input type="hidden" name="action" value="complete_job">
-          <button type="submit" class="mtx-btn mtx-btn--primary" style="width:100%;background:#15803d;box-shadow:0 6px 16px rgba(21,128,61,.24);">
+        <div style="margin-top:14px;">
+          <button type="button" id="completeJobTrigger" class="mtx-btn mtx-btn--primary" style="width:100%;background:#15803d;box-shadow:0 6px 16px rgba(21,128,61,.24);" aria-haspopup="dialog" aria-controls="completeJobModal">
             <i class="fas fa-flag-checkered"></i> Complete Job
           </button>
-        </form>
+        </div>
       <?php endif; ?>
     </section>
     <?php else: ?>
@@ -446,6 +444,118 @@ $pageTitle = 'Job #' . $bookingId;
 
   </div>
 </div>
+
+<?php if ($booking['status'] === 'in_progress'): ?>
+<div class="mtx-modal tech-complete-modal" id="completeJobModal" role="dialog" aria-modal="true" aria-labelledby="completeJobTitle" aria-describedby="completeJobMessage" hidden>
+  <div class="mtx-modal__backdrop" data-close-complete-job-modal aria-hidden="true"></div>
+  <section class="mtx-modal__dialog tech-complete-modal__dialog" role="document">
+    <button type="button" class="mtx-modal__close" data-close-complete-job-modal aria-label="Close completion confirmation"><i class="fas fa-xmark" aria-hidden="true"></i></button>
+    <div class="tech-complete-modal__icon" aria-hidden="true"><i class="fas fa-check"></i></div>
+    <h2 class="mtx-modal__title" id="completeJobTitle">Complete Job?</h2>
+    <p class="tech-complete-modal__message" id="completeJobMessage">Mark this job as completed? The customer will be notified.</p>
+    <form method="post" id="completeJobForm" class="tech-complete-modal__form">
+      <?= authContextField() ?>
+      <input type="hidden" name="action" value="complete_job">
+      <div class="tech-complete-modal__actions">
+        <button type="button" class="mtx-btn mtx-btn--ghost" data-close-complete-job-modal>Cancel</button>
+        <button type="submit" class="mtx-btn tech-complete-modal__confirm" id="completeJobConfirm"><i class="fas fa-check"></i> Complete Job</button>
+      </div>
+    </form>
+  </section>
+</div>
+
+<script>
+(function () {
+  var modal = document.getElementById('completeJobModal');
+  var trigger = document.getElementById('completeJobTrigger');
+  var form = document.getElementById('completeJobForm');
+  var confirmButton = document.getElementById('completeJobConfirm');
+  if (!modal || !trigger || !form || !confirmButton) return;
+
+  var lastTrigger = null;
+  var closeTimer = null;
+  var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+  function closeDuration() {
+    return reducedMotion.matches ? 120 : 170;
+  }
+
+  function focusableElements() {
+    return Array.prototype.slice.call(modal.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+  }
+
+  function returnFocus() {
+    if (lastTrigger && document.contains(lastTrigger)) {
+      lastTrigger.focus({ preventScroll: true });
+    }
+  }
+
+  function closeModal() {
+    if (modal.hidden || form.dataset.submitting === 'true') return;
+    window.clearTimeout(closeTimer);
+    modal.classList.remove('is-opening', 'is-open');
+    modal.classList.add('is-closing');
+    closeTimer = window.setTimeout(function () {
+      modal.classList.remove('is-closing');
+      modal.hidden = true;
+      document.removeEventListener('keydown', handleKeydown);
+      returnFocus();
+    }, closeDuration());
+  }
+
+  function handleKeydown(event) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeModal();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    var elements = focusableElements();
+    if (!elements.length) return;
+    var first = elements[0];
+    var last = elements[elements.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  function openModal() {
+    if (form.dataset.submitting === 'true') return;
+    lastTrigger = trigger;
+    window.clearTimeout(closeTimer);
+    modal.hidden = false;
+    modal.classList.remove('is-closing', 'is-open');
+    modal.classList.add('is-opening');
+    document.addEventListener('keydown', handleKeydown);
+    window.requestAnimationFrame(function () {
+      modal.classList.remove('is-opening');
+      modal.classList.add('is-open');
+      var elements = focusableElements();
+      if (elements.length) elements[0].focus({ preventScroll: true });
+    });
+  }
+
+  trigger.addEventListener('click', openModal);
+  modal.querySelectorAll('[data-close-complete-job-modal]').forEach(function (control) {
+    control.addEventListener('click', closeModal);
+  });
+  form.addEventListener('submit', function (event) {
+    if (form.dataset.submitting === 'true') {
+      event.preventDefault();
+      return;
+    }
+    form.dataset.submitting = 'true';
+    confirmButton.disabled = true;
+    confirmButton.setAttribute('aria-busy', 'true');
+    confirmButton.innerHTML = '<i class="fas fa-spinner fa-spin" aria-hidden="true"></i> Completing…';
+  });
+}());
+</script>
+<?php endif; ?>
 
 </div><!-- /.mtx-shell -->
 

@@ -10,11 +10,8 @@ $orderId = (int)($_GET['order_id'] ?? 0);
 if ($orderId > 0) {
     getDB()->prepare(
         "UPDATE orders
-         SET payment_status = CASE
-             WHEN payment_status IS NULL OR payment_status = '' THEN 'cancelled'
-             ELSE payment_status
-         END
-         WHERE id = ? AND user_id = ?"
+         SET payment_status = 'cancelled'
+         WHERE id = ? AND user_id = ? AND COALESCE(payment_status, '') <> 'paid'"
     )->execute([$orderId, $currentUser['id']]);
 }
 

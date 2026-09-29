@@ -7,12 +7,13 @@
  *
  *   Total Product Sales = paid shop orders + products sold inside completed bookings
  *   Total Labor Sales   = 100% of labor fees on completed bookings
- *   Total Revenue       = Total Product Sales + Total Labor Sales
+ *   Deposit Revenue     = paid reservation deposits - deposit credit applied at completion
+ *   Total Revenue       = product sales + labor sales + deposit revenue
  *   Shop Labor Earnings = Total Labor Sales × (1 - TECH_LABOR_SHARE)   (40%)
  *   Tech Labor Earnings = Total Labor Sales × TECH_LABOR_SHARE          (60%)
  *
- * Revenue dates: shop orders count on their created_at date; bookings count on
- * completed_at (falling back to created_at for legacy rows without it).
+ * Revenue dates: shop orders count on created_at; bookings count on completed_at
+ * (falling back to created_at for legacy rows); deposits count on paid_at.
  */
 
 require_once __DIR__ . '/db.php';
@@ -41,12 +42,14 @@ function bizDateFilter(string $column, ?string $from, ?string $to): array {
  *
  * @return array{
  *   shop_product_sales: float, booking_product_sales: float, product_sales: float,
- *   labor_sales: float, shop_labor: float, tech_labor: float, total_revenue: float
+ *   labor_sales: float, paid_deposits: float, deposit_credits: float,
+ *   deposit_revenue: float, shop_labor: float, tech_labor: float, total_revenue: float
  * }
  */
 function bizTotals(?string $from = null, ?string $to = null): array {
     [$orderDate, $orderParams] = bizDateFilter('DATE(o.created_at)', $from, $to);
     [$bookDate, $bookParams] = bizDateFilter('DATE(COALESCE(b.completed_at, b.created_at))', $from, $to);
+    [$depositDate, $depositParams] = bizDateFilter('DATE(bd.paid_at)', $from, $to);
 
     $shopProducts = (float)(fetchOne(
         "SELECT COALESCE(SUM(o.total),0) AS n FROM orders o WHERE o.payment_status = 'paid'$orderDate",
@@ -69,16 +72,41 @@ function bizTotals(?string $from = null, ?string $to = null): array {
         $bookParams
     )['n'] ?? 0);
 
+    // A paid reservation deposit is revenue on its actual payment date. When the
+    // same booking completes, its full products/labor total already recognizes
+    // that money, so apply an equal credit on completion to prevent double count.
+    $paidDeposits = (float)(fetchOne(
+        "SELECT COALESCE(SUM(bd.amount),0) AS n
+         FROM booking_deposits bd
+         WHERE bd.status = 'paid' AND bd.paid_at IS NOT NULL$depositDate",
+        $depositParams
+    )['n'] ?? 0);
+
+    $depositCredits = (float)(fetchOne(
+        "SELECT COALESCE(SUM(LEAST(
+                    COALESCE((SELECT SUM(bp.product_price) FROM booking_products bp WHERE bp.booking_id = b.id), 0)
+                    + COALESCE((SELECT SUM(bs.labor_fee) FROM booking_services bs WHERE bs.booking_id = b.id), 0),
+                    COALESCE((SELECT SUM(bd.amount) FROM booking_deposits bd WHERE bd.booking_id = b.id AND bd.status = 'paid' AND bd.paid_at IS NOT NULL), 0)
+                )),0) AS n
+         FROM bookings b
+         WHERE b.status = 'completed'$bookDate",
+        $bookParams
+    )['n'] ?? 0);
+
     $productSales = $shopProducts + $bookingProducts;
+    $depositRevenue = $paidDeposits - $depositCredits;
 
     return [
         'shop_product_sales'    => $shopProducts,
         'booking_product_sales' => $bookingProducts,
         'product_sales'         => $productSales,
         'labor_sales'           => $laborSales,
+        'paid_deposits'         => $paidDeposits,
+        'deposit_credits'       => $depositCredits,
+        'deposit_revenue'       => $depositRevenue,
         'shop_labor'            => $laborSales * SHOP_LABOR_SHARE,
         'tech_labor'            => $laborSales * TECH_LABOR_SHARE,
-        'total_revenue'         => $productSales + $laborSales,
+        'total_revenue'         => $productSales + $laborSales + $depositRevenue,
     ];
 }
 
@@ -86,7 +114,7 @@ function bizTotals(?string $from = null, ?string $to = null): array {
  * Revenue time series with product/labor split.
  *
  * @param string $granularity daily|weekly|monthly|yearly
- * @return array<int, array{bucket: string, product_sales: float, labor_sales: float}>
+ * @return array<int, array{bucket: string, product_sales: float, labor_sales: float, deposit_revenue: float}>
  */
 function bizRevenueSeries(string $granularity = 'daily', ?string $from = null, ?string $to = null): array {
     $bucketExpr = match ($granularity) {
@@ -104,19 +132,35 @@ function bizRevenueSeries(string $granularity = 'daily', ?string $from = null, ?
             'bucket'        => $r['bucket'],
             'product_sales' => (float)$r['product_sales'],
             'labor_sales'   => (float)$r['labor_sales'],
+            'deposit_revenue' => (float)$r['deposit_revenue'],
         ],
         fetchAllRows(
             "SELECT $bucketExpr AS bucket,
                     COALESCE(SUM(product_sales),0) AS product_sales,
-                    COALESCE(SUM(labor_sales),0) AS labor_sales
+                    COALESCE(SUM(labor_sales),0) AS labor_sales,
+                    COALESCE(SUM(deposit_revenue),0) AS deposit_revenue
              FROM (
-                SELECT DATE(o.created_at) AS d, o.total AS product_sales, 0 AS labor_sales
+                SELECT DATE(o.created_at) AS d, o.total AS product_sales, 0 AS labor_sales, 0 AS deposit_revenue
                 FROM orders o
                 WHERE o.payment_status = 'paid'
                 UNION ALL
                 SELECT DATE(COALESCE(b.completed_at, b.created_at)) AS d,
                        COALESCE((SELECT SUM(bp.product_price) FROM booking_products bp WHERE bp.booking_id = b.id), 0),
-                       COALESCE((SELECT SUM(bs.labor_fee) FROM booking_services bs WHERE bs.booking_id = b.id), 0)
+                       COALESCE((SELECT SUM(bs.labor_fee) FROM booking_services bs WHERE bs.booking_id = b.id), 0),
+                       0
+                FROM bookings b
+                WHERE b.status = 'completed'
+                UNION ALL
+                SELECT DATE(bd.paid_at) AS d, 0, 0, bd.amount
+                FROM booking_deposits bd
+                WHERE bd.status = 'paid' AND bd.paid_at IS NOT NULL
+                UNION ALL
+                SELECT DATE(COALESCE(b.completed_at, b.created_at)) AS d, 0, 0,
+                       -LEAST(
+                           COALESCE((SELECT SUM(bp.product_price) FROM booking_products bp WHERE bp.booking_id = b.id), 0)
+                           + COALESCE((SELECT SUM(bs.labor_fee) FROM booking_services bs WHERE bs.booking_id = b.id), 0),
+                           COALESCE((SELECT SUM(bd.amount) FROM booking_deposits bd WHERE bd.booking_id = b.id AND bd.status = 'paid' AND bd.paid_at IS NOT NULL), 0)
+                       )
                 FROM bookings b
                 WHERE b.status = 'completed'
              ) rev

@@ -83,14 +83,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'check_replies') {
         try {
+            $gmail = new GmailService();
+            if (!$gmail->isConfigured()) {
+                throw new RuntimeException((string)$gmail->configurationError());
+            }
             unset($_SESSION['po_reply_results']);
+            // CSRF, authorization, and request values were validated above.
+            // Release this browser session while Gmail network calls run.
+            if (session_status() === PHP_SESSION_ACTIVE) {
+                session_write_close();
+            }
             $result = poProcessSupplierReplies();
+            if (session_status() === PHP_SESSION_NONE) {
+                session_start();
+            }
             flashMessage('po_success', $result['processed'] > 0
                 ? ($result['processed'] === 1 ? '1 new supplier reply processed.' : "{$result['processed']} new supplier replies processed.")
                 : "No new supplier replies. {$result['skipped']} already processed.");
         } catch (Throwable $e) {
+            if (session_status() === PHP_SESSION_NONE) {
+                session_start();
+            }
             error_log('Supplier reply check failed: ' . $e->getMessage());
-            flashMessage('po_error', 'Supplier reply check failed. Check server configuration.');
+            $message = $e->getMessage();
+            flashMessage('po_error', str_starts_with($message, 'Gmail is not configured.')
+                ? $message
+                : 'Supplier reply check failed. Check server configuration.');
         }
         redirect(baseUrl('admin/purchase-orders.php'));
     }
@@ -341,26 +359,17 @@ $listUrl = static function (array $changes = []) use ($listParams): string {
           </button>
         </form>
       <?php elseif ($po['status'] === 'ordered'): ?>
-        <form method="post" onsubmit="return confirm('Mark as received? This will add quantities to product stock.');" style="display:inline;">
-          <?= authContextField() ?>
-          <input type="hidden" name="action" value="mark_received">
-          <input type="hidden" name="po_id" value="<?= $detailId ?>">
-          <button type="submit" class="mtx-btn mtx-btn--primary" style="background:#15803d;border-color:#15803d;">
-            <i class="fas fa-boxes-stacked"></i> Mark as Received
-          </button>
-        </form>
+        <button type="button" class="mtx-btn mtx-btn--primary" id="receivePoTrigger" aria-haspopup="dialog" aria-controls="receivePoModal" style="background:#15803d;border-color:#15803d;">
+          <i class="fas fa-boxes-stacked"></i> Mark as Received
+        </button>
       <?php endif; ?>
       <?php if (in_array($po['status'], ['approved', 'ordered'], true)): ?>
-        <?php if (!$gmail->isConnected()): ?>
+        <?php if (!$gmail->isConfigured()): ?>
+          <span class="mtx-btn mtx-btn--ghost" aria-disabled="true" title="<?= htmlspecialchars((string)$gmail->configurationError()) ?>">Gmail not configured</span>
+        <?php elseif (!$gmail->isConnected()): ?>
           <a href="<?= baseUrl('admin/gmail-connect.php') ?>" class="mtx-btn mtx-btn--ghost">Connect Gmail</a>
         <?php else: ?>
-          <form method="post" style="display:inline;" onsubmit="return confirm('Send this purchase order to the supplier?');">
-            <?= authContextField() ?>
-            <input type="hidden" name="action" value="send_supplier">
-            <input type="hidden" name="po_id" value="<?= $detailId ?>">
-            <?php if (($po['communication_status'] ?? 'not_sent') !== 'not_sent'): ?><input type="hidden" name="resend" value="1"><?php endif; ?>
-            <button type="submit" class="mtx-btn mtx-btn--primary"><i class="fas fa-paper-plane"></i> <?= ($po['communication_status'] ?? 'not_sent') === 'not_sent' ? 'Send to Supplier' : 'Resend Email' ?></button>
-          </form>
+          <button type="button" class="mtx-btn mtx-btn--primary" id="sendSupplierTrigger" aria-haspopup="dialog" aria-controls="sendSupplierModal"><i class="fas fa-paper-plane"></i> <?= ($po['communication_status'] ?? 'not_sent') === 'not_sent' ? 'Send to Supplier' : 'Resend Email' ?></button>
         <?php endif; ?>
       <?php endif; ?>
       <?php if (in_array($po['status'], ['draft','approved'], true)): ?>
@@ -375,6 +384,222 @@ $listUrl = static function (array $changes = []) use ($listParams): string {
       <?php endif; ?>
     </div>
   </header>
+
+  <?php if (in_array($po['status'], ['approved', 'ordered'], true) && $gmail->isConfigured() && $gmail->isConnected()): ?>
+    <div class="mtx-modal po-send-supplier-modal" id="sendSupplierModal" role="dialog" aria-modal="true" aria-labelledby="sendSupplierTitle" aria-describedby="sendSupplierMessage" hidden>
+      <div class="mtx-modal__backdrop" data-close-send-supplier-modal aria-hidden="true"></div>
+      <section class="mtx-modal__dialog po-send-supplier-modal__dialog" role="document">
+        <button type="button" class="mtx-modal__close" data-close-send-supplier-modal aria-label="Close send purchase order confirmation"><i class="fas fa-xmark" aria-hidden="true"></i></button>
+        <div class="po-send-supplier-modal__icon" aria-hidden="true"><i class="fas fa-paper-plane"></i></div>
+        <h2 class="mtx-modal__title" id="sendSupplierTitle">Send Purchase Order</h2>
+        <p class="po-send-supplier-modal__message" id="sendSupplierMessage">Send Purchase Order #<?= (int)$detailId ?> to the supplier?</p>
+        <dl class="po-send-supplier-modal__details">
+          <div><dt>Supplier</dt><dd><?= htmlspecialchars($po['supplier_name'] ?? 'No supplier') ?></dd></div>
+          <div><dt>Email</dt><dd><?= htmlspecialchars($po['supplier_email'] ?? 'No email configured') ?></dd></div>
+        </dl>
+        <p class="po-send-supplier-modal__support">The purchase order will be sent to this supplier by email.</p>
+        <form method="post" id="sendSupplierForm" class="po-send-supplier-modal__form">
+          <?= authContextField() ?>
+          <input type="hidden" name="action" value="send_supplier">
+          <input type="hidden" name="po_id" value="<?= $detailId ?>">
+          <?php if (($po['communication_status'] ?? 'not_sent') !== 'not_sent'): ?><input type="hidden" name="resend" value="1"><?php endif; ?>
+          <div class="po-send-supplier-modal__actions">
+            <button type="button" class="mtx-btn mtx-btn--ghost" data-close-send-supplier-modal>Cancel</button>
+            <button type="submit" class="mtx-btn po-send-supplier-modal__confirm" id="sendSupplierConfirm"><i class="fas fa-paper-plane" aria-hidden="true"></i> Send Purchase Order</button>
+          </div>
+        </form>
+      </section>
+    </div>
+    <script>
+    (function () {
+      var modal = document.getElementById('sendSupplierModal');
+      var trigger = document.getElementById('sendSupplierTrigger');
+      var form = document.getElementById('sendSupplierForm');
+      var confirmButton = document.getElementById('sendSupplierConfirm');
+      if (!modal || !trigger || !form || !confirmButton) return;
+
+      var lastTrigger = null;
+      var closeTimer = null;
+      var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+      function closeDuration() { return reducedMotion.matches ? 120 : 170; }
+      function focusableElements() {
+        return Array.prototype.slice.call(modal.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+      }
+      function returnFocus() {
+        if (lastTrigger && document.contains(lastTrigger)) lastTrigger.focus({ preventScroll: true });
+      }
+      function closeModal() {
+        if (modal.hidden || form.dataset.submitting === 'true') return;
+        window.clearTimeout(closeTimer);
+        modal.classList.remove('is-opening', 'is-open');
+        modal.classList.add('is-closing');
+        closeTimer = window.setTimeout(function () {
+          modal.classList.remove('is-closing');
+          modal.hidden = true;
+          document.removeEventListener('keydown', handleKeydown);
+          returnFocus();
+        }, closeDuration());
+      }
+      function handleKeydown(event) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeModal();
+          return;
+        }
+        if (event.key !== 'Tab') return;
+        var elements = focusableElements();
+        if (!elements.length) return;
+        var first = elements[0];
+        var last = elements[elements.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+      function openModal() {
+        if (form.dataset.submitting === 'true') return;
+        lastTrigger = trigger;
+        window.clearTimeout(closeTimer);
+        modal.hidden = false;
+        modal.classList.remove('is-closing', 'is-open');
+        modal.classList.add('is-opening');
+        document.addEventListener('keydown', handleKeydown);
+        window.requestAnimationFrame(function () {
+          modal.classList.remove('is-opening');
+          modal.classList.add('is-open');
+          var elements = focusableElements();
+          if (elements.length) elements[0].focus({ preventScroll: true });
+        });
+      }
+
+      trigger.addEventListener('click', openModal);
+      modal.querySelectorAll('[data-close-send-supplier-modal]').forEach(function (control) {
+        control.addEventListener('click', closeModal);
+      });
+      form.addEventListener('submit', function (event) {
+        if (form.dataset.submitting === 'true') {
+          event.preventDefault();
+          return;
+        }
+        form.dataset.submitting = 'true';
+        confirmButton.disabled = true;
+        confirmButton.setAttribute('aria-busy', 'true');
+        confirmButton.innerHTML = '<i class="fas fa-spinner fa-spin" aria-hidden="true"></i> Sending...';
+      });
+    }());
+    </script>
+  <?php endif; ?>
+
+  <?php if ($po['status'] === 'ordered'): ?>
+    <div class="mtx-modal po-receive-modal" id="receivePoModal" role="dialog" aria-modal="true" aria-labelledby="receivePoTitle" aria-describedby="receivePoMessage" hidden>
+      <div class="mtx-modal__backdrop" data-close-receive-po-modal aria-hidden="true"></div>
+      <section class="mtx-modal__dialog po-receive-modal__dialog" role="document">
+        <button type="button" class="mtx-modal__close" data-close-receive-po-modal aria-label="Close receive purchase order confirmation"><i class="fas fa-xmark" aria-hidden="true"></i></button>
+        <div class="po-receive-modal__icon" aria-hidden="true"><i class="fas fa-boxes-stacked"></i></div>
+        <h2 class="mtx-modal__title" id="receivePoTitle">Receive Purchase Order</h2>
+        <p class="po-receive-modal__message" id="receivePoMessage">Confirm that Purchase Order #<?= (int)$detailId ?> has been received.</p>
+        <p class="po-receive-modal__support">Receiving this purchase order will add the ordered quantities to the corresponding product inventory.</p>
+        <dl class="po-receive-modal__details">
+          <div><dt>Purchase Order</dt><dd>#<?= (int)$detailId ?></dd></div>
+          <div><dt>Supplier</dt><dd><?= htmlspecialchars($po['supplier_name'] ?? 'No supplier') ?></dd></div>
+          <div><dt>Items</dt><dd><?= count($poItems) ?> product<?= count($poItems) === 1 ? '' : 's' ?></dd></div>
+        </dl>
+        <form method="post" id="receivePoForm" class="po-receive-modal__form">
+          <?= authContextField() ?>
+          <input type="hidden" name="action" value="mark_received">
+          <input type="hidden" name="po_id" value="<?= $detailId ?>">
+          <div class="po-receive-modal__actions">
+            <button type="button" class="mtx-btn mtx-btn--ghost" data-close-receive-po-modal>Cancel</button>
+            <button type="submit" class="mtx-btn po-receive-modal__confirm" id="receivePoConfirm"><i class="fas fa-boxes-stacked" aria-hidden="true"></i> Mark as Received</button>
+          </div>
+        </form>
+      </section>
+    </div>
+    <script>
+    (function () {
+      var modal = document.getElementById('receivePoModal');
+      var trigger = document.getElementById('receivePoTrigger');
+      var form = document.getElementById('receivePoForm');
+      var confirmButton = document.getElementById('receivePoConfirm');
+      if (!modal || !trigger || !form || !confirmButton) return;
+
+      var lastTrigger = null;
+      var closeTimer = null;
+      var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+      function closeDuration() { return reducedMotion.matches ? 120 : 170; }
+      function focusableElements() {
+        return Array.prototype.slice.call(modal.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+      }
+      function returnFocus() {
+        if (lastTrigger && document.contains(lastTrigger)) lastTrigger.focus({ preventScroll: true });
+      }
+      function closeModal() {
+        if (modal.hidden || form.dataset.submitting === 'true') return;
+        window.clearTimeout(closeTimer);
+        modal.classList.remove('is-opening', 'is-open');
+        modal.classList.add('is-closing');
+        closeTimer = window.setTimeout(function () {
+          modal.classList.remove('is-closing');
+          modal.hidden = true;
+          document.removeEventListener('keydown', handleKeydown);
+          returnFocus();
+        }, closeDuration());
+      }
+      function handleKeydown(event) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeModal();
+          return;
+        }
+        if (event.key !== 'Tab') return;
+        var elements = focusableElements();
+        if (!elements.length) return;
+        var first = elements[0];
+        var last = elements[elements.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+      function openModal() {
+        if (form.dataset.submitting === 'true') return;
+        lastTrigger = trigger;
+        window.clearTimeout(closeTimer);
+        modal.hidden = false;
+        modal.classList.remove('is-closing', 'is-open');
+        modal.classList.add('is-opening');
+        document.addEventListener('keydown', handleKeydown);
+        window.requestAnimationFrame(function () {
+          modal.classList.remove('is-opening');
+          modal.classList.add('is-open');
+          var elements = focusableElements();
+          if (elements.length) elements[0].focus({ preventScroll: true });
+        });
+      }
+
+      trigger.addEventListener('click', openModal);
+      modal.querySelectorAll('[data-close-receive-po-modal]').forEach(function (control) {
+        control.addEventListener('click', closeModal);
+      });
+      form.addEventListener('submit', function (event) {
+        if (form.dataset.submitting === 'true') {
+          event.preventDefault();
+          return;
+        }
+        form.dataset.submitting = 'true';
+        confirmButton.disabled = true;
+        confirmButton.setAttribute('aria-busy', 'true');
+        confirmButton.innerHTML = '<i class="fas fa-spinner fa-spin" aria-hidden="true"></i> Receiving...';
+      });
+    }());
+    </script>
+  <?php endif; ?>
 
   <div class="mtx-grid mtx-grid--half" style="align-items:start;">
     <!-- Info -->
@@ -495,24 +720,24 @@ $listUrl = static function (array $changes = []) use ($listParams): string {
     </div>
     <div class="mtx-page-head-actions po-page-actions">
       <div class="po-primary-actions">
-      <form method="post" onsubmit="return confirm('Scan for low-stock products and auto-generate draft POs?');">
-        <?= authContextField() ?>
-        <input type="hidden" name="action" value="auto_generate">
-      <button type="submit" class="mtx-btn mtx-btn--primary">
+      <div>
+      <button type="button" id="autoGeneratePoTrigger" class="mtx-btn mtx-btn--primary" aria-haspopup="dialog" aria-controls="autoGeneratePoModal">
           <i class="fas fa-magic"></i> Auto-Generate POs
           <?php if ($lowStockCount > 0): ?>
             <span style="background:rgba(255,255,255,.25);border-radius:20px;padding:1px 8px;font-size:.78rem;"><?= $lowStockCount ?> low</span>
           <?php endif; ?>
       </button>
-      </form>
+      </div>
       <?php if ($gmail->isConnected()): ?>
         <form method="post">
           <?= authContextField() ?>
           <input type="hidden" name="action" value="check_replies">
           <button type="submit" class="mtx-btn mtx-btn--ghost"><i class="fas fa-inbox"></i> Check Replies</button>
         </form>
-      <?php else: ?>
+      <?php elseif ($gmail->isConfigured()): ?>
         <a href="<?= baseUrl('admin/gmail-connect.php') ?>" class="mtx-btn mtx-btn--ghost"><i class="fab fa-google"></i> Connect Gmail</a>
+      <?php else: ?>
+        <span class="mtx-btn mtx-btn--ghost" aria-disabled="true" title="<?= htmlspecialchars((string)$gmail->configurationError()) ?>"><i class="fas fa-triangle-exclamation"></i> Gmail not configured</span>
       <?php endif; ?>
       </div>
       <div class="po-secondary-actions">
@@ -614,6 +839,108 @@ $listUrl = static function (array $changes = []) use ($listParams): string {
       </div>
     <?php endif; ?>
   </section>
+
+  <div class="mtx-modal po-auto-generate-modal" id="autoGeneratePoModal" role="dialog" aria-modal="true" aria-labelledby="autoGeneratePoTitle" aria-describedby="autoGeneratePoMessage autoGeneratePoSupport" hidden>
+    <div class="mtx-modal__backdrop" data-close-auto-generate-po-modal aria-hidden="true"></div>
+    <section class="mtx-modal__dialog po-auto-generate-modal__dialog" role="document">
+      <button type="button" class="mtx-modal__close" data-close-auto-generate-po-modal aria-label="Close purchase order confirmation"><i class="fas fa-xmark" aria-hidden="true"></i></button>
+      <div class="po-auto-generate-modal__icon" aria-hidden="true"><i class="fas fa-file-circle-plus"></i></div>
+      <h2 class="mtx-modal__title" id="autoGeneratePoTitle">Auto-Generate Purchase Orders?</h2>
+      <p class="po-auto-generate-modal__message" id="autoGeneratePoMessage">Scan low-stock products and automatically generate draft purchase orders?</p>
+      <p class="po-auto-generate-modal__support" id="autoGeneratePoSupport">MotoTrack will check products at or below their minimum stock level and create draft purchase orders where applicable.</p>
+      <form method="post" id="autoGeneratePoForm" class="po-auto-generate-modal__form">
+        <?= authContextField() ?>
+        <input type="hidden" name="action" value="auto_generate">
+        <div class="po-auto-generate-modal__actions">
+          <button type="button" class="mtx-btn mtx-btn--ghost" data-close-auto-generate-po-modal>Cancel</button>
+          <button type="submit" class="mtx-btn po-auto-generate-modal__confirm" id="autoGeneratePoConfirm"><i class="fas fa-wand-magic-sparkles"></i> Generate Draft POs</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <script>
+  (function () {
+    var modal = document.getElementById('autoGeneratePoModal');
+    var trigger = document.getElementById('autoGeneratePoTrigger');
+    var form = document.getElementById('autoGeneratePoForm');
+    var confirmButton = document.getElementById('autoGeneratePoConfirm');
+    if (!modal || !trigger || !form || !confirmButton) return;
+
+    var lastTrigger = null;
+    var closeTimer = null;
+    var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+    function closeDuration() { return reducedMotion.matches ? 120 : 170; }
+    function focusableElements() {
+      return Array.prototype.slice.call(modal.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+    }
+    function returnFocus() {
+      if (lastTrigger && document.contains(lastTrigger)) lastTrigger.focus({ preventScroll: true });
+    }
+    function closeModal() {
+      if (modal.hidden || form.dataset.submitting === 'true') return;
+      window.clearTimeout(closeTimer);
+      modal.classList.remove('is-opening', 'is-open');
+      modal.classList.add('is-closing');
+      closeTimer = window.setTimeout(function () {
+        modal.classList.remove('is-closing');
+        modal.hidden = true;
+        document.removeEventListener('keydown', handleKeydown);
+        returnFocus();
+      }, closeDuration());
+    }
+    function handleKeydown(event) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeModal();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      var elements = focusableElements();
+      if (!elements.length) return;
+      var first = elements[0];
+      var last = elements[elements.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+    function openModal() {
+      if (form.dataset.submitting === 'true') return;
+      lastTrigger = trigger;
+      window.clearTimeout(closeTimer);
+      modal.hidden = false;
+      modal.classList.remove('is-closing', 'is-open');
+      modal.classList.add('is-opening');
+      document.addEventListener('keydown', handleKeydown);
+      window.requestAnimationFrame(function () {
+        modal.classList.remove('is-opening');
+        modal.classList.add('is-open');
+        var elements = focusableElements();
+        if (elements.length) elements[0].focus({ preventScroll: true });
+      });
+    }
+
+    trigger.addEventListener('click', openModal);
+    modal.querySelectorAll('[data-close-auto-generate-po-modal]').forEach(function (control) {
+      control.addEventListener('click', closeModal);
+    });
+    form.addEventListener('submit', function (event) {
+      if (form.dataset.submitting === 'true') {
+        event.preventDefault();
+        return;
+      }
+      form.dataset.submitting = 'true';
+      confirmButton.disabled = true;
+      confirmButton.setAttribute('aria-busy', 'true');
+      confirmButton.innerHTML = '<i class="fas fa-spinner fa-spin" aria-hidden="true"></i> Generating...';
+    });
+  }());
+  </script>
 <?php endif; ?>
 
 </div><!-- /.mtx-shell -->

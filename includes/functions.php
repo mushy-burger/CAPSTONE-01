@@ -211,6 +211,39 @@ function envValue(string $key, ?string $default = null): ?string {
     return is_string($value) ? $value : $default;
 }
 
+/**
+ * Build an absolute application URL from the current web root.
+ *
+ * APP_URL provides only the public scheme/host/port during a web request.
+ * The path comes from baseUrl(), so an old local APP_URL containing a nested
+ * project folder cannot produce duplicated callback or payment return paths.
+ */
+function appUrl(string $path = ''): string {
+    $configured = trim((string)envValue('APP_URL', ''));
+    $parts = $configured !== '' ? parse_url($configured) : false;
+
+    if (is_array($parts)
+        && in_array(strtolower((string)($parts['scheme'] ?? '')), ['http', 'https'], true)
+        && !empty($parts['host'])) {
+        $origin = strtolower((string)$parts['scheme']) . '://' . $parts['host'];
+        if (isset($parts['port'])) {
+            $origin .= ':' . (int)$parts['port'];
+        }
+
+        // CLI has no request path to derive installed application root.
+        // In that case APP_URL may include full application path.
+        if (PHP_SAPI === 'cli') {
+            $base = rtrim((string)($parts['path'] ?? ''), '/');
+            return rtrim($origin . $base, '/') . ($path !== '' ? '/' . ltrim($path, '/') : '');
+        }
+    } else {
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $origin = $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+    }
+
+    return rtrim($origin, '/') . baseUrl($path);
+}
+
 function normalizeMotorcycleText(string $text): string {
     $text = trim($text);
     $text = preg_replace('/([A-Za-z])([0-9])/', '$1 $2', $text);

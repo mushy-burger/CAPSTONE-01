@@ -20,6 +20,7 @@ config/gmail.php
 config/*.local.php
 
 # Database backups may contain private operational data.
+/backups/
 database/backups/*.sql
 
 # Runtime logs may contain provider responses.

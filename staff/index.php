@@ -2,14 +2,19 @@
 $pageTitle = 'Staff Dashboard';
 require_once __DIR__ . '/../includes/staff-sidebar.php';
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/BookingDeposit.php';
 
 // Notifications stay unread until explicitly marked via the bell's
 // "Mark all read" — keeps the unread-count badge meaningful.
 
-$pendingCount    = fetchOne("SELECT COUNT(*) AS n FROM bookings WHERE status = 'pending'")['n'] ?? 0;
-$confirmedToday  = fetchOne("SELECT COUNT(*) AS n FROM bookings WHERE status = 'confirmed' AND scheduled_date = CURDATE()")['n'] ?? 0;
-$inProgressCount = fetchOne("SELECT COUNT(*) AS n FROM bookings WHERE status = 'in_progress'")['n'] ?? 0;
-$completedTotal  = fetchOne("SELECT COUNT(*) AS n FROM bookings WHERE status = 'completed'")['n'] ?? 0;
+$paidBookingVisibility = depositIsRequired()
+    ? "EXISTS (SELECT 1 FROM booking_deposits bd WHERE bd.booking_id = b.id AND bd.status = 'paid')"
+    : '1=1';
+
+$pendingCount    = fetchOne("SELECT COUNT(*) AS n FROM bookings b WHERE $paidBookingVisibility AND b.status = 'pending'")['n'] ?? 0;
+$confirmedToday  = fetchOne("SELECT COUNT(*) AS n FROM bookings b WHERE $paidBookingVisibility AND b.status = 'confirmed' AND b.scheduled_date = CURDATE()")['n'] ?? 0;
+$inProgressCount = fetchOne("SELECT COUNT(*) AS n FROM bookings b WHERE $paidBookingVisibility AND b.status = 'in_progress'")['n'] ?? 0;
+$completedTotal  = fetchOne("SELECT COUNT(*) AS n FROM bookings b WHERE $paidBookingVisibility AND b.status = 'completed'")['n'] ?? 0;
 
 $pendingBookings = fetchAllRows(
     "SELECT
@@ -31,7 +36,7 @@ $pendingBookings = fetchAllRows(
        SELECT booking_id, GROUP_CONCAT(service_name ORDER BY id SEPARATOR ', ') AS services
        FROM booking_services GROUP BY booking_id
      ) svc ON svc.booking_id = b.id
-     WHERE b.status = 'pending'
+     WHERE $paidBookingVisibility AND b.status = 'pending'
      ORDER BY b.created_at ASC
      LIMIT 10"
 );

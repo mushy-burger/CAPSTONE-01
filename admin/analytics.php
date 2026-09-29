@@ -37,9 +37,9 @@ $trendSeries = [
 ];
 
 // --- Period-scoped insights ---
-$topProducts = bizTopProducts(8, $rangeFrom, $rangeTo);
-$topServices = bizTopServices(8, $rangeFrom, $rangeTo);
-$topTechs    = bizTechPerformance(8, $rangeFrom, $rangeTo);
+$topProducts = bizTopProducts(1000, $rangeFrom, $rangeTo);
+$topServices = bizTopServices(1000, $rangeFrom, $rangeTo);
+$topTechs    = bizTechPerformance(1000, $rangeFrom, $rangeTo);
 
 $customersServiced = (int)(fetchOne(
     "SELECT COUNT(DISTINCT user_id) AS n FROM bookings WHERE status = 'completed'"
@@ -120,12 +120,13 @@ $lowStock      = fetchAllRows("SELECT p.name, p.stock, p.min_stock, c.name AS ca
     <div class="mtx-card-head">
       <div>
         <h2><i class="fas fa-chart-column"></i> Revenue Trends</h2>
-        <p>Product sales vs labor sales over time.</p>
+        <p>Product, labor, and reservation-deposit revenue over time.</p>
       </div>
       <div class="mtx-card-head-actions">
         <div class="mtx-legend" aria-hidden="true">
           <span><i style="--swatch:#2563eb;"></i> Product Sales</span>
           <span><i style="--swatch:#d71920;"></i> Labor Sales</span>
+          <span><i style="--swatch:#7c3aed;"></i> Reservation Deposits</span>
         </div>
         <div class="mtx-seg" role="tablist" aria-label="Chart granularity">
           <button type="button" class="active" data-granularity="daily">Daily</button>
@@ -135,11 +136,11 @@ $lowStock      = fetchAllRows("SELECT p.name, p.stock, p.min_stock, c.name AS ca
         </div>
       </div>
     </div>
-    <div class="mtx-chart"><canvas id="trendChart" aria-label="Revenue trend chart, product versus labor sales"></canvas></div>
+    <div class="mtx-chart"><canvas id="trendChart" aria-label="Revenue trend chart, product, labor, and reservation-deposit revenue"></canvas></div>
     <div class="mtx-empty" id="trendEmpty" style="display:none;">
       <i class="fas fa-chart-line"></i>
       <strong>No revenue in this range yet.</strong>
-      <span>Paid orders and completed bookings will appear here.</span>
+      <span>Paid orders, deposits, and completed bookings will appear here.</span>
     </div>
   </section>
 
@@ -163,7 +164,7 @@ $lowStock      = fetchAllRows("SELECT p.name, p.stock, p.min_stock, c.name AS ca
   </section>
 
   <!-- Period-scoped revenue summary -->
-  <section class="mtx-kpi-grid mtx-kpi-grid--6" aria-label="Selected period summary">
+  <section class="mtx-kpi-grid" aria-label="Selected period summary">
     <article class="mtx-kpi" style="--kpi-color:#111317;">
       <div class="mtx-kpi-top"><span class="mtx-kpi-label"><?= htmlspecialchars($labelPeriod) ?> Revenue</span><span class="mtx-kpi-icon"><i class="fas fa-coins"></i></span></div>
       <span class="mtx-kpi-value"><?= formatPrice($bizPeriod['total_revenue']) ?></span>
@@ -177,11 +178,6 @@ $lowStock      = fetchAllRows("SELECT p.name, p.stock, p.min_stock, c.name AS ca
       <div class="mtx-kpi-top"><span class="mtx-kpi-label">Labor Sales</span><span class="mtx-kpi-icon"><i class="fas fa-wrench"></i></span></div>
       <span class="mtx-kpi-value"><?= formatPrice($bizPeriod['labor_sales']) ?></span>
       <span class="mtx-kpi-sub">Shop <strong style="color:#15803d;"><?= formatPrice($bizPeriod['shop_labor']) ?></strong> · Tech <strong style="color:#2563eb;"><?= formatPrice($bizPeriod['tech_labor']) ?></strong></span>
-    </article>
-    <article class="mtx-kpi" style="--kpi-color:#7c3aed;">
-      <div class="mtx-kpi-top"><span class="mtx-kpi-label">Paid Orders</span><span class="mtx-kpi-icon"><i class="fas fa-receipt"></i></span></div>
-      <span class="mtx-kpi-value"><?= $paidOrdersCount ?></span>
-      <span class="mtx-kpi-sub">All time</span>
     </article>
     <article class="mtx-kpi" style="--kpi-color:#0f766e;">
       <div class="mtx-kpi-top"><span class="mtx-kpi-label">Completed Services</span><span class="mtx-kpi-icon"><i class="fas fa-check-double"></i></span></div>
@@ -205,9 +201,9 @@ $lowStock      = fetchAllRows("SELECT p.name, p.stock, p.min_stock, c.name AS ca
         </div>
       </div>
       <?php if ($topProducts): ?>
-        <div class="mtx-list">
+        <div class="mtx-list mtx-ranking-list" data-ranking-list>
           <?php foreach ($topProducts as $i => $row): ?>
-            <div class="mtx-list-row">
+            <div class="mtx-list-row" data-ranking-item data-ranking-rank="<?= $i + 1 ?>">
               <span class="mtx-list-rank">#<?= $i + 1 ?></span>
               <span class="mtx-list-main">
                 <strong><?= htmlspecialchars($row['product_name']) ?></strong>
@@ -217,6 +213,7 @@ $lowStock      = fetchAllRows("SELECT p.name, p.stock, p.min_stock, c.name AS ca
             </div>
           <?php endforeach; ?>
         </div>
+        <nav class="mtx-ranking-pagination" data-ranking-pagination aria-label="Top-Selling Products pages"></nav>
       <?php else: ?>
         <div class="mtx-empty"><i class="fas fa-box"></i><strong>No product sales in this period.</strong></div>
       <?php endif; ?>
@@ -230,9 +227,9 @@ $lowStock      = fetchAllRows("SELECT p.name, p.stock, p.min_stock, c.name AS ca
         </div>
       </div>
       <?php if ($topServices): ?>
-        <div class="mtx-list">
+        <div class="mtx-list mtx-ranking-list" data-ranking-list>
           <?php foreach ($topServices as $i => $row): ?>
-            <div class="mtx-list-row">
+            <div class="mtx-list-row" data-ranking-item data-ranking-rank="<?= $i + 1 ?>">
               <span class="mtx-list-rank">#<?= $i + 1 ?></span>
               <span class="mtx-list-main">
                 <strong><?= htmlspecialchars($row['service_name']) ?></strong>
@@ -245,6 +242,7 @@ $lowStock      = fetchAllRows("SELECT p.name, p.stock, p.min_stock, c.name AS ca
             </div>
           <?php endforeach; ?>
         </div>
+        <nav class="mtx-ranking-pagination" data-ranking-pagination aria-label="Most Requested Services pages"></nav>
       <?php else: ?>
         <div class="mtx-empty"><i class="fas fa-tools"></i><strong>No completed services in this period.</strong></div>
       <?php endif; ?>
@@ -258,9 +256,9 @@ $lowStock      = fetchAllRows("SELECT p.name, p.stock, p.min_stock, c.name AS ca
         </div>
       </div>
       <?php if ($topTechs): ?>
-        <div class="mtx-list">
+        <div class="mtx-list mtx-ranking-list" data-ranking-list>
           <?php foreach ($topTechs as $i => $row): ?>
-            <div class="mtx-list-row">
+            <div class="mtx-list-row" data-ranking-item data-ranking-rank="<?= $i + 1 ?>">
               <span class="mtx-list-rank">#<?= $i + 1 ?></span>
               <span class="mtx-list-main">
                 <strong><?= htmlspecialchars($row['tech_name']) ?></strong>
@@ -273,6 +271,7 @@ $lowStock      = fetchAllRows("SELECT p.name, p.stock, p.min_stock, c.name AS ca
             </div>
           <?php endforeach; ?>
         </div>
+        <nav class="mtx-ranking-pagination" data-ranking-pagination aria-label="Top Technicians pages"></nav>
       <?php else: ?>
         <div class="mtx-empty"><i class="fas fa-user-cog"></i><strong>No completed jobs in this period.</strong></div>
       <?php endif; ?>
@@ -354,6 +353,7 @@ $lowStock      = fetchAllRows("SELECT p.name, p.stock, p.min_stock, c.name AS ca
     var labels = rows.map(function (r) { return label(r.bucket, granularity); });
     var product = rows.map(function (r) { return parseFloat(r.product_sales); });
     var labor = rows.map(function (r) { return parseFloat(r.labor_sales); });
+    var deposits = rows.map(function (r) { return parseFloat(r.deposit_revenue); });
 
     if (chart) chart.destroy();
     chart = new Chart(canvas, {
@@ -375,6 +375,16 @@ $lowStock      = fetchAllRows("SELECT p.name, p.stock, p.min_stock, c.name AS ca
             label: 'Labor Sales',
             data: labor,
             backgroundColor: '#d71920',
+            borderColor: '#ffffff',
+            borderWidth: 1,
+            borderRadius: 4,
+            maxBarThickness: 34,
+            stack: 'revenue'
+          },
+          {
+            label: 'Reservation Deposits',
+            data: deposits,
+            backgroundColor: '#7c3aed',
             borderColor: '#ffffff',
             borderWidth: 1,
             borderRadius: 4,
@@ -421,6 +431,94 @@ $lowStock      = fetchAllRows("SELECT p.name, p.stock, p.min_stock, c.name AS ca
   });
 
   render('daily');
+})();
+</script>
+<script>
+(function () {
+  var pageSize = 5;
+
+  function visiblePages(totalPages, currentPage) {
+    var pages = [1];
+    var start = Math.max(2, currentPage - 1);
+    var end = Math.min(totalPages - 1, currentPage + 1);
+
+    if (start > 2) pages.push('…');
+    for (var page = start; page <= end; page += 1) pages.push(page);
+    if (end < totalPages - 1) pages.push('…');
+    if (totalPages > 1) pages.push(totalPages);
+
+    return pages;
+  }
+
+  function addButton(container, label, target, isCurrent, isDisabled, iconClass) {
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'mtx-ranking-pagination__button' + (isCurrent ? ' is-active' : '');
+    button.dataset.rankingPage = target;
+    button.disabled = isDisabled;
+    button.setAttribute('aria-label', label);
+    if (isCurrent) button.setAttribute('aria-current', 'page');
+
+    if (iconClass) {
+      var icon = document.createElement('i');
+      icon.className = iconClass;
+      icon.setAttribute('aria-hidden', 'true');
+      button.appendChild(icon);
+    } else {
+      button.textContent = label;
+    }
+    container.appendChild(button);
+  }
+
+  document.querySelectorAll('[data-ranking-list]').forEach(function (list) {
+    var card = list.closest('.mtx-card');
+    var pager = card ? card.querySelector('[data-ranking-pagination]') : null;
+    var items = Array.prototype.slice.call(list.querySelectorAll('[data-ranking-item]'));
+    if (!pager || items.length <= pageSize) {
+      if (pager) pager.hidden = true;
+      return;
+    }
+
+    var currentPage = 1;
+    var totalPages = Math.ceil(items.length / pageSize);
+
+    function render() {
+      items.forEach(function (item, index) {
+        item.hidden = Math.floor(index / pageSize) + 1 !== currentPage;
+      });
+
+      pager.replaceChildren();
+      pager.hidden = false;
+      addButton(pager, 'Previous page', 'previous', false, currentPage === 1, 'fas fa-chevron-left');
+
+      visiblePages(totalPages, currentPage).forEach(function (page) {
+        if (page === '…') {
+          var ellipsis = document.createElement('span');
+          ellipsis.className = 'mtx-ranking-pagination__ellipsis';
+          ellipsis.setAttribute('aria-hidden', 'true');
+          ellipsis.textContent = page;
+          pager.appendChild(ellipsis);
+          return;
+        }
+        addButton(pager, String(page), String(page), page === currentPage, false, null);
+      });
+
+      addButton(pager, 'Next page', 'next', false, currentPage === totalPages, 'fas fa-chevron-right');
+    }
+
+    pager.addEventListener('click', function (event) {
+      var button = event.target.closest('button[data-ranking-page]');
+      if (!button || button.disabled) return;
+
+      var target = button.dataset.rankingPage;
+      if (target === 'previous') currentPage = Math.max(1, currentPage - 1);
+      else if (target === 'next') currentPage = Math.min(totalPages, currentPage + 1);
+      else currentPage = Number(target);
+      render();
+    });
+
+    render();
+  });
 })();
 </script>
 </main></div></div></body></html>

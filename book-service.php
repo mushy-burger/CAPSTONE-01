@@ -4,6 +4,7 @@ require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/BookingSlots.php';
 require_once __DIR__ . '/includes/BookingDeposit.php';
+require_once __DIR__ . '/includes/JobService.php';
 requireLogin();
 
 ensureMultiServiceBookingSchema();
@@ -60,6 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($pageAction, ['delete_appo
 $appointments = fetchAllRows(
     "SELECT b.*, v.plate_number, t.name AS type_name, br.name AS brand_name, m.name AS model_name,
             tech.name AS technician_name,
+            (SELECT bd.status FROM booking_deposits bd WHERE bd.booking_id = b.id ORDER BY (bd.status = 'paid') DESC, bd.id DESC LIMIT 1) AS deposit_status,
             r.service_rating AS submitted_service_rating, r.mechanic_rating AS submitted_mechanic_rating
      FROM bookings b
      LEFT JOIN customer_vehicles v ON v.id = b.vehicle_id
@@ -88,6 +90,7 @@ foreach ($appointments as $appointment) {
 $appointments = fetchAllRows(
     "SELECT b.*, v.plate_number, t.name AS type_name, br.name AS brand_name, m.name AS model_name,
             tech.name AS technician_name,
+            (SELECT bd.status FROM booking_deposits bd WHERE bd.booking_id = b.id ORDER BY (bd.status = 'paid') DESC, bd.id DESC LIMIT 1) AS deposit_status,
             r.service_rating AS submitted_service_rating, r.mechanic_rating AS submitted_mechanic_rating
      FROM bookings b
      LEFT JOIN customer_vehicles v ON v.id = b.vehicle_id
@@ -192,10 +195,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $pageAction === 'submit_booking') {
         $error = 'Select at least one service for this appointment.';
     } elseif (!$date) {
         $error = 'Please choose an appointment date.';
-    } elseif ($date < date('Y-m-d')) {
+    } elseif ($date < bookingServerNow()->format('Y-m-d')) {
         $error = 'The appointment date cannot be in the past.';
     } elseif (!$time || !array_key_exists($time, bookingTimeSlots())) {
         $error = 'Please choose a time slot within shop hours (8:00 AM – 5:00 PM).';
+    } elseif (!bookingSlotMeetsLeadTime($date, $time)) {
+        $error = 'This time slot is no longer available. Please select a later time.';
     } elseif ($selection['errors']) {
         $error = $selection['errors'][0];
     } else {
@@ -327,12 +332,12 @@ require_once __DIR__ . '/includes/header.php';
   <header class="customer-page-heading booking-page-heading">
     <div>
       <h1><?= $activeTab === 'appointments' ? 'Your appointments' : ($editBooking ? 'Update appointment' : 'Book a service') ?></h1>
-      <p><?= $activeTab === 'appointments' ? 'Review scheduled work and service history.' : 'Choose the motorcycle, work, products, and schedule for this visit.' ?></p>
+      <p><?= $activeTab === 'appointments' ? 'Review scheduled work and service history.' : 'Choose the motorcycle, services, and schedule for this visit.' ?></p>
     </div>
   </header>
   <div class="page-tabs booking-page-tabs">
-    <a href="<?= baseUrl('book-service.php?tab=book') ?>" class="<?= $activeTab === 'book' ? 'active' : '' ?>"<?= $activeTab === 'book' ? ' aria-current="page"' : '' ?>>Book Service</a>
-    <a href="<?= baseUrl('book-service.php?tab=appointments') ?>" class="<?= $activeTab === 'appointments' ? 'active' : '' ?>"<?= $activeTab === 'appointments' ? ' aria-current="page"' : '' ?>>Appointments</a>
+    <a href="<?= baseUrl('book-service.php?tab=book') ?>" class="<?= $activeTab === 'book' ? 'active' : '' ?>"<?= $activeTab === 'book' ? ' aria-current="page"' : '' ?>><i class="fas fa-calendar-plus" aria-hidden="true"></i>Book Service</a>
+    <a href="<?= baseUrl('book-service.php?tab=appointments') ?>" class="<?= $activeTab === 'appointments' ? 'active' : '' ?>"<?= $activeTab === 'appointments' ? ' aria-current="page"' : '' ?>><i class="fas fa-clipboard-list" aria-hidden="true"></i>Appointments</a>
   </div>
 
   <?php if ($activeTab === 'book'): ?>
@@ -341,12 +346,12 @@ require_once __DIR__ . '/includes/header.php';
     <input type="hidden" name="page_action" value="submit_booking">
     <input type="hidden" name="tab" value="book">
     <?php if ($editBooking): ?><input type="hidden" name="edit_booking_id" value="<?= (int)$editBooking['id'] ?>"><?php endif; ?>
-    <h2>Appointment details</h2>
-
     <?php if ($message): ?><div class="alert success"><?= htmlspecialchars($message) ?></div><?php endif; ?>
     <?php if ($error): ?><div class="alert error"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
-    <label><span>Select motorcycle</span>
+    <section class="booking-section booking-motorcycle-section">
+      <div class="booking-section-heading"><h2>Select motorcycle</h2></div>
+    <label class="booking-field booking-motorcycle-field"><span class="sr-only">Select motorcycle</span>
       <select name="vehicle_id" data-mtx-enhance onchange="this.form.method='get'; this.form.submit()">
         <?php foreach ($vehicles as $v): ?>
           <option value="<?= (int)$v['id'] ?>" <?= (int)$v['id'] === (int)$vehicle['id'] ? 'selected' : '' ?>>
@@ -355,12 +360,13 @@ require_once __DIR__ . '/includes/header.php';
         <?php endforeach; ?>
       </select>
     </label>
+    </section>
 
     <?php if ($catalog): ?>
-      <div class="booking-service-picker">
+      <section class="booking-service-picker booking-section">
         <div class="booking-block-heading">
-          <span class="eyebrow">Services</span>
-          <strong>Select all work needed for this appointment</strong>
+          <div><span class="eyebrow">Select services</span><strong>Choose the work needed for this appointment.</strong></div>
+          <button class="booking-select-all" type="button" data-select-all-services>Select all</button>
         </div>
 
         <div class="service-checkbox-grid">
@@ -386,7 +392,7 @@ require_once __DIR__ . '/includes/header.php';
             </label>
           <?php endforeach; ?>
         </div>
-      </div>
+      </section>
 
       <div class="selected-services-stack" id="selectedServicesStack" <?= $selectedServiceIds ? '' : 'hidden' ?>>
         <div class="booking-block-heading">
@@ -397,35 +403,42 @@ require_once __DIR__ . '/includes/header.php';
         <div class="service-product-sections" id="serviceProductSections"></div>
       </div>
 
-      <label>Date<input type="date" name="scheduled_date" id="bookingDateInput" min="<?= date('Y-m-d') ?>" value="<?= htmlspecialchars($scheduledDateValue) ?>" required></label>
-
       <?php
         // Server-rendered initial slot availability (JS refreshes it when the date changes)
         $scheduledTimeSlot = substr((string)$scheduledTimeValue, 0, 5);
         $initialSlotAvailability = null;
-        if ($scheduledDateValue && $scheduledDateValue >= date('Y-m-d')) {
+        $initialSlotNow = bookingServerNow();
+        if ($scheduledTimeSlot && !bookingSlotMeetsLeadTime($scheduledDateValue, $scheduledTimeSlot, $initialSlotNow)) {
+            $scheduledTimeSlot = '';
+        }
+        if ($scheduledDateValue && $scheduledDateValue >= $initialSlotNow->format('Y-m-d')) {
             $initialSlotAvailability = bookingSlotAvailability($scheduledDateValue, $editBooking ? (int)$editBooking['id'] : null);
         }
       ?>
-      <div class="booking-slot-picker">
+      <section class="booking-slot-picker booking-section booking-schedule-section">
         <div class="booking-block-heading">
           <span class="eyebrow">Time Slot</span>
           <strong>Choose an available time (shop hours 8:00 AM – 5:00 PM, max <?= BOOKING_MAX_PER_SLOT ?> bookings per slot)</strong>
         </div>
+        <label class="booking-field booking-date-field"><span><i class="far fa-calendar-alt" aria-hidden="true"></i>Date</span><input type="date" name="scheduled_date" id="bookingDateInput" min="<?= $initialSlotNow->format('Y-m-d') ?>" value="<?= htmlspecialchars($scheduledDateValue) ?>" required></label>
         <input type="hidden" name="scheduled_time" id="scheduledTimeInput" value="<?= htmlspecialchars($scheduledTimeSlot) ?>">
+        <span class="booking-time-label"><i class="far fa-clock" aria-hidden="true"></i>Time slot</span>
         <div class="time-slot-grid" id="timeSlotGrid">
           <?php if ($initialSlotAvailability !== null): ?>
             <?php foreach (bookingTimeSlots() as $slotValue => $slotLabel): ?>
               <?php
                 $remaining  = $initialSlotAvailability[$slotValue];
                 $isFull     = $remaining <= 0;
-                $isSelected = !$isFull && $scheduledTimeSlot === $slotValue;
+                $timeState = bookingSlotTimeState($scheduledDateValue, $slotValue, $initialSlotNow);
+                $isTimeUnavailable = $timeState !== 'available';
+                $isUnavailable = $isFull || $isTimeUnavailable;
+                $isSelected = !$isUnavailable && $scheduledTimeSlot === $slotValue;
               ?>
               <button type="button"
-                      class="time-slot-card<?= $isFull ? ' is-full' : '' ?><?= $isSelected ? ' is-selected' : '' ?>"
-                      data-slot="<?= $slotValue ?>" <?= $isFull ? 'disabled' : '' ?>>
+                      class="time-slot-card<?= $isFull ? ' is-full' : '' ?><?= $isTimeUnavailable ? ' is-unavailable' : '' ?><?= $isSelected ? ' is-selected' : '' ?>"
+                      data-slot="<?= $slotValue ?>" <?= $isUnavailable ? 'disabled' : '' ?>>
                 <strong><?= $slotLabel ?></strong>
-                <small><?= $isFull ? 'Fully Booked' : ($remaining === 1 ? '1 slot left' : $remaining . ' slots left') ?></small>
+                <small><?= $timeState === 'passed' ? 'Passed' : ($isTimeUnavailable ? 'Unavailable' : ($isFull ? 'Fully Booked' : ($remaining === 1 ? '1 slot left' : $remaining . ' slots left'))) ?></small>
               </button>
             <?php endforeach; ?>
           <?php else: ?>
@@ -433,12 +446,14 @@ require_once __DIR__ . '/includes/header.php';
           <?php endif; ?>
         </div>
         <p class="slot-picker-warning" id="slotPickerWarning" hidden>Please choose a time slot before submitting.</p>
-      </div>
-      <label>Notes
+      </section>
+      <section class="booking-notes-section booking-section">
+      <label class="booking-field">Additional notes <small>(optional)</small>
         <textarea name="notes" rows="4" placeholder="Describe symptoms, preferred parts, or requests"><?= htmlspecialchars($notesValue) ?></textarea>
       </label>
+      </section>
       <div class="booking-form-actions">
-        <button class="btn btn-primary" type="submit"><?= $editBooking ? 'Update appointment' : 'Confirm booking' ?></button>
+        <button class="btn btn-primary" type="submit"><i class="fas fa-calendar-check" aria-hidden="true"></i><?= $editBooking ? 'Update appointment' : 'Confirm booking' ?></button>
         <?php if ($editBooking): ?><a class="btn btn-outline" href="<?= baseUrl('book-service.php?tab=appointments') ?>">Cancel edit</a><?php endif; ?>
       </div>
     <?php else: ?>
@@ -450,6 +465,7 @@ require_once __DIR__ . '/includes/header.php';
   <div class="booking-summary-slot">
   <aside class="summary-box booking-summary" id="bookingSummaryPanel">
     <h2>Estimated Cost</h2>
+    <p class="booking-summary-intro">This is an estimate based on your current selection.</p>
 
     <div class="booking-summary-section">
       <span>Vehicle</span>
@@ -490,8 +506,8 @@ require_once __DIR__ . '/includes/header.php';
 
     <div><span>Total labor</span><strong id="laborTotalValue"><?= formatPrice((float)$selection['labor_total']) ?></strong></div>
     <div><span>Total products</span><strong id="productsTotalValue"><?= formatPrice((float)$selection['products_total']) ?></strong></div>
-    <div><span>Final total</span><strong id="bookingTotalValue"><?= formatPrice((float)$selection['total_amount']) ?></strong></div>
-    <p class="fine-print">Final cost can still change if the technician records additional parts during service.</p>
+    <div class="booking-summary-total"><span>Final total</span><strong id="bookingTotalValue"><?= formatPrice((float)$selection['total_amount']) ?></strong></div>
+    <p class="booking-summary-note"><i class="fas fa-info-circle" aria-hidden="true"></i><span>Final cost can still change if the technician records additional parts during service.</span></p>
   </aside>
   </div>
   <?php else: ?>
@@ -557,18 +573,23 @@ require_once __DIR__ . '/includes/header.php';
               $estimatedMinutes = !empty($appointment['estimated_duration_minutes']) ? (int)$appointment['estimated_duration_minutes'] : null;
               $showEstimate = in_array($status, ['confirmed', 'in_progress'], true);
               $estimatedCompletion = null;
-              if ($estimatedMinutes && !empty($appointment['scheduled_time'])) {
-                  $serviceStart = strtotime($appointment['scheduled_date'] . ' ' . $appointment['scheduled_time']);
-                  $completionTs = $serviceStart + ($estimatedMinutes * 60);
-                  $estimatedCompletion = date('Y-m-d', $completionTs) === $appointment['scheduled_date']
-                      ? date('g:i A', $completionTs)
-                      : date('M j, g:i A', $completionTs);
+              if ($estimatedMinutes && !empty($appointment['actual_start_time'])) {
+                  $estimatedFinish = jobEstimatedFinish($appointment['actual_start_time'], $estimatedMinutes);
+                  if ($estimatedFinish) {
+                      $completionTs = strtotime($estimatedFinish);
+                      $estimatedCompletion = date('Y-m-d', $completionTs) === date('Y-m-d', strtotime($appointment['actual_start_time']))
+                          ? date('g:i A', $completionTs)
+                          : date('M j, g:i A', $completionTs);
+                  }
               }
             ?>
             <div class="history-lines">
               <div><span>Motorcycle</span><strong><?= htmlspecialchars($vehicleLabel) ?></strong></div>
               <div><span>Type</span><strong><?= htmlspecialchars((string)($appointment['type_name'] ?? '-')) ?></strong></div>
               <div><span>Plate</span><strong><?= htmlspecialchars((string)($appointment['plate_number'] ?: '-')) ?></strong></div>
+              <?php if (($appointment['deposit_status'] ?? '') === 'paid'): ?>
+                <div><span>Reservation Deposit</span><strong>Paid</strong></div>
+              <?php endif; ?>
               <?php if ($showEstimate): ?>
                 <?php if ($estimatedMinutes): ?>
                   <div><span>Estimated Duration</span><strong><?= htmlspecialchars(formatDurationMinutes($estimatedMinutes)) ?></strong></div>
@@ -689,6 +710,12 @@ require_once __DIR__ . '/includes/header.php';
   const selectedProducts = new Map(
     Object.entries(initialSelectedProducts).map(([serviceId, productId]) => [Number(serviceId), Number(productId)])
   );
+  const animateBookingGroup = (element) => {
+    if (!element) return;
+    element.classList.remove('booking-motion-entering');
+    element.classList.add('booking-motion-entering');
+    requestAnimationFrame(() => element.classList.remove('booking-motion-entering'));
+  };
 
   const formatMoney = (value) => currency.format(Number(value || 0));
   const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -715,6 +742,13 @@ require_once __DIR__ . '/includes/header.php';
     .filter((toggle) => toggle.checked)
     .map((toggle) => Number(toggle.dataset.serviceId || 0))
     .filter(Boolean);
+
+  const selectAllServices = bookingForm.querySelector('[data-select-all-services]');
+  selectAllServices?.addEventListener('click', () => {
+    serviceToggles.forEach((toggle) => { toggle.checked = true; });
+    syncProductSections();
+    updateBookingUi();
+  });
 
   const getProductImageMarkup = (product) => {
     if (product.image_url) {
@@ -774,6 +808,7 @@ require_once __DIR__ . '/includes/header.php';
         </div>
         <div class="product-card-loader">Loading compatible products...</div>
       `;
+      animateBookingGroup(section);
       return;
     }
 
@@ -796,6 +831,7 @@ require_once __DIR__ . '/includes/header.php';
       <div class="booking-product-grid">${cards}</div>
       <input type="hidden" name="service_products[${serviceId}]" value="${selectedProductId}" data-selected-product-input="${serviceId}">
     `;
+    animateBookingGroup(section);
   };
 
   const loadProductsForService = async (serviceId) => {
@@ -927,6 +963,14 @@ require_once __DIR__ . '/includes/header.php';
 
   const endpoint = <?= json_encode(baseUrl('api/booking-slots.php'), JSON_UNESCAPED_SLASHES) ?>;
   const excludeBookingId = <?= (int)($editBooking['id'] ?? 0) ?>;
+  let availabilityRequest = 0;
+
+  const animateSlotGroup = (element) => {
+    if (!element) return;
+    element.classList.remove('booking-motion-entering');
+    element.classList.add('booking-motion-entering');
+    requestAnimationFrame(() => element.classList.remove('booking-motion-entering'));
+  };
 
   const bindCard = (card) => {
     card.addEventListener('click', () => {
@@ -946,8 +990,11 @@ require_once __DIR__ . '/includes/header.php';
       card.className = 'time-slot-card';
       card.dataset.slot = slot.value;
       const isFull = slot.remaining <= 0;
-      if (isFull) {
-        card.classList.add('is-full');
+      const isTimeUnavailable = slot.time_available === false;
+      const isUnavailable = isFull || isTimeUnavailable;
+      if (isUnavailable) {
+        if (isFull) card.classList.add('is-full');
+        if (isTimeUnavailable) card.classList.add('is-unavailable');
         card.disabled = true;
       } else if (hiddenTime.value === slot.value) {
         card.classList.add('is-selected');
@@ -955,12 +1002,15 @@ require_once __DIR__ . '/includes/header.php';
       const label = document.createElement('strong');
       label.textContent = slot.label;
       const sub = document.createElement('small');
-      sub.textContent = isFull ? 'Fully Booked' : (slot.remaining === 1 ? '1 slot left' : slot.remaining + ' slots left');
+      sub.textContent = slot.time_status === 'passed'
+        ? 'Passed'
+        : (isTimeUnavailable ? 'Unavailable' : (isFull ? 'Fully Booked' : (slot.remaining === 1 ? '1 slot left' : slot.remaining + ' slots left')));
       card.appendChild(label);
       card.appendChild(sub);
       bindCard(card);
       grid.appendChild(card);
     });
+    animateSlotGroup(grid);
   };
 
   const showMessage = (text) => {
@@ -974,6 +1024,7 @@ require_once __DIR__ . '/includes/header.php';
 
   const loadAvailability = async () => {
     const date = dateInput.value;
+    const requestId = ++availabilityRequest;
     if (!date) {
       showMessage('Pick a date to see available times.');
       return;
@@ -987,15 +1038,17 @@ require_once __DIR__ . '/includes/header.php';
       if (excludeBookingId) url.searchParams.set('exclude_booking_id', excludeBookingId);
       const response = await fetch(url.toString());
       const data = await response.json();
+      if (requestId !== availabilityRequest) return;
       if (!data.ok) {
         showMessage(data.message || 'Could not load availability.');
         return;
       }
       // Drop a previously selected slot that has since filled up
       const selected = data.slots.find((slot) => slot.value === hiddenTime.value);
-      if (selected && selected.remaining <= 0) hiddenTime.value = '';
+      if (selected && (selected.remaining <= 0 || selected.time_available === false)) hiddenTime.value = '';
       renderSlots(data.slots);
     } catch (err) {
+      if (requestId !== availabilityRequest) return;
       showMessage('Could not load availability. Please try again.');
     }
   };
@@ -1030,12 +1083,27 @@ require_once __DIR__ . '/includes/header.php';
   if (!selects.length || !('closest' in Element.prototype)) return;
   let counter = 0;
 
-  const closeAll = (except) => {
+  const closeMenu = (wrap, menu, focusTrigger, animate) => {
+    wrap.removeAttribute('data-open');
+    wrap.querySelector('.mtx-select-trigger').setAttribute('aria-expanded', 'false');
+    if (!animate) {
+      menu.classList.remove('is-opening', 'is-closing');
+      menu.hidden = true;
+    } else {
+      menu.classList.remove('is-opening');
+      menu.classList.add('is-closing');
+      window.setTimeout(() => {
+        if (!menu.classList.contains('is-closing')) return;
+        menu.classList.remove('is-closing');
+        menu.hidden = true;
+      }, 120);
+    }
+    if (focusTrigger) wrap.querySelector('.mtx-select-trigger').focus();
+  };
+  const closeAll = (except, animate) => {
     document.querySelectorAll('.mtx-select[data-open]').forEach((el) => {
       if (el === except) return;
-      el.removeAttribute('data-open');
-      el.querySelector('.mtx-select-trigger').setAttribute('aria-expanded', 'false');
-      el.querySelector('.mtx-select-menu').hidden = true;
+      closeMenu(el, el.querySelector('.mtx-select-menu'), false, animate);
     });
   };
 
@@ -1101,21 +1169,21 @@ require_once __DIR__ . '/includes/header.php';
       if (scroll !== false) options[activeIndex].scrollIntoView({ block: 'nearest' });
     };
 
-    const open = () => {
-      closeAll(wrap);
+    const open = (animate) => {
+      closeAll(wrap, animate);
+      menu.classList.remove('is-closing');
       wrap.setAttribute('data-open', '');
       trigger.setAttribute('aria-expanded', 'true');
       menu.hidden = false;
+      if (animate) {
+        menu.classList.add('is-opening');
+        requestAnimationFrame(() => menu.classList.remove('is-opening'));
+      }
       setActive(select.selectedIndex < 0 ? 0 : select.selectedIndex, true);
       menu.focus();
     };
-    const close = (focusTrigger) => {
-      wrap.removeAttribute('data-open');
-      trigger.setAttribute('aria-expanded', 'false');
-      menu.hidden = true;
-      if (focusTrigger) trigger.focus();
-    };
-    const choose = (idx) => {
+    const close = (focusTrigger, animate) => closeMenu(wrap, menu, focusTrigger, animate);
+    const choose = (idx, animate) => {
       const opt = select.options[idx];
       if (!opt) return;
       if (select.selectedIndex !== idx) {
@@ -1124,12 +1192,12 @@ require_once __DIR__ . '/includes/header.php';
       }
       valueEl.textContent = opt.text.trim();
       options.forEach((o, i) => o.setAttribute('aria-selected', i === idx ? 'true' : 'false'));
-      close(true);
+      close(true, animate);
     };
 
-    trigger.addEventListener('click', () => { wrap.hasAttribute('data-open') ? close(true) : open(); });
+    trigger.addEventListener('click', () => { wrap.hasAttribute('data-open') ? close(true, true) : open(true); });
     trigger.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(false); }
     });
     menu.addEventListener('keydown', (e) => {
       switch (e.key) {
@@ -1138,14 +1206,14 @@ require_once __DIR__ . '/includes/header.php';
         case 'Home': e.preventDefault(); setActive(0); break;
         case 'End': e.preventDefault(); setActive(options.length - 1); break;
         case 'Enter':
-        case ' ': e.preventDefault(); choose(activeIndex); break;
-        case 'Escape': e.preventDefault(); close(true); break;
-        case 'Tab': close(false); break;
+        case ' ': e.preventDefault(); choose(activeIndex, false); break;
+        case 'Escape': e.preventDefault(); close(true, false); break;
+        case 'Tab': close(false, false); break;
         default: break;
       }
     });
     options.forEach((li, i) => {
-      li.addEventListener('click', () => choose(i));
+      li.addEventListener('click', () => choose(i, true));
       li.addEventListener('mousemove', () => { if (activeIndex !== i) setActive(i, false); });
     });
 
@@ -1156,7 +1224,7 @@ require_once __DIR__ . '/includes/header.php';
     select.parentNode.insertBefore(wrap, select.nextSibling);
   });
 
-  document.addEventListener('mousedown', (e) => { if (!e.target.closest('.mtx-select')) closeAll(null); });
+  document.addEventListener('mousedown', (e) => { if (!e.target.closest('.mtx-select')) closeAll(null, true); });
 })();
 </script>
 <?php endif; ?>

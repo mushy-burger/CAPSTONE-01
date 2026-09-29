@@ -52,7 +52,18 @@ require_once __DIR__ . '/includes/header.php';
 ?>
 
 <section class="auth-section">
+  <a class="login-back-home" href="<?= baseUrl('index.php') ?>">
+    <i class="fas fa-arrow-left" aria-hidden="true"></i>
+    <span>Back to Home</span>
+  </a>
   <div class="auth-layout">
+  <div class="login-mobile-brand" aria-label="MotoTrack — Built For The Ride">
+    <span class="login-mobile-brand-mark"><i class="fas fa-motorcycle" aria-hidden="true"></i></span>
+    <span class="login-mobile-brand-copy">
+      <strong>MotoTrack</strong>
+      <span>Built For The Ride</span>
+    </span>
+  </div>
   <?php require __DIR__ . '/includes/auth-aside.php'; ?>
   <form class="auth-card" method="post" data-validate>
     <?= authContextField() ?>
@@ -102,4 +113,16 @@ require_once __DIR__ . '/includes/header.php';
   </div>
 </section>
 
-<?php require_once __DIR__ . '/includes/footer.php'; ?>
+</main>
+
+<footer class="login-minimal-footer" aria-label="Legal links">
+  <span>&copy; 2026 MotoTrack. All rights reserved.</span>
+  <span class="login-minimal-footer-links">
+    <a href="#">Terms of Use</a>
+    <a href="#">Privacy Notice</a>
+  </span>
+</footer>
+
+<script src="<?= baseUrl('assets/js/main.js?v=' . filemtime(__DIR__ . '/assets/js/main.js')) ?>"></script>
+</body>
+</html>

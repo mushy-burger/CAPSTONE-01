@@ -1,42 +1,43 @@
 </main>
 
 <footer class="site-footer">
-  <div class="container footer-grid">
-    <div class="footer-brand">
-      <a href="<?= baseUrl('index.php') ?>" class="footer-logo">
-        <i class="fas fa-motorcycle"></i> MotoTrack
-      </a>
-      <p>Parts, accessories, and maintenance bookings for everyday motorcycle owners.</p>
-      <div class="footer-socials">
-        <a href="#" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
-        <a href="#" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
-        <a href="#" aria-label="TikTok"><i class="fab fa-tiktok"></i></a>
-        <a href="#" aria-label="YouTube"><i class="fab fa-youtube"></i></a>
+  <div class="container footer-shell">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a href="<?= baseUrl('index.php') ?>" class="footer-logo">
+          <span class="footer-logo-mark"><i class="fas fa-motorcycle" aria-hidden="true"></i></span>
+          <span class="footer-logo-copy"><strong>MotoTrack</strong><small>Built for the ride</small></span>
+        </a>
+        <p>Parts, accessories, and maintenance bookings for everyday motorcycle owners.</p>
+        <div class="footer-socials" aria-label="MotoTrack social media">
+          <a href="#" aria-label="Facebook"><i class="fab fa-facebook-f" aria-hidden="true"></i></a>
+          <a href="#" aria-label="Instagram"><i class="fab fa-instagram" aria-hidden="true"></i></a>
+          <a href="#" aria-label="TikTok"><i class="fab fa-tiktok" aria-hidden="true"></i></a>
+          <a href="#" aria-label="YouTube"><i class="fab fa-youtube" aria-hidden="true"></i></a>
+        </div>
+      </div>
+
+      <nav class="footer-links" aria-label="Footer navigation">
+        <h2>Pages</h2>
+        <a href="<?= baseUrl('index.php') ?>">Home</a>
+        <a href="<?= baseUrl('about.php') ?>">About Us</a>
+        <a href="<?= baseUrl('shop.php') ?>">Shop</a>
+        <a href="<?= baseUrl('book-service.php') ?>">Book Service</a>
+      </nav>
+
+      <div class="footer-contact">
+        <h2>Contact Us</h2>
+        <a href="tel:09005001234"><i class="fas fa-phone" aria-hidden="true"></i><span>0900 500 1234</span></a>
+        <a href="mailto:company@mototrack.com"><i class="fas fa-envelope" aria-hidden="true"></i><span>company@mototrack.com</span></a>
+        <span class="footer-contact-item"><i class="fas fa-map-marker-alt" aria-hidden="true"></i><span>Bambang City</span></span>
+        <span class="footer-contact-item"><i class="fas fa-clock" aria-hidden="true"></i><span>Mon - Sun; 8 am - 7 pm</span></span>
       </div>
     </div>
 
-    <div class="footer-links">
-      <h2>Pages</h2>
-      <ul>
-        <li><a href="<?= baseUrl('index.php') ?>">Home</a></li>
-        <li><a href="<?= baseUrl('about.php') ?>">About Us</a></li>
-        <li><a href="<?= baseUrl('shop.php') ?>">Shop</a></li>
-        <li><a href="<?= baseUrl('book-service.php') ?>">Book Service</a></li>
-      </ul>
+    <div class="footer-bottom">
+      <span>&copy; <?= date('Y') ?> MotoTrack. All rights reserved.</span>
+      <span class="footer-legal"><a href="#">Terms of Use</a><a href="#">Privacy Notice</a></span>
     </div>
-
-    <div class="footer-contact">
-      <h2>Contact Us</h2>
-      <p><i class="fas fa-phone"></i> 0900 500 1234</p>
-      <p><i class="fas fa-envelope"></i> company@mototrack.com</p>
-      <p><i class="fas fa-map-marker-alt"></i> Bambang City</p>
-      <p><i class="fas fa-clock"></i> Mon - Sun; 8 am - 7 pm</p>
-    </div>
-  </div>
-
-  <div class="footer-bottom">
-    <span>&copy; <?= date('Y') ?> MotoTrack. All rights reserved.</span>
-    <span><a href="#">Terms of Use</a> <a href="#">Privacy Notice</a></span>
   </div>
 </footer>
 

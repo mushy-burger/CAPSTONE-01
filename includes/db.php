@@ -6,11 +6,15 @@ define('DB_NAME', envValue('DB_NAME', 'mototrack'));
 define('DB_USER', envValue('DB_USER', 'root'));
 define('DB_PASS', envValue('DB_PASS', ''));
 define('DB_CHARSET', envValue('DB_CHARSET', 'utf8mb4'));
+$dbPort = filter_var(envValue('DB_PORT', '3306'), FILTER_VALIDATE_INT, [
+    'options' => ['min_range' => 1, 'max_range' => 65535],
+]);
+define('DB_PORT', $dbPort === false ? 3306 : $dbPort);
 
 function getDB(): PDO {
     static $pdo = null;
     if ($pdo === null) {
-        $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=" . DB_CHARSET;
+        $dsn = "mysql:host=" . DB_HOST . ";port=" . DB_PORT . ";dbname=" . DB_NAME . ";charset=" . DB_CHARSET;
         $options = [
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,

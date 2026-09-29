@@ -231,8 +231,27 @@ function notifyDispatch(array $booking, string $type, string $smsBody, string $e
 // Events
 // ---------------------------------------------------------------------------
 
+/** Store one in-app confirmation notice independently from SMS/email delivery. */
+function notifyInAppAppointmentConfirmed(array $booking, string $dateText, string $timeText): void {
+    $message = "Your service appointment for {$dateText} at {$timeText} has been confirmed by MotoTrack.";
+    getDB()->prepare(
+        "INSERT INTO notifications (user_id, type, message, booking_id)
+         SELECT ?, 'appointment_confirmed', ?, ?
+         WHERE NOT EXISTS (
+           SELECT 1 FROM notifications
+           WHERE user_id = ? AND booking_id = ? AND type = 'appointment_confirmed'
+         )"
+    )->execute([
+        (int)$booking['user_id'],
+        $message,
+        (int)$booking['id'],
+        (int)$booking['user_id'],
+        (int)$booking['id'],
+    ]);
+}
+
 /**
- * APPOINTMENT_CONFIRMED — staff confirmed the booking and a technician is known.
+ * APPOINTMENT_CONFIRMED — staff accepted the booking; technician assignment is optional.
  */
 function notifyAppointmentConfirmed(int $bookingId): array {
     $booking = notifyLoadBookingContext($bookingId);
@@ -245,6 +264,10 @@ function notifyAppointmentConfirmed(int $bookingId): array {
         ? notifyFormatTime($booking['scheduled_date'] . ' ' . $booking['scheduled_time'])
         : 'To be confirmed';
     $tech = $booking['technician_name'] ?: 'To be assigned';
+
+    // The booking transition is guarded by its pending status; this additional
+    // database check protects the in-app notice if a retry reaches this event.
+    notifyInAppAppointmentConfirmed($booking, $dateText, $timeText);
 
     $sms = "MotoTrack: Your appointment has been confirmed.\n\n"
          . "Date: {$dateText}\n"

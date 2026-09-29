@@ -32,7 +32,8 @@ if (!$dt || $dt->format('Y-m-d') !== $date) {
 if (!$dt || $dt->format('Y-m-d') !== $date) {
     respondSlots(['ok' => false, 'message' => 'Invalid date.'], 422);
 }
-if ($date < date('Y-m-d')) {
+$now = bookingServerNow();
+if ($date < $now->format('Y-m-d')) {
     respondSlots(['ok' => false, 'message' => 'Date is in the past.'], 422);
 }
 
@@ -50,10 +51,13 @@ $labels = bookingTimeSlots();
 
 $slots = [];
 foreach ($availability as $slot => $remaining) {
+    $timeState = bookingSlotTimeState($date, $slot, $now);
     $slots[] = [
         'value' => $slot,
         'label' => $labels[$slot],
         'remaining' => $remaining,
+        'time_available' => $timeState === 'available',
+        'time_status' => $timeState,
     ];
 }
 

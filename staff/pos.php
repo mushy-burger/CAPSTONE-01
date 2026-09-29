@@ -494,7 +494,12 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
         wrap.appendChild(row);
       });
     }
-    modal.classList.add('is-open');
+    modal.classList.remove('is-closing');
+    modal.classList.add('is-opening');
+    requestAnimationFrame(function () {
+      modal.classList.remove('is-opening');
+      modal.classList.add('is-open');
+    });
   }
 
   document.querySelectorAll('[data-pos-receipt-btn]').forEach(function (btn) {
@@ -510,10 +515,18 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
     });
   });
   modal.querySelectorAll('[data-close-modal]').forEach(function (el) {
-    el.addEventListener('click', function () { modal.classList.remove('is-open'); });
+    el.addEventListener('click', function () {
+      modal.classList.remove('is-opening', 'is-open');
+      modal.classList.add('is-closing');
+      window.setTimeout(function () { modal.classList.remove('is-closing'); }, 220);
+    });
   });
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') modal.classList.remove('is-open');
+    if (e.key === 'Escape' && modal.classList.contains('is-open')) {
+      modal.classList.remove('is-opening', 'is-open');
+      modal.classList.add('is-closing');
+      window.setTimeout(function () { modal.classList.remove('is-closing'); }, 220);
+    }
   });
 })();
 </script>
@@ -816,11 +829,19 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
   function camSetOverlay(html) {
     if (!camOverlay) return;
     if (html === null) {
-      camOverlay.hidden = true;
+      camOverlay.classList.add('is-feedback-exiting');
+      window.setTimeout(function () {
+        if (!camOverlay.classList.contains('is-feedback-exiting')) return;
+        camOverlay.classList.remove('is-feedback-exiting');
+        camOverlay.hidden = true;
+      }, 150);
       return;
     }
+    camOverlay.classList.remove('is-feedback-exiting');
     camOverlay.innerHTML = html;
     camOverlay.hidden = false;
+    camOverlay.classList.add('is-feedback-entering');
+    requestAnimationFrame(function () { camOverlay.classList.remove('is-feedback-entering'); });
   }
 
   // Release the camera completely: stop the loop, stop every track, drop the
@@ -844,8 +865,10 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
   function camClose() {
     camStop();
     if (camModal) {
-      camModal.classList.remove('is-open');
+      camModal.classList.remove('is-opening', 'is-open');
+      camModal.classList.add('is-closing');
       camModal.setAttribute('aria-hidden', 'true');
+      window.setTimeout(function () { camModal.classList.remove('is-closing'); }, 220);
     }
   }
 
@@ -922,7 +945,11 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
         document.getElementById('posCamResultName').textContent = data.product.name;
         document.getElementById('posCamResultPrice').textContent = money(data.product.price);
         document.getElementById('posCamResultStock').textContent = 'Stock: ' + data.product.stock;
-        if (camResult) camResult.hidden = false;
+        if (camResult) {
+          camResult.hidden = false;
+          camResult.classList.add('is-feedback-entering');
+          requestAnimationFrame(function () { camResult.classList.remove('is-feedback-entering'); });
+        }
         camSetStatus('Added to the sale.', 'ok');
 
         // One successful scan closes the camera, as intended.
@@ -963,9 +990,17 @@ require_once __DIR__ . '/../includes/staff-sidebar.php';
 
     // Reset the panel for a fresh run.
     camLastCode = '';
-    if (camResult) camResult.hidden = true;
+    if (camResult) {
+      camResult.classList.remove('is-feedback-entering', 'is-feedback-exiting');
+      camResult.hidden = true;
+    }
     if (camRetry) camRetry.hidden = true;
-    camModal.classList.add('is-open');
+    camModal.classList.remove('is-closing');
+    camModal.classList.add('is-opening');
+    requestAnimationFrame(function () {
+      camModal.classList.remove('is-opening');
+      camModal.classList.add('is-open');
+    });
     camModal.setAttribute('aria-hidden', 'false');
     camSetStatus('Point the camera at a product QR code.');
     camSetOverlay('<i class="fas fa-spinner fa-spin"></i><span>Starting camera…</span>');

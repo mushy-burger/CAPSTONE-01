@@ -6,10 +6,10 @@ if (function_exists('loadEnvFile')) {
 
 $clientID = getenv('GOOGLE_CLIENT_ID') ?: '';
 $clientSecret = getenv('GOOGLE_CLIENT_SECRET') ?: '';
-$appUrl = rtrim(getenv('APP_URL') ?: '', '/');
+$redirectUri = trim((string)envValue('GOOGLE_REDIRECT_URI', ''));
 
 return [
     'client_id' => $clientID,
     'client_secret' => $clientSecret,
-    'redirect_uri' => getenv('GOOGLE_REDIRECT_URI') ?: ($appUrl ? $appUrl . '/google-callback.php' : 'http://localhost/CAPSTONE-01/google-callback.php'),
+    'redirect_uri' => $redirectUri !== '' ? $redirectUri : appUrl('google-callback.php'),
 ];

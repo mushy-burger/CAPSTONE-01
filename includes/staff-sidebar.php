@@ -103,10 +103,26 @@ $unreadCount = getUnreadNotificationCount((int)$currentUser['id']);
   var list = document.getElementById('notifList');
   if (!btn || !drop) return;
   var loaded = false;
+  function closeDropdown() {
+    if (drop.hidden) return;
+    drop.classList.remove('is-opening');
+    drop.classList.add('is-closing');
+    window.setTimeout(function(){
+      if (!drop.classList.contains('is-closing')) return;
+      drop.classList.remove('is-closing');
+      drop.hidden = true;
+    }, 180);
+  }
+  function openDropdown() {
+    drop.hidden = false;
+    drop.classList.remove('is-closing');
+    drop.classList.add('is-opening');
+    requestAnimationFrame(function(){ drop.classList.remove('is-opening'); });
+  }
   btn.addEventListener('click', function(e){
     e.stopPropagation();
     var hidden = drop.hidden;
-    drop.hidden = !hidden;
+    if (hidden) openDropdown(); else closeDropdown();
     if (hidden && !loaded) {
       loaded = true;
       fetch('<?= baseUrl('api/notifications.php') ?>')
@@ -125,7 +141,7 @@ $unreadCount = getUnreadNotificationCount((int)$currentUser['id']);
         }).catch(function(){ list.innerHTML = '<div class="notif-empty">Could not load notifications.</div>'; });
     }
   });
-  document.addEventListener('click', function(){ drop.hidden = true; });
+  document.addEventListener('click', closeDropdown);
   drop.addEventListener('click', function(e){ e.stopPropagation(); });
 
   // "Mark all read" stays on the page: call the API in the background,

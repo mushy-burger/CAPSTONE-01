@@ -533,6 +533,35 @@ function poReplyThreadBelongsToMatch(array $match, string $thread): bool
     );
 }
 
+/**
+ * Return only Gmail conversations that MotoTrack previously sent for open POs.
+ * Never scan mailbox-wide messages: thread IDs are the authoritative PO link.
+ */
+function poSupplierReplyThreads(): array
+{
+    return fetchAllRows(
+        "SELECT po.id, po.po_reference, po.supplier_id,
+                COALESCE(NULLIF(po.supplier_email_sent_to, ''), s.email) AS expected_supplier_email,
+                po.gmail_thread_id
+         FROM purchase_orders po
+         LEFT JOIN suppliers s ON s.id = po.supplier_id
+         WHERE po.status IN ('approved', 'ordered')
+           AND po.gmail_thread_id IS NOT NULL
+           AND po.gmail_thread_id <> ''
+         UNION
+         SELECT po.id, po.po_reference, po.supplier_id,
+                COALESCE(NULLIF(po.supplier_email_sent_to, ''), s.email) AS expected_supplier_email,
+                poe.gmail_thread_id
+         FROM purchase_order_emails poe
+         JOIN purchase_orders po ON po.id = poe.po_id
+         LEFT JOIN suppliers s ON s.id = po.supplier_id
+         WHERE po.status IN ('approved', 'ordered')
+           AND poe.gmail_thread_id IS NOT NULL
+           AND poe.gmail_thread_id <> ''
+         ORDER BY id ASC, gmail_thread_id ASC"
+    );
+}
+
 function poProcessSupplierReplies(): array
 {
     $gmail = new GmailService();
@@ -541,63 +570,74 @@ function poProcessSupplierReplies(): array
     $skipped = 0;
     $newReplies = [];
     $affectedPoIds = [];
-    $messages = [];
-    foreach ($gmail->listMessages('in:anywhere newer_than:365d') as $stub) {
-        $messages[] = $gmail->extractMessage($gmail->getMessage((string)$stub['id']));
-    }
-    usort($messages, static function (array $left, array $right): int {
-        $timeCompare = ((int)($left['internal_date_ms'] ?? 0)) <=> ((int)($right['internal_date_ms'] ?? 0));
-        return $timeCompare !== 0 ? $timeCompare : strcmp((string)$left['message_id'], (string)$right['message_id']);
-    });
-    foreach ($messages as $message) {
-        if (!$message['message_id'] || $gmail->senderEmail($message['sender']) === strtolower($gmail->senderEmailAddress())) {
+    foreach (poSupplierReplyThreads() as $threadRow) {
+        $threadId = trim((string)($threadRow['gmail_thread_id'] ?? ''));
+        $expectedSupplierEmail = strtolower(trim((string)($threadRow['expected_supplier_email'] ?? '')));
+        if ($threadId === '' || $expectedSupplierEmail === '') {
             continue;
         }
-        $match = poMatchSupplierReply($message);
-        if (!$match) {
-            continue;
+
+        $messages = [];
+        foreach (($gmail->getThread($threadId)['messages'] ?? []) as $rawMessage) {
+            $message = $gmail->extractMessage($rawMessage);
+            if (!$message['message_id'] || (string)$message['thread_id'] !== $threadId) {
+                continue;
+            }
+            $senderEmail = $gmail->senderEmail((string)$message['sender']);
+            if ($senderEmail === '' || $senderEmail === strtolower($gmail->senderEmailAddress()) || $senderEmail !== $expectedSupplierEmail) {
+                continue;
+            }
+            $messages[] = $message;
         }
-        $seen++;
-        $affectedPoIds[(int)$match['id']] = true;
-        $existing = fetchOne("SELECT id, processed_at FROM purchase_order_replies WHERE gmail_message_id = ?", [$message['message_id']]);
-        if ($existing && $existing['processed_at'] !== null) {
-            $skipped++;
-            continue;
+        usort($messages, static function (array $left, array $right): int {
+            $timeCompare = ((int)($left['internal_date_ms'] ?? 0)) <=> ((int)($right['internal_date_ms'] ?? 0));
+            return $timeCompare !== 0 ? $timeCompare : strcmp((string)$left['message_id'], (string)$right['message_id']);
+        });
+
+        foreach ($messages as $message) {
+            $match = poMatchSupplierReply($message);
+            if (!$match || (int)$match['id'] !== (int)$threadRow['id']) {
+                continue;
+            }
+            $seen++;
+            $affectedPoIds[(int)$match['id']] = true;
+            $existing = fetchOne("SELECT id, processed_at FROM purchase_order_replies WHERE gmail_message_id = ?", [$message['message_id']]);
+            if ($existing && $existing['processed_at'] !== null) {
+                $skipped++;
+                continue;
+            }
+            if (!poReplyThreadBelongsToMatch($match, (string)$message['thread_id'])) {
+                continue;
+            }
+            $items = poEmailItems((int)$match['id']);
+            $interpretation = interpretSupplierReply((string)$match['supplier_name'], (string)$match['po_reference'], (string)($message['clean_body'] ?? $message['body']), $items, $match['last_sent_at'] ?? null);
+            $db = getDB();
+            if ($existing) {
+                $db->prepare(
+                    "UPDATE purchase_order_replies SET po_id=?,po_reference=?,gmail_thread_id=?,sender=?,recipient=?,subject=?,raw_body=?,clean_body=?,clean_body_needs_review=?,received_at=?,processed_at=NOW(),classification=?,confirmed_quantity=?,expected_delivery_date=?,supplier_message_summary=?,confidence=?,needs_admin_review=?,processing_error=? WHERE id=?"
+                )->execute([(int)$match['id'], $match['po_reference'], $message['thread_id'] ?: null, $message['sender'], $message['recipient'] ?: null, $message['subject'] ?: null, $message['body'], $message['clean_body'] ?? $message['body'], !empty($message['clean_body_needs_review']) ? 1 : 0, $message['timestamp'], $interpretation['classification'], $interpretation['confirmed_quantity'], $interpretation['expected_delivery_date'], $interpretation['supplier_message_summary'], $interpretation['confidence'], $interpretation['needs_admin_review'] ? 1 : 0, $interpretation['error'] ?? null, (int)$existing['id']]);
+            } else {
+                $db->prepare(
+                    "INSERT INTO purchase_order_replies (po_id,po_reference,gmail_message_id,gmail_thread_id,sender,recipient,subject,raw_body,clean_body,clean_body_needs_review,received_at,processed_at,classification,confirmed_quantity,expected_delivery_date,supplier_message_summary,confidence,needs_admin_review,processing_error) VALUES (?,?,?,?,?,?,?,?,?,?,?,NOW(),?,?,?,?,?,?,?)"
+                )->execute([(int)$match['id'], $match['po_reference'], $message['message_id'], $message['thread_id'] ?: null, $message['sender'], $message['recipient'] ?: null, $message['subject'] ?: null, $message['body'], $message['clean_body'] ?? $message['body'], !empty($message['clean_body_needs_review']) ? 1 : 0, $message['timestamp'], $interpretation['classification'], $interpretation['confirmed_quantity'], $interpretation['expected_delivery_date'], $interpretation['supplier_message_summary'], $interpretation['confidence'], $interpretation['needs_admin_review'] ? 1 : 0, $interpretation['error'] ?? null]);
+            }
+            $status = poReplyCommunicationStatus($interpretation['classification'], (bool)$interpretation['needs_admin_review']);
+            $db->prepare("UPDATE purchase_orders SET communication_status=? WHERE id=? AND status NOT IN ('received','cancelled')")->execute([$status, (int)$match['id']]);
+            poNotifyAdmins($match, $message, $interpretation);
+            $newReplies[] = [
+                'po_id' => (int)$match['id'],
+                'po_reference' => (string)$match['po_reference'],
+                'supplier_name' => (string)($match['supplier_name'] ?? 'Supplier'),
+                'supplier_email' => (string)($match['supplier_email'] ?? ''),
+                'reply' => trim((string)($message['clean_body'] ?? $message['body'] ?? '')),
+                'classification' => (string)$interpretation['classification'],
+                'confirmed_quantity' => $interpretation['confirmed_quantity'],
+                'expected_delivery_date' => $interpretation['expected_delivery_date'],
+                'confidence' => $interpretation['confidence'],
+                'needs_admin_review' => (bool)$interpretation['needs_admin_review'],
+            ];
+            $processed++;
         }
-        $senderEmail = $gmail->senderEmail($message['sender']);
-        $expectedSupplierEmail = strtolower(trim((string)($match['expected_supplier_email'] ?? $match['supplier_email'] ?? '')));
-        $senderValid = $senderEmail !== '' && $expectedSupplierEmail !== '' && $expectedSupplierEmail === $senderEmail;
-        if (!$senderValid || (string)$message['thread_id'] === '' || !poReplyThreadBelongsToMatch($match, (string)$message['thread_id'])) {
-            continue;
-        }
-        $items = poEmailItems((int)$match['id']);
-        $interpretation = interpretSupplierReply((string)$match['supplier_name'], (string)$match['po_reference'], (string)($message['clean_body'] ?? $message['body']), $items, $match['last_sent_at'] ?? null);
-        $db = getDB();
-        if ($existing) {
-            $db->prepare(
-                "UPDATE purchase_order_replies SET po_id=?,po_reference=?,gmail_thread_id=?,sender=?,recipient=?,subject=?,raw_body=?,clean_body=?,clean_body_needs_review=?,received_at=?,processed_at=NOW(),classification=?,confirmed_quantity=?,expected_delivery_date=?,supplier_message_summary=?,confidence=?,needs_admin_review=?,processing_error=? WHERE id=?"
-            )->execute([(int)$match['id'], $match['po_reference'], $message['thread_id'] ?: null, $message['sender'], $message['recipient'] ?: null, $message['subject'] ?: null, $message['body'], $message['clean_body'] ?? $message['body'], !empty($message['clean_body_needs_review']) ? 1 : 0, $message['timestamp'], $interpretation['classification'], $interpretation['confirmed_quantity'], $interpretation['expected_delivery_date'], $interpretation['supplier_message_summary'], $interpretation['confidence'], $interpretation['needs_admin_review'] ? 1 : 0, $interpretation['error'] ?? null, (int)$existing['id']]);
-        } else {
-            $db->prepare(
-                "INSERT INTO purchase_order_replies (po_id,po_reference,gmail_message_id,gmail_thread_id,sender,recipient,subject,raw_body,clean_body,clean_body_needs_review,received_at,processed_at,classification,confirmed_quantity,expected_delivery_date,supplier_message_summary,confidence,needs_admin_review,processing_error) VALUES (?,?,?,?,?,?,?,?,?,?,?,NOW(),?,?,?,?,?,?,?)"
-            )->execute([(int)$match['id'], $match['po_reference'], $message['message_id'], $message['thread_id'] ?: null, $message['sender'], $message['recipient'] ?: null, $message['subject'] ?: null, $message['body'], $message['clean_body'] ?? $message['body'], !empty($message['clean_body_needs_review']) ? 1 : 0, $message['timestamp'], $interpretation['classification'], $interpretation['confirmed_quantity'], $interpretation['expected_delivery_date'], $interpretation['supplier_message_summary'], $interpretation['confidence'], $interpretation['needs_admin_review'] ? 1 : 0, $interpretation['error'] ?? null]);
-        }
-        $status = poReplyCommunicationStatus($interpretation['classification'], (bool)$interpretation['needs_admin_review']);
-        $db->prepare("UPDATE purchase_orders SET communication_status=? WHERE id=? AND status NOT IN ('received','cancelled')")->execute([$status, (int)$match['id']]);
-        poNotifyAdmins($match, $message, $interpretation);
-        $newReplies[] = [
-            'po_id' => (int)$match['id'],
-            'po_reference' => (string)$match['po_reference'],
-            'supplier_name' => (string)($match['supplier_name'] ?? 'Supplier'),
-            'supplier_email' => (string)($match['supplier_email'] ?? ''),
-            'reply' => trim((string)($message['clean_body'] ?? $message['body'] ?? '')),
-            'classification' => (string)$interpretation['classification'],
-            'confirmed_quantity' => $interpretation['confirmed_quantity'],
-            'expected_delivery_date' => $interpretation['expected_delivery_date'],
-            'confidence' => $interpretation['confidence'],
-            'needs_admin_review' => (bool)$interpretation['needs_admin_review'],
-        ];
-        $processed++;
     }
     foreach (array_keys($affectedPoIds) as $poId) {
         poRecomputeCommunicationStatus((int)$poId);

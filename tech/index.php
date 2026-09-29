@@ -7,23 +7,11 @@ require_once __DIR__ . '/../includes/TechnicianService.php';
 // Notifications stay unread until explicitly marked via the bell's
 // "Mark all read" — keeps the unread-count badge meaningful.
 
-// Quick status update from work queue
+// Work Queue owns availability only. Starting work happens from Job Detail,
+// where a technician must enter a valid service estimate first.
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action    = $_POST['action'] ?? '';
     $bookingId = (int)($_POST['booking_id'] ?? 0);
-
-    if ($action === 'start_job' && $bookingId > 0) {
-        // Verify this booking is assigned to this technician
-        $b = fetchOne(
-            "SELECT id FROM bookings WHERE id = ? AND technician_id = ? AND status = 'confirmed'",
-            [$bookingId, $currentUser['id']]
-        );
-        if ($b) {
-            getDB()->prepare("UPDATE bookings SET status = 'in_progress' WHERE id = ?")->execute([$bookingId]);
-            flashMessage('tech_success', "Job #$bookingId is now In Progress.");
-        }
-        redirect(baseUrl('tech/index.php'));
-    }
 
     // Ready / Off Duty availability toggle (only 'ready' techs receive auto-assignments)
     if ($action === 'toggle_availability') {
@@ -277,14 +265,9 @@ $earningsPerService = techEarningsPerService($techId);
               <i class="fas fa-eye"></i> View Details / Notes
             </a>
             <?php if ($isConfirmed): ?>
-              <form method="post" style="display:inline;">
-                <?= authContextField() ?>
-                <input type="hidden" name="action" value="start_job">
-                <input type="hidden" name="booking_id" value="<?= $bid ?>">
-                <button type="submit" class="mtx-btn mtx-btn--primary mtx-btn--sm">
-                  <i class="fas fa-play"></i> Start Job
-                </button>
-              </form>
+              <a href="<?= baseUrl('tech/job.php?id=' . $bid) ?>" class="mtx-btn mtx-btn--primary mtx-btn--sm">
+                <i class="fas fa-play"></i> Start Job
+              </a>
             <?php elseif ($isInProgress): ?>
               <a href="<?= baseUrl('tech/job.php?id=' . $bid) ?>" class="mtx-btn mtx-btn--primary mtx-btn--sm" style="background:#15803d;box-shadow:0 6px 16px rgba(21,128,61,.24);">
                 <i class="fas fa-flag-checkered"></i> Complete Job

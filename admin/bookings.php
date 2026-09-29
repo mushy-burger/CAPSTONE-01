@@ -260,7 +260,7 @@ foreach ($bookings as $b) {
 
     <?php if ($bookings): ?>
       <div class="mtx-table-wrap">
-        <table class="mtx-table">
+        <table class="mtx-table mtx-bookings-table">
           <thead>
             <tr>
               <th>Booking</th>
@@ -313,10 +313,14 @@ foreach ($bookings as $b) {
                     <span class="mtx-cell-sub">Unassigned</span>
                   <?php endif; ?>
                 </td>
-                <td>
+                <td class="mtx-bookings-services-cell">
                   <div class="mtx-cell-main">
                     <?php if ($svcNames): ?>
-                      <strong style="font-weight:600;"><?= htmlspecialchars(implode(', ', $svcNames)) ?></strong>
+                      <div class="mtx-booking-services">
+                        <?php foreach ($svcNames as $serviceName): ?>
+                          <strong title="<?= htmlspecialchars($serviceName, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($serviceName) ?></strong>
+                        <?php endforeach; ?>
+                      </div>
                       <span class="mtx-cell-sub"><?= count($svcNames) ?> service<?= count($svcNames) === 1 ? '' : 's' ?></span>
                     <?php else: ?>
                       <span class="mtx-cell-sub">—</span>
@@ -518,7 +522,12 @@ foreach ($bookings as $b) {
       }
     }
 
-    modal.classList.add('is-open');
+    modal.classList.remove('is-closing');
+    modal.classList.add('is-opening');
+    requestAnimationFrame(function () {
+      modal.classList.remove('is-opening');
+      modal.classList.add('is-open');
+    });
   }
 
   document.querySelectorAll('[data-booking-view]').forEach(function (btn) {
@@ -535,10 +544,18 @@ foreach ($bookings as $b) {
   });
 
   modal.querySelectorAll('[data-close-modal]').forEach(function (el) {
-    el.addEventListener('click', function () { modal.classList.remove('is-open'); });
+    el.addEventListener('click', function () {
+      modal.classList.remove('is-opening', 'is-open');
+      modal.classList.add('is-closing');
+      window.setTimeout(function () { modal.classList.remove('is-closing'); }, 220);
+    });
   });
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') modal.classList.remove('is-open');
+    if (e.key === 'Escape' && modal.classList.contains('is-open')) {
+      modal.classList.remove('is-opening', 'is-open');
+      modal.classList.add('is-closing');
+      window.setTimeout(function () { modal.classList.remove('is-closing'); }, 220);
+    }
   });
 })();
 </script>

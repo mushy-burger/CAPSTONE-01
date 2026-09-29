@@ -100,6 +100,7 @@ require_once __DIR__ . '/includes/header.php';
   <div class="profile-layout">
     <!-- Identity anchor -->
     <aside class="profile-aside">
+      <p class="profile-summary-label">Profile Summary</p>
       <div class="profile-overview">
         <div class="profile-overview-avatar"><?= htmlspecialchars(strtoupper(substr(trim($account['name']), 0, 1))) ?></div>
         <div class="profile-overview-copy">

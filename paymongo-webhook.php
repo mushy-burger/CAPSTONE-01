@@ -66,6 +66,20 @@ if ($orderId <= 0) {
 
 try {
     $order = fetchOne("SELECT * FROM orders WHERE id = ?", [$orderId]);
+    if (!$order) {
+        http_response_code(404);
+        echo json_encode(['ok' => false, 'message' => 'Order not found.']);
+        exit;
+    }
+
+    // A paid webhook may only settle the order that owns this checkout session.
+    // This rejects stale or unrelated callbacks without creating/reassigning orders.
+    if ($checkoutSessionId === '' || !hash_equals((string)($order['checkout_session_id'] ?? ''), (string)$checkoutSessionId)) {
+        http_response_code(409);
+        echo json_encode(['ok' => false, 'message' => 'Checkout session does not match this order.']);
+        exit;
+    }
+
     $wasPaid = ($order['payment_status'] ?? '') === 'paid';
     $items = fetchAllRows(
         "SELECT oi.quantity, oi.product_id, oi.price, p.name

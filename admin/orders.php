@@ -3,22 +3,32 @@ $pageTitle = 'Orders';
 require_once __DIR__ . '/../includes/admin-sidebar.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/PosService.php';
+require_once __DIR__ . '/../includes/OrderDeliveryService.php';
 
-$validStatuses = ['pending', 'processing', 'completed', 'cancelled'];
+$deliveryStatuses = ['pending', 'delivering', 'delivered'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action  = $_POST['action'] ?? '';
     $orderId = (int)($_POST['order_id'] ?? 0);
 
-    if ($action === 'update_status' && $orderId > 0) {
-        $status = $_POST['status'] ?? '';
-        if (in_array($status, $validStatuses, true)) {
-            getDB()->prepare("UPDATE orders SET status = ? WHERE id = ?")->execute([$status, $orderId]);
-            flashMessage('orders_success', 'Order status updated.');
-        } else {
-            flashMessage('orders_error', 'Invalid order status.');
+    if ($action === 'save_tracking' && $orderId > 0) {
+        try {
+            saveOrderTrackingLink($orderId, (string)($_POST['tracking_url'] ?? ''));
+            flashMessage('orders_success', 'Delivery tracking link saved.');
+        } catch (Throwable $e) {
+            flashMessage('orders_error', $e->getMessage());
         }
-        redirect(baseUrl('admin/orders.php'));
+        redirect(baseUrl('admin/orders.php?channel=online'));
+    }
+
+    if ($action === 'mark_delivered' && $orderId > 0) {
+        try {
+            $changed = markOrderDelivered($orderId);
+            flashMessage('orders_success', $changed ? 'Order marked as delivered.' : 'Order is already marked as delivered.');
+        } catch (Throwable $e) {
+            flashMessage('orders_error', $e->getMessage());
+        }
+        redirect(baseUrl('admin/orders.php?channel=online'));
     }
 }
 
@@ -33,7 +43,7 @@ $posCondition = "(o.payment_reference LIKE 'POS-%' OR o.payment_method IN ('cash
 
 // Filters
 $statusFilter = $_GET['status'] ?? '';
-$statusFilter = in_array($statusFilter, $validStatuses, true) ? $statusFilter : '';
+$statusFilter = in_array($statusFilter, $deliveryStatuses, true) ? $statusFilter : '';
 $search       = trim($_GET['q'] ?? '');
 $dateFrom     = trim($_GET['date_from'] ?? '');
 $dateTo       = trim($_GET['date_to'] ?? '');
@@ -41,9 +51,14 @@ $dateTo       = trim($_GET['date_to'] ?? '');
 $where  = [];
 $params = [];
 $where[] = $channel === 'pos' ? $posCondition : "NOT $posCondition";
-if ($statusFilter !== '') {
-    $where[]  = 'o.status = ?';
-    $params[] = $statusFilter;
+if ($channel === 'online' && $statusFilter !== '') {
+    if ($statusFilter === 'pending') {
+        $where[] = "(o.delivery_status <> 'delivered' AND (o.tracking_url IS NULL OR TRIM(o.tracking_url) = ''))";
+    } elseif ($statusFilter === 'delivering') {
+        $where[] = "(o.delivery_status <> 'delivered' AND o.tracking_url IS NOT NULL AND TRIM(o.tracking_url) <> '')";
+    } else {
+        $where[] = "o.delivery_status = 'delivered'";
+    }
 }
 if ($search !== '') {
     $walkInSearch = posColumnExists('orders', 'walk_in_customer_name') ? ' OR o.walk_in_customer_name LIKE ? OR o.walk_in_customer_phone LIKE ? OR o.walk_in_customer_email LIKE ?' : '';
@@ -107,7 +122,7 @@ foreach ($orderItems as $item) {
 $paidOrders      = array_filter($orders, fn($o) => $o['payment_status'] === 'paid');
 $filteredRevenue = array_sum(array_column($paidOrders, 'total'));
 $paidCount       = count($paidOrders);
-$pendingCount    = count(array_filter($orders, fn($o) => $o['status'] === 'pending'));
+$pendingCount    = count(array_filter($orders, fn($o) => orderDeliveryStatus($o) === 'pending'));
 $avgOrderValue   = $paidCount > 0 ? $filteredRevenue / $paidCount : 0;
 
 $statusColor = ['pending'=>'#6b7280','processing'=>'#d97706','completed'=>'#15803d','cancelled'=>'#b91c1c'];
@@ -142,7 +157,7 @@ $hasFilters = $search || $statusFilter || $dateFrom || $dateTo;
         <span class="mtx-kpi-icon"><i class="fas <?= $channel === 'pos' ? 'fa-cash-register' : 'fa-globe' ?>"></i></span>
       </div>
       <span class="mtx-kpi-value"><?= count($orders) ?></span>
-      <span class="mtx-kpi-sub"><?= $channel === 'pos' ? 'Finalized counter sales' : $pendingCount . ' pending fulfillment' ?></span>
+      <span class="mtx-kpi-sub"><?= $channel === 'pos' ? 'Finalized counter sales' : $pendingCount . ' pending delivery' ?></span>
     </article>
     <article class="mtx-kpi" style="--kpi-color:#15803d;">
       <div class="mtx-kpi-top">
@@ -167,7 +182,7 @@ $hasFilters = $search || $statusFilter || $dateFrom || $dateTo;
     <div class="mtx-card-head">
       <div>
         <h2><i class="fas <?= $channel === 'pos' ? 'fa-cash-register' : 'fa-receipt' ?>"></i> <?= $channel === 'pos' ? 'In-Store Purchases (POS)' : 'Online Shop Purchases' ?></h2>
-        <p><?= $channel === 'pos' ? 'Newest first. POS sales are finalized at the counter — statuses are not editable.' : 'Newest first. Update fulfillment status inline.' ?></p>
+        <p><?= $channel === 'pos' ? 'Newest first. POS sales are finalized at the counter — statuses are not editable.' : 'Newest first. Manage delivery tracking and confirm delivered orders.' ?></p>
       </div>
       <form method="get" class="mtx-toolbar">
         <input type="hidden" name="channel" value="<?= htmlspecialchars($channel) ?>">
@@ -178,7 +193,7 @@ $hasFilters = $search || $statusFilter || $dateFrom || $dateTo;
         <?php if ($channel === 'online'): ?>
           <select name="status">
             <option value="">All statuses</option>
-            <?php foreach ($validStatuses as $s): ?>
+            <?php foreach ($deliveryStatuses as $s): ?>
               <option value="<?= $s ?>" <?= $statusFilter === $s ? 'selected' : '' ?>><?= ucfirst($s) ?></option>
             <?php endforeach; ?>
           </select>
@@ -203,7 +218,8 @@ $hasFilters = $search || $statusFilter || $dateFrom || $dateTo;
               <th>Payment</th>
               <th class="num">Total</th>
               <th>Status</th>
-              <?php if ($channel === 'online'): ?><th>Update</th><?php endif; ?>
+              <?php if ($channel === 'online'): ?><th>Tracking</th><?php endif; ?>
+              <?php if ($channel === 'online'): ?><th>Action</th><?php endif; ?>
             </tr>
           </thead>
           <tbody>
@@ -244,20 +260,27 @@ $hasFilters = $search || $statusFilter || $dateFrom || $dateTo;
                   </div>
                 </td>
                 <td class="num"><span class="mtx-money"><?= formatPrice((float)$order['total']) ?></span></td>
-                <td><span class="mtx-pill" style="--pill-color:<?= $sc ?>;"><?= ucfirst($order['status']) ?></span></td>
                 <?php if ($channel === 'online'): ?>
+                  <?php
+                    $deliveryStatus = orderDeliveryStatus($order);
+                    $deliveryColor = ['pending' => '#6b7280', 'delivering' => '#2563eb', 'delivered' => '#15803d'][$deliveryStatus];
+                  ?>
+                  <td><span class="mtx-pill" style="--pill-color:<?= $deliveryColor ?>;"><i class="fas <?= $deliveryStatus === 'pending' ? 'fa-clock' : ($deliveryStatus === 'delivering' ? 'fa-truck' : 'fa-circle-check') ?>"></i><?= strtoupper($deliveryStatus) ?></span></td>
+                <?php else: ?>
+                  <td><span class="mtx-pill" style="--pill-color:<?= $sc ?>;"><?= ucfirst($order['status']) ?></span></td>
+                <?php endif; ?>
+                <?php if ($channel === 'online'): ?>
+                <td class="order-delivery-cell">
+                  <button type="button" class="mtx-btn mtx-btn--ghost mtx-btn--sm" data-order-delivery-open data-order-id="<?= $orderId ?>" data-delivery-status="<?= $deliveryStatus ?>" data-tracking-url="<?= htmlspecialchars((string)($order['tracking_url'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"><i class="fas fa-truck-fast" aria-hidden="true"></i> Manage</button>
+                </td>
                 <td>
-                  <form method="post" class="admin-row-form" style="flex-wrap:nowrap;">
-                    <?= authContextField() ?>
-                    <input type="hidden" name="action" value="update_status">
-                    <input type="hidden" name="order_id" value="<?= $orderId ?>">
-                    <select name="status" style="min-width:120px;height:34px;padding:0 8px;border-radius:8px;font-size:.82rem;">
-                      <?php foreach ($validStatuses as $s): ?>
-                        <option value="<?= $s ?>" <?= $order['status'] === $s ? 'selected' : '' ?>><?= ucfirst($s) ?></option>
-                      <?php endforeach; ?>
-                    </select>
-                    <button type="submit" class="mtx-btn mtx-btn--ghost mtx-btn--sm">Save</button>
-                  </form>
+                  <?php if ($deliveryStatus === 'delivering'): ?>
+                    <button type="button" class="mtx-btn mtx-btn--sm order-delivery-action" data-order-delivered-open data-order-id="<?= $orderId ?>"><i class="fas fa-circle-check" aria-hidden="true"></i> Mark as Delivered</button>
+                  <?php elseif ($deliveryStatus === 'delivered'): ?>
+                    <span class="order-delivery-complete"><i class="fas fa-circle-check" aria-hidden="true"></i> Delivered</span>
+                  <?php else: ?>
+                    <span class="mtx-cell-sub">&mdash;</span>
+                  <?php endif; ?>
                 </td>
                 <?php endif; ?>
               </tr>
@@ -283,6 +306,10 @@ $hasFilters = $search || $statusFilter || $dateFrom || $dateTo;
   </section>
 
 </div><!-- /.mtx-shell -->
+
+<?php if ($channel === 'online'): ?>
+  <?php require __DIR__ . '/../includes/order-delivery-management.php'; ?>
+<?php endif; ?>
 
 <?= authContextScriptTag() ?>
 </main></div></div></body></html>

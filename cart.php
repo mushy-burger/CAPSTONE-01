@@ -2,6 +2,7 @@
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/db.php';
+require_once __DIR__ . '/includes/OrderDeliveryService.php';
 requireLogin();
 
 $userId = getCurrentUser()['id'];
@@ -97,6 +98,19 @@ foreach ($items as &$item) {
 unset($item);
 $staleItems = array_filter($items, fn($i) => (int)$i['quantity'] > (int)$i['available_stock']);
 
+// Presentation-only product rail: it reuses the normal cart add action below
+// and never changes the selected-cart or checkout data path.
+$recommendedProducts = fetchAllRows(
+    "SELECT p.*, c.name AS category_name,
+            " . availableStockSql('p') . " AS available_stock
+     FROM products p
+     JOIN categories c ON c.id = p.category_id
+     WHERE p.status != 'archived'
+     HAVING available_stock > 0
+     ORDER BY p.featured DESC, p.created_at DESC, p.id DESC
+     LIMIT 4"
+);
+
 $orders = fetchAllRows(
     "SELECT o.*
      FROM orders o
@@ -123,18 +137,19 @@ $pageTitle = 'Cart - MotoTrack';
 require_once __DIR__ . '/includes/header.php';
 ?>
 
-<section class="section container cart-layout">
-  <div>
-    <div class="section-heading compact">
-      <span class="eyebrow">Shop</span>
-      <h1>Cart & Orders</h1>
-    </div>
-    <div class="page-tabs" role="navigation" aria-label="Cart views">
-      <a href="<?= baseUrl('cart.php?tab=cart') ?>" class="<?= $activeTab === 'cart' ? 'active' : '' ?>"<?= $activeTab === 'cart' ? ' aria-current="page"' : '' ?>>Cart</a>
-      <a href="<?= baseUrl('cart.php?tab=orders') ?>" class="<?= $activeTab === 'orders' ? 'active' : '' ?>"<?= $activeTab === 'orders' ? ' aria-current="page"' : '' ?>>Checked Out Items</a>
-    </div>
-    <?php if ($message): ?><div class="alert success"><?= htmlspecialchars($message) ?></div><?php endif; ?>
-    <?php if ($error): ?><div class="alert error"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+<section class="section container cart-page">
+  <header class="cart-page-heading">
+    <h1>Cart &amp; Orders</h1>
+    <p>Review the items in your cart and proceed to checkout.</p>
+  </header>
+
+  <nav class="page-tabs cart-page-tabs" aria-label="Cart views">
+    <a href="<?= baseUrl('cart.php?tab=cart') ?>" class="<?= $activeTab === 'cart' ? 'active' : '' ?>"<?= $activeTab === 'cart' ? ' aria-current="page"' : '' ?>><i class="fas fa-shopping-cart" aria-hidden="true"></i><span>Cart (<?= count($items) ?>)</span></a>
+    <a href="<?= baseUrl('cart.php?tab=orders') ?>" class="<?= $activeTab === 'orders' ? 'active' : '' ?>"<?= $activeTab === 'orders' ? ' aria-current="page"' : '' ?>><i class="fas fa-box" aria-hidden="true"></i><span>Checked Out Items</span></a>
+  </nav>
+
+  <?php if ($message): ?><div class="alert success"><?= htmlspecialchars($message) ?></div><?php endif; ?>
+  <?php if ($error): ?><div class="alert error"><?= htmlspecialchars($error) ?></div><?php endif; ?>
     <?php if ($staleItems && $activeTab === 'cart'): ?>
       <div class="alert error" style="margin-bottom:14px;">
         ⚠️ <strong>Stock changed</strong> — the following items now have less stock than your cart quantity:
@@ -150,6 +165,8 @@ require_once __DIR__ . '/includes/header.php';
       </div>
     <?php endif; ?>
 
+  <div class="cart-layout <?= $activeTab === 'orders' ? 'is-orders' : '' ?>">
+    <main class="cart-main">
     <?php if ($activeTab === 'cart'): ?>
     <?php if ($items): ?>
       <form method="post" action="<?= baseUrl('checkout.php') ?>" id="cartCheckoutForm">
@@ -166,7 +183,7 @@ require_once __DIR__ . '/includes/header.php';
             </span>
             <span class="cart-item-cell">
               <?= productImageHtml($item['image'] ?? '', $item['name'], 'cart-item-thumb') ?>
-              <span><?= htmlspecialchars($item['name']) ?></span>
+              <span class="cart-item-copy"><strong><?= htmlspecialchars($item['name']) ?></strong><small><?= htmlspecialchars($item['category_name'] ?? 'Product') ?></small></span>
             </span>
             <span class="cart-price-cell" data-label="Price"><?= formatPrice((float)$item['price']) ?></span>
             <span class="cart-quantity-cell" data-label="Quantity">
@@ -182,7 +199,7 @@ require_once __DIR__ . '/includes/header.php';
                 <?= authContextField() ?>
                 <input type="hidden" name="action" value="remove">
                 <input type="hidden" name="cart_id" value="<?= (int)$item['cart_id'] ?>">
-                <button class="btn btn-outline btn-danger-lite" type="submit">Remove</button>
+                <button class="btn btn-outline btn-danger-lite" type="submit"><i class="fas fa-trash-alt" aria-hidden="true"></i><span>Remove</span></button>
               </form>
             </span>
           </div>
@@ -190,17 +207,51 @@ require_once __DIR__ . '/includes/header.php';
       </div>
     <?php else: ?>
       <div class="empty-state customer-empty-state cart-empty-state">
+        <span class="cart-empty-icon" aria-hidden="true"><i class="fas fa-shopping-cart"></i></span>
         <h2>Your cart is empty</h2>
-        <p>Browse the catalog and add the parts or accessories you want to compare.</p>
-        <a class="btn btn-primary" href="<?= baseUrl('shop.php') ?>">Browse Products</a>
+        <p>Browse the catalog and add the parts or accessories you want to compare or checkout later.</p>
+        <a class="btn btn-primary" href="<?= baseUrl('shop.php') ?>"><i class="fas fa-shopping-cart" aria-hidden="true"></i><span>Browse Products</span></a>
       </div>
+    <?php endif; ?>
+
+    <?php if ($recommendedProducts): ?>
+      <section class="cart-recommendations" aria-labelledby="cartRecommendationsTitle">
+        <header class="cart-recommendations-head">
+          <h2 id="cartRecommendationsTitle">Recommended for You</h2>
+          <a href="<?= baseUrl('shop.php') ?>">View Shop <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+        </header>
+        <div class="cart-recommendation-grid">
+          <?php foreach ($recommendedProducts as $product): ?>
+            <article class="cart-recommendation-card">
+              <a href="<?= baseUrl('product.php?id=' . (int)$product['id']) ?>" class="cart-recommendation-media">
+                <?= productImageHtml($product['image'] ?? '', $product['name'], 'cart-recommendation-image') ?>
+              </a>
+              <div class="cart-recommendation-copy">
+                <h3><a href="<?= baseUrl('product.php?id=' . (int)$product['id']) ?>"><?= htmlspecialchars($product['name']) ?></a></h3>
+                <strong><?= formatPrice((float)$product['price']) ?></strong>
+                <form method="post" action="<?= baseUrl('cart.php?tab=cart') ?>">
+                  <?= authContextField() ?>
+                  <input type="hidden" name="action" value="add">
+                  <input type="hidden" name="product_id" value="<?= (int)$product['id'] ?>">
+                  <input type="hidden" name="quantity" value="1">
+                  <button type="submit" class="btn btn-dark"><i class="fas fa-shopping-cart" aria-hidden="true"></i><span>Add to Cart</span></button>
+                </form>
+              </div>
+            </article>
+          <?php endforeach; ?>
+        </div>
+      </section>
     <?php endif; ?>
     <?php else: ?>
       <div class="history-list">
         <?php if ($orders): ?>
           <?php foreach ($orders as $order): ?>
-            <?php $paymentStatus = trim((string)($order['payment_status'] ?? '')); ?>
-            <article class="history-card">
+            <?php
+              $paymentStatus = trim((string)($order['payment_status'] ?? ''));
+              $deliveryStatus = orderDeliveryStatus($order);
+              $trackingUrl = trim((string)($order['tracking_url'] ?? ''));
+            ?>
+            <article class="history-card" id="order-<?= (int)$order['id'] ?>">
               <div class="history-card-head">
                 <div>
                   <strong>Order #<?= (int)$order['id'] ?></strong>
@@ -228,6 +279,24 @@ require_once __DIR__ . '/includes/header.php';
                 <span>Total</span>
                 <strong><?= formatPrice((float)$order['total']) ?></strong>
               </div>
+              <?php if (isOnlineShopOrder($order)): ?>
+                <section class="history-delivery" aria-label="Delivery tracking">
+                  <div class="history-delivery-head">
+                    <span><i class="fas fa-truck" aria-hidden="true"></i> Delivery Tracking</span>
+                    <strong class="history-delivery-status is-<?= htmlspecialchars($deliveryStatus) ?>"><?= htmlspecialchars(ucfirst($deliveryStatus)) ?></strong>
+                  </div>
+                  <?php if ($deliveryStatus === 'pending'): ?>
+                    <p>Your order is being prepared. Tracking information will appear once your order is dispatched.</p>
+                  <?php elseif ($deliveryStatus === 'delivering'): ?>
+                    <p>Your order is on the way.</p>
+                  <?php else: ?>
+                    <p>Your order has been delivered.<?php if (!empty($order['delivered_at'])): ?> <?= htmlspecialchars(date('M j, Y g:i A', strtotime((string)$order['delivered_at']))) ?>.<?php endif; ?></p>
+                  <?php endif; ?>
+                  <?php if ($trackingUrl !== ''): ?>
+                    <a class="btn btn-outline history-delivery-link" href="<?= htmlspecialchars($trackingUrl, ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer"><i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i> Track Delivery</a>
+                  <?php endif; ?>
+                </section>
+              <?php endif; ?>
             </article>
           <?php endforeach; ?>
         <?php else: ?>
@@ -239,15 +308,20 @@ require_once __DIR__ . '/includes/header.php';
         <?php endif; ?>
       </div>
     <?php endif; ?>
-  </div>
+    </main>
 
+  <?php if ($activeTab === 'cart'): ?>
   <aside class="summary-box">
-    <h2>Cart Totals</h2>
+    <h2>Cart Summary</h2>
+    <div><span>Items</span><strong data-cart-selected-count><?= count($items) ?></strong></div>
     <div><span>Subtotal</span><strong data-cart-selected-subtotal><?= formatPrice($subtotal) ?></strong></div>
     <div class="summary-grand-total"><span>Total</span><strong data-cart-selected-total><?= formatPrice($subtotal) ?></strong></div>
-    <button class="btn btn-primary" type="submit" form="cartCheckoutForm" data-cart-checkout-btn <?= !$items ? 'disabled' : '' ?>>Proceed to checkout</button>
+    <button class="btn btn-primary" type="submit" form="cartCheckoutForm" data-cart-checkout-btn <?= !$items ? 'disabled' : '' ?>><i class="fas fa-credit-card" aria-hidden="true"></i><span>Proceed to Checkout</span></button>
     <?php if ($items): ?><p class="fine-print" data-cart-selection-message></p><?php endif; ?>
+    <p class="cart-summary-note"><i class="fas fa-info-circle" aria-hidden="true"></i><span>Prices and availability may change depending on current stock.</span></p>
   </aside>
+  <?php endif; ?>
+  </div>
 </section>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

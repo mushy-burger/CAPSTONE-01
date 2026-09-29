@@ -5,6 +5,64 @@ require_once __DIR__ . '/functions.php';
 // One time slot accepts at most this many active (non-cancelled) bookings,
 // regardless of which services they contain.
 const BOOKING_MAX_PER_SLOT = 3;
+const BOOKING_SAME_DAY_LEAD_MINUTES = 30;
+
+/**
+ * Shop clock for booking rules. MySQL NOW() is application authority here;
+ * scheduled booking dates and times are stored in this same local clock.
+ */
+function bookingServerNow(): DateTimeImmutable {
+    $row = fetchOne("SELECT NOW() AS now_value");
+    $timezone = new DateTimeZone('Asia/Manila');
+
+    if (!empty($row['now_value'])) {
+        try {
+            return new DateTimeImmutable((string)$row['now_value'], $timezone);
+        } catch (Throwable $e) {
+            // Fall through to the configured shop timezone if database time is unavailable.
+        }
+    }
+
+    return new DateTimeImmutable('now', $timezone);
+}
+
+/**
+ * Time-rule state for a proposed slot. Future dates remain time-eligible;
+ * same-day slots need at least BOOKING_SAME_DAY_LEAD_MINUTES notice.
+ *
+ * @return 'available'|'passed'|'too_soon'|'unavailable'
+ */
+function bookingSlotTimeState(string $date, string $time, ?DateTimeImmutable $now = null): string {
+    $now ??= bookingServerNow();
+    $today = $now->format('Y-m-d');
+
+    if ($date < $today) {
+        return 'unavailable';
+    }
+    if ($date > $today) {
+        return 'available';
+    }
+
+    $slot = DateTimeImmutable::createFromFormat(
+        '!Y-m-d H:i',
+        $date . ' ' . $time,
+        $now->getTimezone()
+    );
+    if (!$slot || $slot->format('Y-m-d H:i') !== $date . ' ' . $time) {
+        return 'unavailable';
+    }
+    if ($slot < $now) {
+        return 'passed';
+    }
+
+    return $slot >= $now->modify('+' . BOOKING_SAME_DAY_LEAD_MINUTES . ' minutes')
+        ? 'available'
+        : 'too_soon';
+}
+
+function bookingSlotMeetsLeadTime(string $date, string $time, ?DateTimeImmutable $now = null): bool {
+    return bookingSlotTimeState($date, $time, $now) === 'available';
+}
 
 /** Shop operating hours: slot value (24h HH:MM) => customer-facing label. */
 function bookingTimeSlots(): array {

@@ -348,6 +348,7 @@ if (cartCheckoutForm) {
   const rows = Array.from(document.querySelectorAll('[data-cart-row]'));
   const subtotalTarget = document.querySelector('[data-cart-selected-subtotal]');
   const totalTarget = document.querySelector('[data-cart-selected-total]');
+  const countTarget = document.querySelector('[data-cart-selected-count]');
   const checkoutBtn = document.querySelector('[data-cart-checkout-btn]');
   const message = document.querySelector('[data-cart-selection-message]');
 
@@ -380,6 +381,7 @@ if (cartCheckoutForm) {
 
     if (subtotalTarget) subtotalTarget.textContent = currency.format(selectedTotal);
     if (totalTarget) totalTarget.textContent = currency.format(selectedTotal);
+    if (countTarget) countTarget.textContent = String(selectedCount);
     if (checkoutBtn) checkoutBtn.disabled = selectedCount === 0;
     if (message) message.textContent = selectedCount === 0 ? 'Select at least one item to checkout.' : `${selectedCount} item${selectedCount === 1 ? '' : 's'} selected.`;
   };
